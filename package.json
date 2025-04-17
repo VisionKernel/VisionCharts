@@ -1,0 +1,44 @@
+{
+    "name": "visioncharts",
+    "version": "0.1.0",
+    "description": "A modern, high-performance JavaScript charting library optimized for financial and economic data visualization",
+    "main": "dist/visioncharts.js",
+    "module": "dist/visioncharts.esm.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+      "dev": "rollup -c -w",
+      "build": "rollup -c",
+      "test": "jest",
+      "lint": "eslint src/**/*.js",
+      "prepublishOnly": "npm run build"
+    },
+    "keywords": [
+      "charts",
+      "visualization",
+      "financial",
+      "svg",
+      "data-visualization",
+      "visionkernel"
+    ],
+    "author": "VisionKernel Team",
+    "license": "MIT",
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/VisionKernel/visioncharts.git"
+    },
+    "bugs": {
+      "url": "https://github.com/VisionKernel/visioncharts/issues"
+    },
+    "homepage": "https://github.com/VisionKernel/visioncharts#readme",
+    "devDependencies": {
+      "@babel/core": "^7.24.0",
+      "@babel/preset-env": "^7.24.0",
+      "@rollup/plugin-babel": "^6.0.4",
+      "@rollup/plugin-commonjs": "^25.0.7",
+      "@rollup/plugin-node-resolve": "^15.2.3",
+      "@rollup/plugin-terser": "^0.4.4",
+      "eslint": "^8.56.0",
+      "jest": "^29.7.0",
+      "rollup": "^4.9.5"
+    }
+  }
