@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionCharts Examples</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    
+    header {
+      margin-bottom: 40px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 20px;
+    }
+    
+    h1 {
+      color: #2a5885;
+    }
+    
+    .chart-container {
+      height: 400px;
+      margin-bottom: 40px;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+    
+    .controls {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    
+    button {
+      padding: 8px 16px;
+      background-color: #2a5885;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    
+    button:hover {
+      background-color: #1c3c5a;
+    }
+    
+    select {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    code {
+      background-color: #f5f5f5;
+      padding: 16px;
+      border-radius: 4px;
+      display: block;
+      overflow-x: auto;
+      margin-bottom: 20px;
+      font-family: 'Courier New', Courier, monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VisionCharts Examples</h1>
+    <p>A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.</p>
+  </header>
+  
+  <main>
+    <section>
+      <h2>Line Chart Example</h2>
+      <div class="controls">
+        <select id="curve-type">
+          <option value="linear">Linear</option>
+          <option value="step">Step</option>
+          <option value="cardinal">Cardinal</option>
+          <option value="monotone">Monotone</option>
+        </select>
+        <button id="toggle-area">Toggle Area</button>
+        <button id="toggle-points">Toggle Points</button>
+        <button id="add-data">Add Data Point</button>
+        <button id="randomize">Randomize</button>
+      </div>
+      <div id="line-chart" class="chart-container"></div>
+      <code>
+const chart = new VisionCharts.LineChart({
+  container: '#line-chart',
+  data: stockData,
+  options: {
+    title: 'AAPL Stock Price',
+    xField: 'date',
+    yField: 'price',
+    xType: 'time',
+    yType: 'currency',
+    yFormat: { currency: 'USD' },
+    xAxisLabel: 'Date',
+    yAxisLabel: 'Price',
+    curve: 'monotone',
+    area: true
+  }
+});
+
+chart.render();
+      </code>
+    </section>
+  </main>
+  
+  <script type="module">
+    import VisionCharts from '../dist/visioncharts.esm.js';
+    
+    // Generate sample data
+    function generateStockData(days = 30, startPrice = 150, volatility = 0.02) {
+      const data = [];
+      let price = startPrice;
+      const today = new Date();
+      
+      for (let i = 0; i < days; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - (days - i));
+        
+        // Random price movement
+        const change = (Math.random() - 0.5) * volatility * price;
+        price += change;
+        
+        data.push({
+          date: date,
+          price: Math.max(0.1, price)
+        });
+      }
+      
+      return data;
+    }
+    
+    // Stock data
+    let stockData = generateStockData();
+    
+    // Create chart
+    const chart = new VisionCharts.LineChart({
+      container: '#line-chart',
+      data: stockData,
+      options: {
+        title: 'AAPL Stock Price',
+        xField: 'date',
+        yField: 'price',
+        xType: 'time',
+        yType: 'currency',
+        yFormat: { currency: 'USD' },
+        xAxisLabel: 'Date',
+        yAxisLabel: 'Price',
+        curve: 'monotone',
+        area: true
+      }
+    });
+    
+    // Render chart
+    chart.render();
+    
+    // Set up controls
+    document.getElementById('curve-type').addEventListener('change', e => {
+      chart.setOptions({ curve: e.target.value });
+    });
+    
+    document.getElementById('toggle-area').addEventListener('click', () => {
+      const currentArea = chart.getOptions().area;
+      chart.setOptions({ area: !currentArea });
+    });
+    
+    document.getElementById('toggle-points').addEventListener('click', () => {
+      const currentPoints = chart.getOptions().showPoints;
+      chart.setOptions({ showPoints: !currentPoints });
+    });
+    
+    document.getElementById('add-data').addEventListener('click', () => {
+      const lastDate = stockData[stockData.length - 1].date;
+      const lastPrice = stockData[stockData.length - 1].price;
+      
+      const newDate = new Date(lastDate);
+      newDate.setDate(lastDate.getDate() + 1);
+      
+      const change = (Math.random() - 0.5) * 0.05 * lastPrice;
+      const newPrice = Math.max(0.1, lastPrice + change);
+      
+      stockData.push({
+        date: newDate,
+        price: newPrice
+      });
+      
+      chart.setData(stockData);
+    });
+    
+    document.getElementById('randomize').addEventListener('click', () => {
+      stockData = generateStockData();
+      chart.setData(stockData);
+    });
+  </script>
+</body>
+</html>
