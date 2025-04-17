@@ -2,6 +2,7 @@
     "name": "visioncharts",
     "version": "0.1.0",
     "description": "A modern, high-performance JavaScript charting library optimized for financial and economic data visualization",
+    "type": "module",
     "main": "dist/visioncharts.js",
     "module": "dist/visioncharts.esm.js",
     "types": "dist/index.d.ts",
