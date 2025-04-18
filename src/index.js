@@ -16,9 +16,7 @@ import SvgRenderer from './renderers/SvgRenderer.js';
 
 // Chart types
 import LineChart from './charts/LineChart.js';
-import CandlestickChart from './charts/CandlestickChart.js';
-import VolumeChart from './charts/VolumeChart.js';
-import CombinedChart from './charts/CombinedChart.js';
+import BarChart from './charts/BarChart.js';
 
 // Export the public API
 export {
@@ -35,9 +33,7 @@ export {
   
   // Charts
   LineChart,
-  CandlestickChart,
-  VolumeChart,
-  CombinedChart
+  BarChart
 };
 
 // Export library version
@@ -55,6 +51,6 @@ export default {
   SvgRenderer,
   LineChart,
   CandlestickChart,
-  VolumeChart,
+  BarChart,
   CombinedChart
 };

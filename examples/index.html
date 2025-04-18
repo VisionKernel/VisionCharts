@@ -128,7 +128,7 @@
   
   <div class="tabs">
     <div class="tab active" data-tab="line">Line Chart</div>
-    <div class="tab" data-tab="volume">Volume Chart</div>
+    <div class="tab" data-tab="bar">Bar Chart</div>
   </div>
   
   <main>
@@ -173,13 +173,13 @@ chart.render();
       </code>
     </section>
     
-    <!-- Candlestick Chart Section -->
-    <section id="candlestick-section" class="chart-section" style="display: none;">
-      <h2>Candlestick Chart Example</h2>
+    <!-- Bar Chart Section (renamed from Volume Chart) -->
+    <section id="bar-section" class="chart-section" style="display: none;">
+      <h2>Bar Chart Example</h2>
       <div class="controls">
         <div class="control-group">
-          <label for="candlestick-timeframe">Timeframe</label>
-          <select id="candlestick-timeframe">
+          <label for="bar-timeframe">Timeframe</label>
+          <select id="bar-timeframe">
             <option value="1D">1 Day</option>
             <option value="1W" selected>1 Week</option>
             <option value="1M">1 Month</option>
@@ -187,64 +187,18 @@ chart.render();
           </select>
         </div>
         <div class="control-group">
-          <label for="candlestick-volume">Volume</label>
-          <select id="candlestick-volume">
-            <option value="true" selected>Show</option>
-            <option value="false">Hide</option>
-          </select>
-        </div>
-        <button id="candlestick-random">Randomize</button>
-      </div>
-      <div id="candlestick-chart" class="chart-container"></div>
-      <code>
-const chart = new VisionCharts.CandlestickChart({
-  container: '#candlestick-chart',
-  data: stockData,
-  options: {
-    title: 'AAPL Stock Price',
-    dateField: 'date',
-    openField: 'open',
-    highField: 'high',
-    lowField: 'low',
-    closeField: 'close',
-    volumeField: 'volume',
-    showVolume: true,
-    xAxisLabel: 'Date',
-    yAxisLabel: 'Price',
-    tooltip: true
-  }
-});
-
-chart.render();
-      </code>
-    </section>
-    
-    <!-- Volume Chart Section -->
-    <section id="volume-section" class="chart-section" style="display: none;">
-      <h2>Volume Chart Example</h2>
-      <div class="controls">
-        <div class="control-group">
-          <label for="volume-timeframe">Timeframe</label>
-          <select id="volume-timeframe">
-            <option value="1D">1 Day</option>
-            <option value="1W" selected>1 Week</option>
-            <option value="1M">1 Month</option>
-            <option value="3M">3 Months</option>
-          </select>
-        </div>
-        <div class="control-group">
-          <label for="volume-style">Style</label>
-          <select id="volume-style">
+          <label for="bar-style">Style</label>
+          <select id="bar-style">
             <option value="price">Price-colored</option>
             <option value="neutral">Neutral</option>
           </select>
         </div>
-        <button id="volume-random">Randomize</button>
+        <button id="bar-random">Randomize</button>
       </div>
-      <div id="volume-chart" class="chart-container"></div>
+      <div id="bar-chart" class="chart-container"></div>
       <code>
 const chart = new VisionCharts.VolumeChart({
-  container: '#volume-chart',
+  container: '#bar-chart',
   data: stockData,
   options: {
     title: 'AAPL Trading Volume',
@@ -260,388 +214,281 @@ const chart = new VisionCharts.VolumeChart({
 chart.render();
       </code>
     </section>
+  </main>
+  
+  <script type="module">
+    import VisionCharts from '../dist/visioncharts.esm.js';
     
-    <!-- Combined Chart Section -->
-    <section id="combined-section" class="chart-section" style="display: none;">
-        <h2>Combined Chart Example</h2>
-        <div class="controls">
-          <div class="control-group">
-            <label for="combined-timeframe">Timeframe</label>
-            <select id="combined-timeframe">
-              <option value="1D">1 Day</option>
-              <option value="1W" selected>1 Week</option>
-              <option value="1M">1 Month</option>
-              <option value="3M">3 Months</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="combined-layout">Layout</label>
-            <select id="combined-layout">
-              <option value="line-volume">Line + Volume</option>
-            </select>
-          </div>
-          <button id="combined-random">Randomize</button>
-        </div>
-        <div id="combined-chart" class="chart-container"></div>
-        <code>
-    const chart = new VisionCharts.CombinedChart({
-      container: '#combined-chart',
-      data: stockData,
-      options: {
-        title: 'AAPL Stock Price and Volume',
-        dateField: 'date',
-        layout: [
-          { type: 'line', height: 0.7 },
-          { type: 'volume', height: 0.3 }
-        ],
-        xAxisLabel: 'Date',
-        tooltip: true
+    // Tab Functionality
+    const tabs = document.querySelectorAll('.tab');
+    const sections = document.querySelectorAll('.chart-section');
+    
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Deactivate all tabs
+        tabs.forEach(t => t.classList.remove('active'));
+        
+        // Hide all sections
+        sections.forEach(s => s.style.display = 'none');
+        
+        // Activate clicked tab
+        tab.classList.add('active');
+        
+        // Show corresponding section
+        const tabName = tab.getAttribute('data-tab');
+        const section = document.getElementById(`${tabName}-section`);
+        section.style.display = 'block';
+        
+        // Initialize chart only after the section is visible
+        setTimeout(() => {
+          switch(tabName) {
+            case 'line':
+              initLineChart();
+              break;
+            case 'bar':
+              initBarChart();
+              break;
+          }
+        }, 200); // Increased from 50ms to 200ms
+      });
+    });
+  
+    // Only initialize the line chart on page load (since it's visible by default)
+    initLineChart();
+    
+    // Generate sample time series data for line chart
+    function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
+      const data = [];
+      let price = startPrice;
+      const today = new Date();
+      
+      for (let i = 0; i < days; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - (days - i));
+        
+        // Random price movement
+        const change = (Math.random() - 0.5) * volatility * price;
+        price += change;
+        
+        data.push({
+          date: date,
+          price: Math.max(0.1, price)
+        });
       }
+      
+      return data;
+    }
+    
+    // Generate sample stock data for financial charts
+    function generateStockData(days = 30, startPrice = 150, volatility = 0.02) {
+      console.log(`Generating ${days} days of stock data`);
+      const data = [];
+      let price = startPrice;
+      const today = new Date();
+      
+      for (let i = 0; i < days; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - (days - i));
+        
+        // Random price movement
+        const changePercent = (Math.random() - 0.5) * volatility * 2;
+        const change = price * changePercent;
+        
+        // Update price
+        price += change;
+        
+        // Random volume - higher on bigger price moves
+        const volumeBase = 1000000 + Math.random() * 5000000;
+        const volumeChange = Math.abs(changePercent) * 10;
+        const volume = Math.round(volumeBase * (1 + volumeChange));
+        
+        data.push({
+          date: date,
+          close: parseFloat(price.toFixed(2)),
+          volume: volume,
+          // Add price for line chart compatibility
+          price: parseFloat(price.toFixed(2))
+        });
+      }
+      
+      console.log(`Generated ${data.length} data points`);
+      return data;
+    }
+    
+    // Get number of days based on timeframe
+    function getDaysFromTimeframe(timeframe) {
+      switch(timeframe) {
+        case '1D': return 24; // Hourly data for 1 day
+        case '1W': return 7;
+        case '1M': return 30;
+        case '3M': return 90;
+        default: return 30;
+      }
+    }
+    
+    // Chart instances
+    let lineChart, barChart;
+    
+    // Data
+    let timeSeriesData = generateTimeSeriesData();
+    let stockData = generateStockData();
+    
+    // Initialize Line Chart
+    function initLineChart() {
+      try {
+        if (lineChart) return;
+        
+        console.log('Initializing line chart with data:', timeSeriesData.length, 'items');
+        lineChart = new VisionCharts.LineChart({
+          container: '#line-chart',
+          data: timeSeriesData,
+          options: {
+            title: 'AAPL Stock Price',
+            xField: 'date',
+            yField: 'price',
+            xType: 'time',
+            yType: 'currency',
+            yFormat: { currency: 'USD' },
+            xAxisLabel: 'Date',
+            yAxisLabel: 'Price',
+            curve: 'monotone',
+            area: true
+          }
+        });
+        
+        lineChart.render();
+      } catch (error) {
+        console.error('Error initializing line chart:', error);
+        document.querySelector('#line-chart').innerHTML = 
+          `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
+      }
+    }
+    
+    // Initialize Bar Chart (renamed from Volume Chart)
+    function initBarChart() {
+      try {
+        // Destroy previous chart instance if it exists
+        if (barChart) {
+          barChart.destroy();
+          barChart = null;
+        }
+            
+        const style = document.getElementById('bar-style').value;
+        const useNeutralColor = style === 'neutral';
+            
+        // Ensure colors are always defined
+        const chartColors = useNeutralColor ? 
+          {
+            up: '#4285F4',
+            down: '#4285F4',
+            neutral: '#4285F4'
+          } : 
+          {
+            up: '#34A853',
+            down: '#EA4335',
+            neutral: '#4285F4'
+          };
+            
+        console.log('Initializing bar chart with data:', stockData.length, 'items');
+        barChart = new VisionCharts.VolumeChart({
+          container: '#bar-chart',
+          data: stockData,
+          options: {
+            title: 'AAPL Trading Volume',
+            dateField: 'date',
+            volumeField: 'volume',
+            priceField: useNeutralColor ? null : 'close',
+            xAxisLabel: 'Date',
+            yAxisLabel: 'Volume',
+            tooltip: true,
+            colors: chartColors
+          }
+        });
+            
+        barChart.render();
+      } catch (error) {
+        console.error('Error initializing bar chart:', error);
+        document.querySelector('#bar-chart').innerHTML = 
+          `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
+      }
+    }
+        
+    // Line Chart Controls
+    document.getElementById('curve-type').addEventListener('change', e => {
+      lineChart.setOptions({ curve: e.target.value });
     });
     
-    chart.render();
-        </code>
-      </section>
-    </main>
-  
-    <script type="module">
-        import VisionCharts from '../dist/visioncharts.esm.js';
-        
-        // Tab Functionality
-        const tabs = document.querySelectorAll('.tab');
-        const sections = document.querySelectorAll('.chart-section');
-        
-        tabs.forEach(tab => {
-          tab.addEventListener('click', () => {
-            // Deactivate all tabs
-            tabs.forEach(t => t.classList.remove('active'));
-            
-            // Hide all sections
-            sections.forEach(s => s.style.display = 'none');
-            
-            // Activate clicked tab
-            tab.classList.add('active');
-            
-            // Show corresponding section
-            const tabName = tab.getAttribute('data-tab');
-            const section = document.getElementById(`${tabName}-section`);
-            section.style.display = 'block';
-            
-            // Initialize chart only after the section is visible
-            setTimeout(() => {
-              switch(tabName) {
-                case 'line':
-                  initLineChart();
-                  break;
-                case 'volume':
-                  initVolumeChart();
-                  break;
-                case 'combined':
-                  initCombinedChart();
-                  break;
-              }
-            }, 200); // Increased from 50ms to 200ms
-          });
-        });
+    document.getElementById('toggle-area').addEventListener('click', () => {
+      const currentArea = lineChart.getOptions().area;
+      lineChart.setOptions({ area: !currentArea });
+    });
+    
+    document.getElementById('toggle-points').addEventListener('click', () => {
+      const currentPoints = lineChart.getOptions().showPoints;
+      lineChart.setOptions({ showPoints: !currentPoints });
+    });
+    
+    document.getElementById('add-data').addEventListener('click', () => {
+      const lastDate = timeSeriesData[timeSeriesData.length - 1].date;
+      const lastPrice = timeSeriesData[timeSeriesData.length - 1].price;
       
-        // Only initialize the line chart on page load (since it's visible by default)
-        initLineChart();
-        
-        // Generate sample time series data for line chart
-        function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
-          const data = [];
-          let price = startPrice;
-          const today = new Date();
-          
-          for (let i = 0; i < days; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() - (days - i));
-            
-            // Random price movement
-            const change = (Math.random() - 0.5) * volatility * price;
-            price += change;
-            
-            data.push({
-              date: date,
-              price: Math.max(0.1, price)
-            });
-          }
-          
-          return data;
+      const newDate = new Date(lastDate);
+      newDate.setDate(lastDate.getDate() + 1);
+      
+      const change = (Math.random() - 0.5) * 0.05 * lastPrice;
+      const newPrice = Math.max(0.1, lastPrice + change);
+      
+      timeSeriesData.push({
+        date: newDate,
+        price: newPrice
+      });
+      
+      lineChart.setData(timeSeriesData);
+    });
+    
+    document.getElementById('randomize').addEventListener('click', () => {
+      timeSeriesData = generateTimeSeriesData();
+      lineChart.setData(timeSeriesData);
+    });
+    
+    // Bar Chart Controls (renamed from Volume Chart Controls)
+    document.getElementById('bar-timeframe').addEventListener('change', e => {
+      const days = getDaysFromTimeframe(e.target.value);
+      stockData = generateStockData(days);
+      if (barChart) barChart.setData(stockData);
+    });
+    
+    document.getElementById('bar-style').addEventListener('change', e => {
+      if (!barChart) return;
+      
+      const useNeutralColor = e.target.value === 'neutral';
+      barChart.setOptions({
+        priceField: useNeutralColor ? null : 'close',
+        colors: useNeutralColor ? {
+          up: '#4285F4',
+          down: '#4285F4',
+          neutral: '#4285F4'
+        } : {
+          up: '#34A853',
+          down: '#EA4335',
+          neutral: '#4285F4'
         }
+      });
+    });
+    
+    document.getElementById('bar-random').addEventListener('click', () => {
+      try {
+        const timeframe = document.getElementById('bar-timeframe').value;
+        const days = getDaysFromTimeframe(timeframe);
+        console.log('Generating new stock data for bar chart with days:', days);
+        stockData = generateStockData(days);
         
-        // Generate sample stock data for financial charts
-        function generateStockData(days = 30, startPrice = 150, volatility = 0.02) {
-          console.log(`Generating ${days} days of stock data`);
-          const data = [];
-          let price = startPrice;
-          const today = new Date();
-          
-          for (let i = 0; i < days; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() - (days - i));
-            
-            // Random price movement
-            const changePercent = (Math.random() - 0.5) * volatility * 2;
-            const change = price * changePercent;
-            
-            // Update price
-            price += change;
-            
-            // Random volume - higher on bigger price moves
-            const volumeBase = 1000000 + Math.random() * 5000000;
-            const volumeChange = Math.abs(changePercent) * 10;
-            const volume = Math.round(volumeBase * (1 + volumeChange));
-            
-            data.push({
-              date: date,
-              close: parseFloat(price.toFixed(2)),
-              volume: volume,
-              // Add price for line chart compatibility
-              price: parseFloat(price.toFixed(2))
-            });
-          }
-          
-          console.log(`Generated ${data.length} data points`);
-          return data;
-        }
-        
-        // Get number of days based on timeframe
-        function getDaysFromTimeframe(timeframe) {
-          switch(timeframe) {
-            case '1D': return 24; // Hourly data for 1 day
-            case '1W': return 7;
-            case '1M': return 30;
-            case '3M': return 90;
-            default: return 30;
-          }
-        }
-        
-        // Chart instances
-        let lineChart, volumeChart, combinedChart;
-        
-        // Data
-        let timeSeriesData = generateTimeSeriesData();
-        let stockData = generateStockData();
-        
-        // Initialize Line Chart
-        function initLineChart() {
-          try {
-            if (lineChart) return;
-            
-            console.log('Initializing line chart with data:', timeSeriesData.length, 'items');
-            lineChart = new VisionCharts.LineChart({
-              container: '#line-chart',
-              data: timeSeriesData,
-              options: {
-                title: 'AAPL Stock Price',
-                xField: 'date',
-                yField: 'price',
-                xType: 'time',
-                yType: 'currency',
-                yFormat: { currency: 'USD' },
-                xAxisLabel: 'Date',
-                yAxisLabel: 'Price',
-                curve: 'monotone',
-                area: true
-              }
-            });
-            
-            lineChart.render();
-          } catch (error) {
-            console.error('Error initializing line chart:', error);
-            document.querySelector('#line-chart').innerHTML = 
-              `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
-          }
-        }
-        
-        // Initialize Volume Chart
-        function initVolumeChart() {
-          try {
-            // Destroy previous chart instance if it exists
-            if (volumeChart) {
-              volumeChart.destroy();
-              volumeChart = null;
-            }
-                
-            const style = document.getElementById('volume-style').value;
-            const useNeutralColor = style === 'neutral';
-                
-            // Ensure colors are always defined
-            const chartColors = useNeutralColor ? 
-              {
-                up: '#4285F4',
-                down: '#4285F4',
-                neutral: '#4285F4'
-              } : 
-              {
-                up: '#34A853',
-                down: '#EA4335',
-                neutral: '#4285F4'
-              };
-                
-            console.log('Initializing volume chart with data:', stockData.length, 'items');
-            volumeChart = new VisionCharts.VolumeChart({
-              container: '#volume-chart',
-              data: stockData,
-              options: {
-                title: 'AAPL Trading Volume',
-                dateField: 'date',
-                volumeField: 'volume',
-                priceField: useNeutralColor ? null : 'close',
-                xAxisLabel: 'Date',
-                yAxisLabel: 'Volume',
-                tooltip: true,
-                colors: chartColors
-              }
-            });
-                
-            volumeChart.render();
-          } catch (error) {
-            console.error('Error initializing volume chart:', error);
-            document.querySelector('#volume-chart').innerHTML = 
-              `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
-          }
-        }
-              
-        // Initialize Combined Chart
-        function initCombinedChart() {
-          try {
-            // Always recreate the combined chart
-            if (combinedChart) {
-              combinedChart.destroy();
-              combinedChart = null;
-            }
-            
-            console.log('Initializing combined chart with data:', stockData.length, 'items');
-            combinedChart = new VisionCharts.CombinedChart({
-              container: '#combined-chart',
-              data: stockData,
-              options: {
-                title: 'AAPL Stock Price and Volume',
-                dateField: 'date',
-                layout: [
-                  { type: 'line', height: 0.7 },
-                  { type: 'volume', height: 0.3 }
-                ],
-                xAxisLabel: 'Date',
-                tooltip: true
-              }
-            });
-            
-            combinedChart.render();
-          } catch (error) {
-            console.error('Error initializing combined chart:', error);
-            document.querySelector('#combined-chart').innerHTML = 
-              `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
-          }
-        }
-        
-        // Line Chart Controls
-        document.getElementById('curve-type').addEventListener('change', e => {
-          lineChart.setOptions({ curve: e.target.value });
-        });
-        
-        document.getElementById('toggle-area').addEventListener('click', () => {
-          const currentArea = lineChart.getOptions().area;
-          lineChart.setOptions({ area: !currentArea });
-        });
-        
-        document.getElementById('toggle-points').addEventListener('click', () => {
-          const currentPoints = lineChart.getOptions().showPoints;
-          lineChart.setOptions({ showPoints: !currentPoints });
-        });
-        
-        document.getElementById('add-data').addEventListener('click', () => {
-          const lastDate = timeSeriesData[timeSeriesData.length - 1].date;
-          const lastPrice = timeSeriesData[timeSeriesData.length - 1].price;
-          
-          const newDate = new Date(lastDate);
-          newDate.setDate(lastDate.getDate() + 1);
-          
-          const change = (Math.random() - 0.5) * 0.05 * lastPrice;
-          const newPrice = Math.max(0.1, lastPrice + change);
-          
-          timeSeriesData.push({
-            date: newDate,
-            price: newPrice
-          });
-          
-          lineChart.setData(timeSeriesData);
-        });
-        
-        document.getElementById('randomize').addEventListener('click', () => {
-          timeSeriesData = generateTimeSeriesData();
-          lineChart.setData(timeSeriesData);
-        });
-        
-        // Volume Chart Controls
-        document.getElementById('volume-timeframe').addEventListener('change', e => {
-          const days = getDaysFromTimeframe(e.target.value);
-          stockData = generateStockData(days);
-          if (volumeChart) volumeChart.setData(stockData);
-          if (combinedChart) combinedChart.setData(stockData);
-        });
-        
-        document.getElementById('volume-style').addEventListener('change', e => {
-          if (!volumeChart) return;
-          
-          const useNeutralColor = e.target.value === 'neutral';
-          volumeChart.setOptions({
-            priceField: useNeutralColor ? null : 'close',
-            colors: useNeutralColor ? {
-              up: '#4285F4',
-              down: '#4285F4',
-              neutral: '#4285F4'
-            } : {
-              up: '#34A853',
-              down: '#EA4335',
-              neutral: '#4285F4'
-            }
-          });
-        });
-        
-        document.getElementById('volume-random').addEventListener('click', () => {
-          try {
-            const timeframe = document.getElementById('volume-timeframe').value;
-            const days = getDaysFromTimeframe(timeframe);
-            console.log('Generating new stock data for volume chart with days:', days);
-            stockData = generateStockData(days);
-            
-            // Re-initialize volume chart completely
-            initVolumeChart();
-            
-            // Update combined chart if it exists
-            if (combinedChart) combinedChart.setData(stockData);
-          } catch (error) {
-            console.error('Error randomizing volume chart:', error);
-          }
-        });
-        
-        // Combined Chart Controls
-        document.getElementById('combined-timeframe').addEventListener('change', e => {
-          const days = getDaysFromTimeframe(e.target.value);
-          stockData = generateStockData(days);
-          if (combinedChart) combinedChart.setData(stockData);
-        });
-        
-        document.getElementById('combined-random').addEventListener('click', () => {
-          try {
-            const timeframe = document.getElementById('combined-timeframe').value;
-            const days = getDaysFromTimeframe(timeframe);
-            console.log('Generating new stock data for combined chart with days:', days);
-            stockData = generateStockData(days);
-            
-            // Destroy and recreate all charts
-            if (combinedChart) {
-              combinedChart.destroy();
-              combinedChart = null;
-              initCombinedChart();
-            }
-          } catch (error) {
-            console.error('Error randomizing combined chart:', error);
-          }
-        });
-      </script>
+        // Re-initialize bar chart completely
+        initBarChart();
+      } catch (error) {
+        console.error('Error randomizing bar chart:', error);
+      }
+    });
+  </script>
 </body>
 </html>

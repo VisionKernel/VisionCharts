@@ -4,18 +4,18 @@ import { LinearScale, TimeScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 
 /**
- * VolumeChart class for rendering trading volume data
+ * BarChart class for rendering trading volume data
  */
-export default class VolumeChart extends Chart {
+export default class BarChart extends Chart {
   /**
-   * Create a new volume chart
+   * Create a new bar chart
    * @param {Object} config - Chart configuration
    */
   constructor(config) {
     // Call parent constructor
     super(config);
     
-    // Merge options with specific defaults for volume charts
+    // Merge options with specific defaults for bar charts
     this.options = Object.assign({
       dateField: 'date',
       volumeField: 'volume',
@@ -27,9 +27,9 @@ export default class VolumeChart extends Chart {
       yAxisLabel: 'Volume',
       barWidth: 0.8, // Width of bar as percentage of available space
       colors: {
-        up: '#34A853', // Green for up volume
-        down: '#EA4335', // Red for down volume
-        neutral: '#4285F4' // Blue for neutral volume
+        up: '#34A853', // Green for up bars
+        down: '#EA4335', // Red for down bars
+        neutral: '#4285F4' // Blue for neutral bars
       },
       grid: true,
       tooltip: true,
@@ -181,8 +181,8 @@ export default class VolumeChart extends Chart {
     if (!data || !data.length) return;
     
     // Create data group
-    const volumeGroup = SvgRenderer.createGroup({
-      class: 'visioncharts-volume-bars'
+    const barGroup = SvgRenderer.createGroup({
+      class: 'visioncharts-bar-chart-bars'
     });
     
     // Calculate bar width
@@ -192,7 +192,7 @@ export default class VolumeChart extends Chart {
     // Track previous price to determine direction
     let prevPrice = null;
     
-    // Render each volume bar
+    // Render each bar
     data.forEach((d, i) => {
       const date = d[dateField];
       const volume = d[volumeField] || 0;
@@ -215,14 +215,14 @@ export default class VolumeChart extends Chart {
       const y = this.state.scales.y.scale(volume);
       const height = this.state.dimensions.innerHeight - y;
       
-      // Create volume bar
-      const volumeBar = SvgRenderer.createRect(
+      // Create bar
+      const barRect = SvgRenderer.createRect(
         x - actualBarWidth / 2,
         y,
         actualBarWidth,
         Math.max(1, height), // Ensure at least 1px height for visibility
         {
-          class: `visioncharts-volume-bar ${direction}`,
+          class: `visioncharts-bar-chart-bar ${direction}`,
           fill: barColor,
           stroke: 'none',
           'data-index': i,
@@ -231,12 +231,12 @@ export default class VolumeChart extends Chart {
         }
       );
       
-      // Add to volume group
-      volumeGroup.appendChild(volumeBar);
+      // Add to bar group
+      barGroup.appendChild(barRect);
     });
     
     // Add data group to chart
-    this.state.chart.appendChild(volumeGroup);
+    this.state.chart.appendChild(barGroup);
   }
   
   /**
@@ -411,12 +411,12 @@ export default class VolumeChart extends Chart {
       tooltipGroup.setAttribute('opacity', 1);
       
       // Highlight active bar
-      const allBars = this.state.chart.querySelectorAll('.visioncharts-volume-bar');
+      const allBars = this.state.chart.querySelectorAll('.visioncharts-bar-chart-bar');
       allBars.forEach(bar => {
         bar.setAttribute('opacity', 0.5);
       });
       
-      const activeBar = this.state.chart.querySelector(`.visioncharts-volume-bar[data-index="${closestIndex}"]`);
+      const activeBar = this.state.chart.querySelector(`.visioncharts-bar-chart-bar[data-index="${closestIndex}"]`);
       if (activeBar) {
         activeBar.setAttribute('opacity', 1);
       }
@@ -428,7 +428,7 @@ export default class VolumeChart extends Chart {
       crosshairX.setAttribute('opacity', 0);
       
       // Reset bar highlights
-      const allBars = this.state.chart.querySelectorAll('.visioncharts-volume-bar');
+      const allBars = this.state.chart.querySelectorAll('.visioncharts-bar-chart-bar');
       allBars.forEach(bar => {
         bar.setAttribute('opacity', 1);
       });
@@ -443,10 +443,10 @@ export default class VolumeChart extends Chart {
    * @private
    */
   updateData() {
-    // Remove existing volume bars
-    const existingVolume = this.state.chart.querySelector('.visioncharts-volume-bars');
-    if (existingVolume && existingVolume.parentNode) {
-      existingVolume.parentNode.removeChild(existingVolume);
+    // Remove existing bars
+    const existingBars = this.state.chart.querySelector('.visioncharts-bar-chart-bars');
+    if (existingBars && existingBars.parentNode) {
+      existingBars.parentNode.removeChild(existingBars);
     }
     
     // Re-render data
