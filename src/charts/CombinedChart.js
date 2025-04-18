@@ -2,9 +2,6 @@ import Chart from '../core/Chart.js';
 import Axis from '../core/Axis.js';
 import { LinearScale, TimeScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
-import LineChart from './LineChart.js';
-import CandlestickChart from './CandlestickChart.js';
-import VolumeChart from './VolumeChart.js';
 
 /**
  * CombinedChart class for rendering multiple chart types together
@@ -94,8 +91,6 @@ export default class CombinedChart extends Chart {
   createScales() {
     // Create common X scale (time) - shared across all subcharts
     this.state.scales.x = new TimeScale([0, 1], [0, 1]);
-    
-    // Each subchart will create its own Y scale in renderSubCharts
   }
   
   /**
@@ -112,8 +107,6 @@ export default class CombinedChart extends Chart {
       label: this.options.xAxisLabel,
       grid: this.options.grid
     });
-    
-    // Y axes will be created by subcharts
   }
   
   /**
@@ -138,8 +131,6 @@ export default class CombinedChart extends Chart {
     
     // Set X scale range
     this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
-    
-    // Each subchart will update its own Y scale
   }
   
   /**
@@ -153,6 +144,9 @@ export default class CombinedChart extends Chart {
     // Create SVG
     this.createSvg();
     
+    // Ensure scales are updated first
+    this.updateScales();
+    
     // Create chart areas based on layout
     this.createChartAreas();
     
@@ -164,6 +158,11 @@ export default class CombinedChart extends Chart {
     
     // Render title
     this.renderTitle();
+    
+    // Render tooltip if enabled
+    if (this.options.tooltip) {
+      this.renderTooltip();
+    }
     
     // Update state
     this.state.rendered = true;
@@ -252,7 +251,7 @@ export default class CombinedChart extends Chart {
    * @returns {Object} Subchart configuration
    */
   createSubChart(area) {
-    const { type, group, x, y, width, height, index } = area;
+    const { type, group, width, height, index } = area;
     
     // Get options for this chart type
     const chartOptions = this.options.charts[type];
@@ -261,146 +260,177 @@ export default class CombinedChart extends Chart {
       return null;
     }
     
-    // Common properties
-    const commonProps = {
-      dateField: this.options.dateField,
-      xType: this.options.xType,
-      xFormat: this.options.xFormat,
-      grid: index === 0 ? this.options.grid : false // Grid only on first chart
-    };
+    // Create scale and render the appropriate chart type
+    try {
+      switch (type) {
+        case 'candlestick':
+          return this.createCandlestickChart(area, chartOptions);
+        
+        case 'line':
+          return this.createLineChart(area, chartOptions);
+        
+        case 'volume':
+          return this.createVolumeChart(area, chartOptions);
+        
+        default:
+          console.error(`Unsupported chart type: ${type}`);
+          return null;
+      }
+    } catch (err) {
+      console.error(`Error creating ${type} chart:`, err);
+      return null;
+    }
+  }
+  
+  /**
+   * Create a candlestick chart
+   * @private
+   * @param {Object} area - Chart area
+   * @param {Object} chartOptions - Chart options
+   * @returns {Object} Chart configuration
+   */
+  createCandlestickChart(area, chartOptions) {
+    const { group, width, height, index } = area;
     
-    // Create scale
-    let yScale;
+    // Create Y scale
+    const yScale = new LinearScale([0, 1], [height, 0]);
     
-    switch (type) {
-      case 'candlestick':
-        {
-          // Y scale for price
-          yScale = new LinearScale([0, 1], [height, 0]);
-          
-          // Extract price values
-          const highs = this.config.data.map(d => d[chartOptions.highField]);
-          const lows = this.config.data.map(d => d[chartOptions.lowField]);
-          
-          // Calculate domain
-          const yMin = Math.min(...lows);
-          const yMax = Math.max(...highs);
-          
-          // Add padding
-          const yPadding = (yMax - yMin) * 0.05;
-          yScale.setDomain([yMin - yPadding, yMax + yPadding]);
-          
-          // Create Y axis
-          const yAxis = new Axis({
-            orientation: 'left',
-            scale: yScale,
-            formatType: 'number',
-            formatOptions: chartOptions.yFormat,
-            label: chartOptions.yAxisLabel,
-            grid: index === 0 ? this.options.grid : false // Grid only on first chart
-          });
-          
-          // Render Y axis
-          yAxis.render(group, width, height);
-          
-          // Render candlesticks
-          this.renderCandlesticks(group, yScale, chartOptions, width, height);
-          
-          return {
-            type,
-            area,
-            yScale,
-            yAxis
-          };
-        }
+    try {
+      // Extract price values
+      const highs = this.config.data.map(d => d[chartOptions.highField] || 0);
+      const lows = this.config.data.map(d => d[chartOptions.lowField] || 0);
       
-      case 'line':
-        {
-          // Y scale for line
-          yScale = new LinearScale([0, 1], [height, 0]);
-          
-          // Extract price values
-          const values = this.config.data.map(d => d[chartOptions.yField]);
-          
-          // Calculate domain
-          const yMin = Math.min(...values);
-          const yMax = Math.max(...values);
-          
-          // Add padding
-          const yPadding = (yMax - yMin) * 0.05;
-          yScale.setDomain([yMin - yPadding, yMax + yPadding]);
-          
-          // Create Y axis
-          const yAxis = new Axis({
-            orientation: 'left',
-            scale: yScale,
-            formatType: 'number',
-            formatOptions: chartOptions.yFormat,
-            label: chartOptions.yAxisLabel,
-            grid: index === 0 ? this.options.grid : false // Grid only on first chart
-          });
-          
-          // Render Y axis
-          yAxis.render(group, width, height);
-          
-          // Render line
-          this.renderLine(group, yScale, chartOptions, width, height);
-          
-          return {
-            type,
-            area,
-            yScale,
-            yAxis
-          };
-        }
+      // Calculate domain
+      const yMin = Math.min(...lows);
+      const yMax = Math.max(...highs);
       
-      case 'volume':
-        {
-          // Y scale for volume
-          yScale = new LinearScale([0, 1], [height, 0]);
-          
-          // Extract volume values
-          const volumes = this.config.data.map(d => d[chartOptions.volumeField] || 0);
-          
-          // Calculate domain
-          const yMax = Math.max(...volumes);
-          yScale.setDomain([0, yMax * 1.05]); // Add a bit of padding
-          
-          // Create Y axis
-          const yAxis = new Axis({
-            orientation: 'left',
-            scale: yScale,
-            formatType: 'number',
-            formatOptions: chartOptions.yFormat,
-            label: chartOptions.yAxisLabel,
-            grid: false
-          });
-          
-          // Render Y axis
-          yAxis.render(group, width, height);
-          
-          // Render volume bars
-          this.renderVolume(group, yScale, chartOptions, width, height);
-          
-          return {
-            type,
-            area,
-            yScale,
-            yAxis
-          };
-        }
+      // Add padding
+      const yPadding = (yMax - yMin) * 0.05 || 1; // Avoid division by zero
+      yScale.setDomain([yMin - yPadding, yMax + yPadding]);
       
-      default:
-        console.error(`Unsupported chart type: ${type}`);
-        return null;
+      // Create Y axis
+      const yAxis = new Axis({
+        orientation: 'left',
+        scale: yScale,
+        formatType: 'number',
+        formatOptions: chartOptions.yFormat,
+        label: chartOptions.yAxisLabel,
+        grid: index === 0 ? this.options.grid : false
+      });
+      
+      // Render Y axis
+      yAxis.render(group, width, height);
+      
+      // Render candlesticks
+      this.renderCandlesticks(group, yScale, chartOptions);
+      
+      return { type: 'candlestick', area, yScale, yAxis };
+    } catch (err) {
+      console.error('Error rendering candlestick chart:', err);
+      return null;
+    }
+  }
+  
+  /**
+   * Create a line chart
+   * @private
+   * @param {Object} area - Chart area
+   * @param {Object} chartOptions - Chart options
+   * @returns {Object} Chart configuration
+   */
+  createLineChart(area, chartOptions) {
+    const { group, width, height, index } = area;
+    
+    // Create Y scale
+    const yScale = new LinearScale([0, 1], [height, 0]);
+    
+    try {
+      // Extract values
+      const values = this.config.data.map(d => d[chartOptions.yField] || 0);
+      
+      // Calculate domain
+      const yMin = Math.min(...values);
+      const yMax = Math.max(...values);
+      
+      // Add padding
+      const yPadding = (yMax - yMin) * 0.05 || 1;
+      yScale.setDomain([yMin - yPadding, yMax + yPadding]);
+      
+      // Create Y axis
+      const yAxis = new Axis({
+        orientation: 'left',
+        scale: yScale,
+        formatType: 'number',
+        formatOptions: chartOptions.yFormat,
+        label: chartOptions.yAxisLabel,
+        grid: index === 0 ? this.options.grid : false
+      });
+      
+      // Render Y axis
+      yAxis.render(group, width, height);
+      
+      // Render line
+      this.renderLine(group, yScale, chartOptions);
+      
+      return { type: 'line', area, yScale, yAxis };
+    } catch (err) {
+      console.error('Error rendering line chart:', err);
+      return null;
+    }
+  }
+  
+  /**
+   * Create a volume chart
+   * @private
+   * @param {Object} area - Chart area
+   * @param {Object} chartOptions - Chart options
+   * @returns {Object} Chart configuration
+   */
+  createVolumeChart(area, chartOptions) {
+    const { group, width, height, index } = area;
+    
+    // Create Y scale
+    const yScale = new LinearScale([0, 1], [height, 0]);
+    
+    try {
+      // Extract volume values
+      const volumes = this.config.data.map(d => d[chartOptions.volumeField] || 0);
+      
+      // Calculate domain
+      const yMax = Math.max(...volumes);
+      yScale.setDomain([0, yMax * 1.05]); // Add padding
+      
+      // Create Y axis
+      const yAxis = new Axis({
+        orientation: 'left',
+        scale: yScale,
+        formatType: 'number',
+        formatOptions: chartOptions.yFormat,
+        label: chartOptions.yAxisLabel,
+        grid: false
+      });
+      
+      // Render Y axis
+      yAxis.render(group, width, height);
+      
+      // Render volume bars
+      this.renderVolume(group, yScale, chartOptions);
+      
+      return { type: 'volume', area, yScale, yAxis };
+    } catch (err) {
+      console.error('Error rendering volume chart:', err);
+      return null;
     }
   }
   
   /**
    * Render candlesticks in a subchart
    * @private
+   * @param {SVGElement} group - Chart group element
+   * @param {Scale} yScale - Y scale
+   * @param {Object} options - Chart options
    */
-  renderCandlesticks(group, yScale, options, width, height) {
+  renderCandlesticks(group, yScale, options) {
     const {
       openField,
       highField,
@@ -412,6 +442,7 @@ export default class CombinedChart extends Chart {
     const { dateField } = this.options;
     const xScale = this.state.scales.x;
     const data = this.config.data;
+    const width = this.state.dimensions.innerWidth;
     
     // Create data group
     const candlesticksGroup = SvgRenderer.createGroup({
@@ -505,8 +536,11 @@ export default class CombinedChart extends Chart {
   /**
    * Render line in a subchart
    * @private
+   * @param {SVGElement} group - Chart group element
+   * @param {Scale} yScale - Y scale
+   * @param {Object} options - Chart options
    */
-  renderLine(group, yScale, options, width, height) {
+  renderLine(group, yScale, options) {
     const {
       yField,
       color,
@@ -527,7 +561,7 @@ export default class CombinedChart extends Chart {
     // Map data points to coordinates
     const points = data.map(d => [
       xScale.scale(d[dateField]),
-      yScale.scale(d[yField])
+      yScale.scale(d[yField] || 0)
     ]);
     
     // Generate path definition based on curve type
@@ -562,7 +596,7 @@ export default class CombinedChart extends Chart {
     if (showPoints) {
       data.forEach((d, i) => {
         const x = xScale.scale(d[dateField]);
-        const y = yScale.scale(d[yField]);
+        const y = yScale.scale(d[yField] || 0);
         
         const point = SvgRenderer.createCircle(x, y, 3, {
           class: 'visioncharts-point',
@@ -582,8 +616,11 @@ export default class CombinedChart extends Chart {
   /**
    * Render volume bars in a subchart
    * @private
+   * @param {SVGElement} group - Chart group element
+   * @param {Scale} yScale - Y scale
+   * @param {Object} options - Chart options
    */
-  renderVolume(group, yScale, options, width, height) {
+  renderVolume(group, yScale, options) {
     const {
       volumeField,
       colors
@@ -592,6 +629,8 @@ export default class CombinedChart extends Chart {
     const { dateField } = this.options;
     const xScale = this.state.scales.x;
     const data = this.config.data;
+    const width = this.state.dimensions.innerWidth;
+    const height = group.parentNode ? parseFloat(group.parentNode.getAttribute('height')) : 0;
     
     // Track previous close for determining direction
     let prevClose = null;
@@ -630,7 +669,7 @@ export default class CombinedChart extends Chart {
       // Get scaled coordinates
       const x = xScale.scale(date);
       const y = yScale.scale(volume);
-      const barHeight = height - y;
+      const barHeight = height - (y - group.getBoundingClientRect().top);
       
       // Create volume bar
       const volumeBar = SvgRenderer.createRect(
@@ -659,6 +698,8 @@ export default class CombinedChart extends Chart {
   /**
    * Generate monotone curve path
    * @private
+   * @param {Array} points - Array of [x, y] points
+   * @returns {string} Path definition
    */
   generateMonotonePath(points) {
     if (points.length < 3) return SvgRenderer.linePathDefinition(points);
@@ -715,6 +756,9 @@ export default class CombinedChart extends Chart {
   /**
    * Generate cardinal spline path
    * @private
+   * @param {Array} points - Array of [x, y] points
+   * @param {number} tension - Curve tension (0-1)
+   * @returns {string} Path definition
    */
   generateCardinalPath(points, tension = 0.5) {
     if (points.length < 2) return SvgRenderer.linePathDefinition(points);
@@ -772,6 +816,8 @@ export default class CombinedChart extends Chart {
   /**
    * Generate step path
    * @private
+   * @param {Array} points - Array of [x, y] points
+   * @returns {string} Path definition
    */
   generateStepPath(points) {
     if (!points.length) return '';
@@ -783,7 +829,6 @@ export default class CombinedChart extends Chart {
     
     for (let i = 0; i < restPoints.length; i++) {
       const [x, y] = restPoints[i];
-      const prevX = i > 0 ? restPoints[i - 1][0] : firstX;
       
       pathParts.push(`H ${x}`);
       pathParts.push(`V ${y}`);
@@ -1108,7 +1153,7 @@ export default class CombinedChart extends Chart {
   }
   
   /**
-   * Update the chart
+   * Update the chart - completely improved
    * @public
    */
   update() {
@@ -1119,8 +1164,21 @@ export default class CombinedChart extends Chart {
     // Update scales
     this.updateScales();
     
-    // Update subcharts
-    this.updateSubCharts();
+    // Clean up before recreating
+    this.state.chartAreas.forEach(area => {
+      if (area.group && area.group.parentNode) {
+        area.group.parentNode.removeChild(area.group);
+      }
+    });
+    
+    // Reset chart areas
+    this.state.chartAreas = [];
+    
+    // Recreate chart areas
+    this.createChartAreas();
+    
+    // Render subcharts
+    this.renderSubCharts();
     
     // Update X axis
     this.updateXAxis();
@@ -1134,29 +1192,19 @@ export default class CombinedChart extends Chart {
    */
   updateXAxis() {
     if (this.state.axes.x) {
-      this.state.axes.x.update();
-    }
-  }
-  
-  /**
-   * Update subcharts
-   * @private
-   */
-  updateSubCharts() {
-    // Remove existing elements
-    this.state.chartAreas.forEach(area => {
-      const group = area.group;
+      if (this.state.axes.x.element && this.state.axes.x.element.parentNode) {
+        this.state.axes.x.element.parentNode.removeChild(this.state.axes.x.element);
+      }
       
-      // Remove all children except axes (which will be updated separately)
-      const children = Array.from(group.children);
-      children.forEach(child => {
-        if (!child.classList.contains('visioncharts-axis')) {
-          group.removeChild(child);
-        }
-      });
-    });
-    
-    // Re-render subcharts
-    this.renderSubCharts();
+      if (this.state.axes.x.gridElement && this.state.axes.x.gridElement.parentNode) {
+        this.state.axes.x.gridElement.parentNode.removeChild(this.state.axes.x.gridElement);
+      }
+      
+      this.state.axes.x.render(
+        this.state.chart,
+        this.state.dimensions.innerWidth,
+        this.state.dimensions.innerHeight
+      );
+    }
   }
 }

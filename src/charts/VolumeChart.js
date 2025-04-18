@@ -110,6 +110,59 @@ export default class VolumeChart extends Chart {
   }
   
   /**
+   * Render the chart - explicitly override the parent method
+   * @public
+   */
+  render() {
+    // Clear the container
+    this.state.container.innerHTML = '';
+    
+    // Create SVG
+    this.createSvg();
+    
+    // Update scales to ensure proper initialization
+    this.updateScales();
+    
+    // Render components
+    this.renderAxes();
+    this.renderData();
+    this.renderLegend();
+    this.renderTitle();
+    
+    // Render tooltip if enabled
+    if (this.options.tooltip) {
+      this.renderTooltip();
+    }
+    
+    // Update state
+    this.state.rendered = true;
+    
+    return this;
+  }
+
+  /**
+   * Render axes
+   * @private
+   */
+  renderAxes() {
+    if (!this.state.chart) return;
+    
+    // Render X axis
+    this.state.axes.x.render(
+      this.state.chart,
+      this.state.dimensions.innerWidth,
+      this.state.dimensions.innerHeight
+    );
+    
+    // Render Y axis
+    this.state.axes.y.render(
+      this.state.chart,
+      this.state.dimensions.innerWidth,
+      this.state.dimensions.innerHeight
+    );
+  }
+
+  /**
    * Render chart data
    * @private
    */
@@ -386,14 +439,14 @@ export default class VolumeChart extends Chart {
   }
   
   /**
-   * Update chart data
+   * Update chart data - improved with proper cleanup
    * @private
    */
   updateData() {
-    // Remove existing data group
+    // Remove existing volume bars
     const existingVolume = this.state.chart.querySelector('.visioncharts-volume-bars');
-    if (existingVolume) {
-      this.state.chart.removeChild(existingVolume);
+    if (existingVolume && existingVolume.parentNode) {
+      existingVolume.parentNode.removeChild(existingVolume);
     }
     
     // Re-render data

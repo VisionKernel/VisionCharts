@@ -231,7 +231,10 @@ export default class CandlestickChart extends Chart {
     // Create SVG
     this.createSvg();
     
-    // Create chart areas
+    // Update scales - THIS NEEDS TO HAPPEN BEFORE createChartAreas
+    this.updateScales();
+    
+    // Create chart areas AFTER updateScales has set priceArea and volumeArea
     this.createChartAreas();
     
     // Render components
@@ -251,12 +254,9 @@ export default class CandlestickChart extends Chart {
     return this;
   }
   
-  /**
-   * Create chart areas
-   * @private
-   */
+  // Fixed createChartAreas with proper null check
   createChartAreas() {
-    if (!this.options.showVolume) {
+    if (!this.options.showVolume || !this.state.priceArea) {
       // No need for separate areas
       return;
     }
@@ -342,8 +342,8 @@ export default class CandlestickChart extends Chart {
       class: 'visioncharts-candlesticks'
     });
     
-    // Get container for candlesticks
-    const container = showVolume ? this.state.priceGroup : this.state.chart;
+    // Get container for candlesticks - use chart if priceGroup doesn't exist
+    const container = (showVolume && this.state.priceGroup) ? this.state.priceGroup : this.state.chart;
     container.appendChild(candlesticksGroup);
     
     // Calculate candle width

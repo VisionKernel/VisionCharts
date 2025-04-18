@@ -461,87 +461,97 @@ initLineChart();
     
     // Initialize Candlestick Chart
     function initCandlestickChart() {
-      if (candlestickChart) return;
-      
-      const showVolume = document.getElementById('candlestick-volume').value === 'true';
-      
-      candlestickChart = new VisionCharts.CandlestickChart({
-        container: '#candlestick-chart',
-        data: stockData,
-        options: {
-          title: 'AAPL Stock Price',
-          dateField: 'date',
-          openField: 'open',
-          highField: 'high',
-          lowField: 'low',
-          closeField: 'close',
-          volumeField: 'volume',
-          showVolume: showVolume,
-          volumeHeight: 0.2,
-          xAxisLabel: 'Date',
-          yAxisLabel: 'Price',
-          tooltip: true
+        // Destroy previous chart instance if it exists
+        if (candlestickChart) {
+            candlestickChart.destroy();
+            candlestickChart = null;
         }
-      });
-      
-      candlestickChart.render();
-    }
+        
+        const showVolume = document.getElementById('candlestick-volume').value === 'true';
+        
+        candlestickChart = new VisionCharts.CandlestickChart({
+            container: '#candlestick-chart',
+            data: stockData,
+            options: {
+            title: 'AAPL Stock Price',
+            dateField: 'date',
+            openField: 'open',
+            highField: 'high',
+            lowField: 'low',
+            closeField: 'close',
+            volumeField: 'volume',
+            showVolume: showVolume,
+            volumeHeight: 0.2,
+            xAxisLabel: 'Date',
+            yAxisLabel: 'Price',
+            tooltip: true
+            }
+        });
+        
+        candlestickChart.render();
+        }
     
     // Initialize Volume Chart
     function initVolumeChart() {
-      if (volumeChart) return;
-      
-      const style = document.getElementById('volume-style').value;
-      const useNeutralColor = style === 'neutral';
-      
-      volumeChart = new VisionCharts.VolumeChart({
-        container: '#volume-chart',
-        data: stockData,
-        options: {
-          title: 'AAPL Trading Volume',
-          dateField: 'date',
-          volumeField: 'volume',
-          priceField: useNeutralColor ? null : 'close',
-          xAxisLabel: 'Date',
-          yAxisLabel: 'Volume',
-          tooltip: true,
-          colors: useNeutralColor ? {
-            up: '#4285F4',
-            down: '#4285F4',
-            neutral: '#4285F4'
-          } : undefined
+  // Destroy previous chart instance if it exists
+        if (volumeChart) {
+            volumeChart.destroy();
+            volumeChart = null;
         }
-      });
-      
-      volumeChart.render();
-    }
-    
+        
+        const style = document.getElementById('volume-style').value;
+        const useNeutralColor = style === 'neutral';
+        
+        volumeChart = new VisionCharts.VolumeChart({
+            container: '#volume-chart',
+            data: stockData,
+            options: {
+            title: 'AAPL Trading Volume',
+            dateField: 'date',
+            volumeField: 'volume',
+            priceField: useNeutralColor ? null : 'close',
+            xAxisLabel: 'Date',
+            yAxisLabel: 'Volume',
+            tooltip: true,
+            colors: useNeutralColor ? {
+                up: '#4285F4',
+                down: '#4285F4',
+                neutral: '#4285F4'
+            } : undefined
+            }
+        });
+        
+        volumeChart.render();
+        }
+            
     // Initialize Combined Chart
     function initCombinedChart() {
-      if (combinedChart) {
-        combinedChart.destroy();
-      }
-      
-      const layout = document.getElementById('combined-layout').value;
-      const isLineVolume = layout === 'line-volume';
-      
-      combinedChart = new VisionCharts.CombinedChart({
-        container: '#combined-chart',
-        data: stockData,
-        options: {
-          title: 'AAPL Stock Price and Volume',
-          dateField: 'date',
-          layout: [
-            { type: isLineVolume ? 'line' : 'candlestick', height: 0.7 },
-            { type: 'volume', height: 0.3 }
-          ],
-          xAxisLabel: 'Date',
-          tooltip: true
-        }
-      });
-      
-      combinedChart.render();
+  // Always recreate the combined chart
+  if (combinedChart) {
+    combinedChart.destroy();
+    combinedChart = null;
+  }
+  
+  const layout = document.getElementById('combined-layout').value;
+  const isLineVolume = layout === 'line-volume';
+  
+  combinedChart = new VisionCharts.CombinedChart({
+    container: '#combined-chart',
+    data: stockData,
+    options: {
+      title: 'AAPL Stock Price and Volume',
+      dateField: 'date',
+      layout: [
+        { type: isLineVolume ? 'line' : 'candlestick', height: 0.7 },
+        { type: 'volume', height: 0.3 }
+      ],
+      xAxisLabel: 'Date',
+      tooltip: true
     }
+  });
+  
+  combinedChart.render();
+}
     
     // Initialize all charts based on visible sections
     function initializeCharts() {
@@ -619,13 +629,15 @@ initLineChart();
     });
     
     document.getElementById('candlestick-random').addEventListener('click', () => {
-      const timeframe = document.getElementById('candlestick-timeframe').value;
-      const days = getDaysFromTimeframe(timeframe);
-      stockData = generateStockData(days);
-      if (candlestickChart) candlestickChart.setData(stockData);
-      if (volumeChart) volumeChart.setData(stockData);
-      if (combinedChart) combinedChart.setData(stockData);
-    });
+  const timeframe = document.getElementById('candlestick-timeframe').value;
+  const days = getDaysFromTimeframe(timeframe);
+  stockData = generateStockData(days);
+  
+  // Reinitialize charts instead of just setting data
+  if (candlestickChart) initCandlestickChart();
+  if (volumeChart) initVolumeChart();
+  if (combinedChart) initCombinedChart();
+});
     
     // Volume Chart Controls
     document.getElementById('volume-timeframe').addEventListener('change', e => {
