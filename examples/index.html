@@ -332,21 +332,21 @@ chart.render();
     
     // Initialize chart only after the section is visible
     setTimeout(() => {
-      switch(tabName) {
-        case 'line':
-          initLineChart();
-          break;
-        case 'candlestick':
-          initCandlestickChart();
-          break;
-        case 'volume':
-          initVolumeChart();
-          break;
-        case 'combined':
-          initCombinedChart();
-          break;
-      }
-    }, 50); // Small delay to ensure the DOM has updated
+  switch(tabName) {
+    case 'line':
+      initLineChart();
+      break;
+    case 'candlestick':
+      initCandlestickChart();
+      break;
+    case 'volume':
+      initVolumeChart();
+      break;
+    case 'combined':
+      initCombinedChart();
+      break;
+  }
+}, 200); // Small delay to ensure the DOM has updated
   });
 });
 
@@ -437,27 +437,35 @@ initLineChart();
     
     // Initialize Line Chart
     function initLineChart() {
-      if (lineChart) return;
-      
-      lineChart = new VisionCharts.LineChart({
-        container: '#line-chart',
-        data: timeSeriesData,
-        options: {
-          title: 'AAPL Stock Price',
-          xField: 'date',
-          yField: 'price',
-          xType: 'time',
-          yType: 'currency',
-          yFormat: { currency: 'USD' },
-          xAxisLabel: 'Date',
-          yAxisLabel: 'Price',
-          curve: 'monotone',
-          area: true
-        }
-      });
-      
-      lineChart.render();
-    }
+  try {
+    if (lineChart) return;
+    
+    console.log('Initializing line chart with data:', timeSeriesData);
+    lineChart = new VisionCharts.LineChart({
+      container: '#line-chart',
+      data: timeSeriesData,
+      options: {
+        title: 'AAPL Stock Price',
+        xField: 'date',
+        yField: 'price',
+        xType: 'time',
+        yType: 'currency',
+        yFormat: { currency: 'USD' },
+        xAxisLabel: 'Date',
+        yAxisLabel: 'Price',
+        curve: 'monotone',
+        area: true
+      }
+    });
+    
+    lineChart.render();
+  } catch (error) {
+    console.error('Error initializing line chart:', error);
+    // Display error message in the container
+    document.querySelector('#line-chart').innerHTML = 
+      `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
+  }
+}
     
     // Initialize Candlestick Chart
     function initCandlestickChart() {

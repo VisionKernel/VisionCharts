@@ -256,23 +256,26 @@ export default class CandlestickChart extends Chart {
   
   // Fixed createChartAreas with proper null check
   createChartAreas() {
+    // If showVolume is false or priceArea doesn't exist, return early
     if (!this.options.showVolume || !this.state.priceArea) {
-      // No need for separate areas
       return;
     }
     
-    // Create a group for price chart
+    // Safety check for height (extra protection)
+    const priceHeight = this.state.priceArea.height || this.state.dimensions.innerHeight;
+    
+    // Create price group
     const priceGroup = SvgRenderer.createGroup({
       class: 'visioncharts-price-area'
     });
     
-    // Create a group for volume chart
+    // Create volume group with safe height reference
     const volumeGroup = SvgRenderer.createGroup({
       class: 'visioncharts-volume-area',
-      transform: `translate(0,${this.state.priceArea.height})`
+      transform: `translate(0,${priceHeight})`
     });
     
-    // Add groups to chart
+    // Add to chart
     this.state.chart.appendChild(priceGroup);
     this.state.chart.appendChild(volumeGroup);
     

@@ -120,12 +120,13 @@ export default class Chart {
       const containerRect = this.state.container.getBoundingClientRect();
       
       // Chart width and height (respecting user-defined values if provided)
-      const width = this.options.width || containerRect.width;
-      const height = this.options.height || containerRect.height;
+      // Ensure dimensions are at least 1px to avoid SVG rendering issues
+      const width = Math.max(1, this.options.width || containerRect.width || 300);
+      const height = Math.max(1, this.options.height || containerRect.height || 200);
       
       // Inner chart area dimensions (excluding margins)
-      const innerWidth = width - this.options.margins.left - this.options.margins.right;
-      const innerHeight = height - this.options.margins.top - this.options.margins.bottom;
+      const innerWidth = Math.max(1, width - this.options.margins.left - this.options.margins.right);
+      const innerHeight = Math.max(1, height - this.options.margins.top - this.options.margins.bottom);
       
       // Update state
       this.state.dimensions = {
@@ -134,6 +135,9 @@ export default class Chart {
         innerWidth,
         innerHeight
       };
+      
+      // Log dimensions for debugging
+      console.log('Chart dimensions:', this.state.dimensions);
     }
   
     /**

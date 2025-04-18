@@ -93,7 +93,16 @@ export default class LineChart extends Chart {
     const { xField, yField } = this.options;
     const data = this.config.data;
     
-    if (!data || !data.length) return;
+    if (!data || !data.length) {
+      // Set default domain if no data
+      this.state.scales.x.setDomain([0, 1]);
+      this.state.scales.y.setDomain([0, 1]);
+      
+      // Set ranges based on dimensions
+      this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
+      this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+      return;
+    }
     
     // Extract X and Y values
     const xValues = data.map(d => d[xField]);
