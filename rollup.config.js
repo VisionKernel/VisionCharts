@@ -59,6 +59,7 @@ export default [
     output: {
       file: pkg.module,
       format: 'es',
+      exports: 'named',
       sourcemap: true,
     },
     plugins: [

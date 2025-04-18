@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VisionCharts Examples</title>
+  <title>VisionCharts Demo</title>
   <style>
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
       max-width: 1200px;
       margin: 0 auto;
       padding: 20px;
@@ -21,7 +21,7 @@
     }
     
     h1 {
-      color: #2a5885;
+      color: #1468a8;
     }
     
     .chart-container {
@@ -54,37 +54,28 @@
     
     button {
       padding: 8px 16px;
-      background-color: #2a5885;
+      background-color: #1468a8;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
       font-weight: 500;
+      transition: background-color 0.2s;
     }
     
     button:hover {
-      background-color: #1c3c5a;
+      background-color: #0d5082;
+    }
+
+    button.active {
+      background-color: #34A853;
     }
     
-    select {
+    select, input {
       padding: 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
       min-width: 120px;
-    }
-    
-    code {
-      background-color: #f5f5f5;
-      padding: 16px;
-      border-radius: 4px;
-      display: block;
-      overflow-x: auto;
-      margin-bottom: 20px;
-      font-family: 'Courier New', Courier, monospace;
-    }
-    
-    .chart-section {
-      margin-bottom: 60px;
     }
     
     .tabs {
@@ -101,6 +92,7 @@
       border-radius: 4px 4px 0 0;
       margin-right: 5px;
       background-color: #f5f5f5;
+      transition: background-color 0.2s;
     }
     
     .tab.active {
@@ -118,108 +110,178 @@
       height: 1px;
       background-color: #fff;
     }
+
+    .tab:hover {
+      background-color: #e9e9e9;
+    }
+
+    .tab.active:hover {
+      background-color: #fff;
+    }
+
+    footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+      text-align: center;
+      color: #666;
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>VisionCharts Examples</h1>
+    <h1>VisionCharts Demo</h1>
     <p>A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.</p>
   </header>
   
   <div class="tabs">
     <div class="tab active" data-tab="line">Line Chart</div>
+    <div class="tab" data-tab="area">Area Chart</div>
     <div class="tab" data-tab="bar">Bar Chart</div>
   </div>
   
   <main>
     <!-- Line Chart Section -->
     <section id="line-section" class="chart-section">
-      <h2>Line Chart Example</h2>
+      <h2>Line Chart</h2>
       <div class="controls">
         <div class="control-group">
-          <label for="curve-type">Curve Type</label>
-          <select id="curve-type">
+          <label for="line-curve">Curve Type</label>
+          <select id="line-curve">
             <option value="linear">Linear</option>
             <option value="step">Step</option>
             <option value="cardinal">Cardinal</option>
-            <option value="monotone">Monotone</option>
+            <option value="monotone" selected>Monotone</option>
           </select>
         </div>
-        <button id="toggle-area">Toggle Area</button>
-        <button id="toggle-points">Toggle Points</button>
-        <button id="add-data">Add Data Point</button>
-        <button id="randomize">Randomize</button>
+        <div class="control-group">
+          <label for="line-x-name">X Axis Name</label>
+          <input type="text" id="line-x-name" value="Date" placeholder="X Axis Name">
+        </div>
+        <div class="control-group">
+          <label for="line-y-name">Y Axis Name</label>
+          <input type="text" id="line-y-name" value="Price ($)" placeholder="Y Axis Name">
+        </div>
+        <div class="control-group">
+          <button id="line-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+        </div>
+        <div class="control-group">
+          <button id="line-toggle-panel" class="toggle-button">Toggle Panel View</button>
+        </div>
+        <div class="control-group">
+          <button id="line-toggle-recession" class="toggle-button">Toggle Recessions</button>
+        </div>
+        <div class="control-group">
+          <button id="line-toggle-zero" class="toggle-button">Toggle Zero Line</button>
+        </div>
+        <div class="control-group">
+          <button id="line-toggle-area" class="toggle-button">Toggle Area</button>
+        </div>
       </div>
       <div id="line-chart" class="chart-container"></div>
-      <code>
-const chart = new VisionCharts.LineChart({
-  container: '#line-chart',
-  data: stockData,
-  options: {
-    title: 'AAPL Stock Price',
-    xField: 'date',
-    yField: 'price',
-    xType: 'time',
-    yType: 'currency',
-    yFormat: { currency: 'USD' },
-    xAxisLabel: 'Date',
-    yAxisLabel: 'Price',
-    curve: 'monotone',
-    area: true
-  }
-});
-
-chart.render();
-      </code>
     </section>
     
-    <!-- Bar Chart Section (renamed from Volume Chart) -->
-    <section id="bar-section" class="chart-section" style="display: none;">
-      <h2>Bar Chart Example</h2>
+    <!-- Area Chart Section -->
+    <section id="area-section" class="chart-section" style="display: none;">
+      <h2>Area Chart</h2>
       <div class="controls">
         <div class="control-group">
-          <label for="bar-timeframe">Timeframe</label>
-          <select id="bar-timeframe">
-            <option value="1D">1 Day</option>
-            <option value="1W" selected>1 Week</option>
-            <option value="1M">1 Month</option>
-            <option value="3M">3 Months</option>
+          <label for="area-curve">Curve Type</label>
+          <select id="area-curve">
+            <option value="linear">Linear</option>
+            <option value="step">Step</option>
+            <option value="cardinal">Cardinal</option>
+            <option value="monotone" selected>Monotone</option>
           </select>
         </div>
         <div class="control-group">
-          <label for="bar-style">Style</label>
-          <select id="bar-style">
-            <option value="price">Price-colored</option>
-            <option value="neutral">Neutral</option>
-          </select>
+          <label for="area-x-name">X Axis Name</label>
+          <input type="text" id="area-x-name" value="Date" placeholder="X Axis Name">
         </div>
-        <button id="bar-random">Randomize</button>
+        <div class="control-group">
+          <label for="area-y-name">Y Axis Name</label>
+          <input type="text" id="area-y-name" value="Value" placeholder="Y Axis Name">
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-stacked" class="toggle-button">Toggle Stacked</button>
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-panel" class="toggle-button">Toggle Panel View</button>
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-recession" class="toggle-button">Toggle Recessions</button>
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-zero" class="toggle-button">Toggle Zero Line</button>
+        </div>
+      </div>
+      <div id="area-chart" class="chart-container"></div>
+    </section>
+    
+    <!-- Bar Chart Section -->
+    <section id="bar-section" class="chart-section" style="display: none;">
+      <h2>Bar Chart</h2>
+      <div class="controls">
+        <div class="control-group">
+          <label for="bar-width">Bar Width</label>
+          <input type="range" id="bar-width" min="0.1" max="1" step="0.1" value="0.7">
+        </div>
+        <div class="control-group">
+          <label for="bar-x-name">X Axis Name</label>
+          <input type="text" id="bar-x-name" value="Category" placeholder="X Axis Name">
+        </div>
+        <div class="control-group">
+          <label for="bar-y-name">Y Axis Name</label>
+          <input type="text" id="bar-y-name" value="Value" placeholder="Y Axis Name">
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-group" class="toggle-button active">Toggle Grouped</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-panel" class="toggle-button">Toggle Panel View</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-zero" class="toggle-button active">Toggle Zero Line</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-values" class="toggle-button">Toggle Values</button>
+        </div>
       </div>
       <div id="bar-chart" class="chart-container"></div>
-      <code>
-const chart = new VisionCharts.VolumeChart({
-  container: '#bar-chart',
-  data: stockData,
-  options: {
-    title: 'AAPL Trading Volume',
-    dateField: 'date',
-    volumeField: 'volume',
-    priceField: 'close',
-    xAxisLabel: 'Date',
-    yAxisLabel: 'Volume',
-    tooltip: true
-  }
-});
-
-chart.render();
-      </code>
     </section>
   </main>
   
+  <footer>
+    <p>VisionCharts v0.2.0 | MIT License | &copy; 2025 VisionKernel Team</p>
+  </footer>
+  
   <script type="module">
     import VisionCharts from '../dist/visioncharts.esm.js';
+    const { LineChart, AreaChart, BarChart, calculateIndicator } = VisionCharts;
     
-    // Tab Functionality
+    // Demo data
+    const mockTimeSeriesData = generateTimeSeriesData();
+    const multipleDatasets = generateMultipleDatasets();
+    const barData = generateBarData();
+    
+    // US recessions data
+    const recessions = [
+      { start: new Date('2007-12-01'), end: new Date('2009-06-30') },
+      { start: new Date('2020-02-01'), end: new Date('2020-04-30') }
+    ];
+    
+    // Chart instances
+    let lineChart;
+    let areaChart;
+    let barChart;
+    
+    // Tab functionality
     const tabs = document.querySelectorAll('.tab');
     const sections = document.querySelectorAll('.chart-section');
     
@@ -239,31 +301,253 @@ chart.render();
         const section = document.getElementById(`${tabName}-section`);
         section.style.display = 'block';
         
-        // Initialize chart only after the section is visible
-        setTimeout(() => {
-          switch(tabName) {
-            case 'line':
-              initLineChart();
-              break;
-            case 'bar':
-              initBarChart();
-              break;
-          }
-        }, 200); // Increased from 50ms to 200ms
+        // Initialize chart if not already created
+        switch(tabName) {
+          case 'line':
+            initLineChart();
+            break;
+          case 'area':
+            initAreaChart();
+            break;
+          case 'bar':
+            initBarChart();
+            break;
+        }
       });
     });
-  
-    // Only initialize the line chart on page load (since it's visible by default)
-    initLineChart();
     
-    // Generate sample time series data for line chart
+    // Initialize Line Chart
+    function initLineChart() {
+      if (lineChart) return;
+      
+      lineChart = new LineChart({
+        container: '#line-chart',
+        data: multipleDatasets,
+        options: {
+          title: 'Stock Price Comparison',
+          xField: 'date',
+          yField: 'price',
+          xType: 'time',
+          yType: 'number',
+          xAxisName: 'Date',
+          yAxisName: 'Price ($)',
+          curve: 'monotone',
+          showPoints: false,
+          area: false,
+          showZeroLine: false,
+          showRecessionLines: false,
+          recessions: recessions,
+          isPanelView: false,
+          isLogarithmic: false
+        }
+      });
+      
+      lineChart.render();
+      
+      // Add study for first dataset
+      const smaData = calculateIndicator('sma', multipleDatasets[0].data, {
+        period: 20,
+        valueField: 'price',
+        xField: 'date'
+      });
+      
+      lineChart.addStudy(multipleDatasets[0].id, {
+        id: 'sma-20',
+        type: 'sma',
+        name: 'SMA (20)',
+        color: '#9C27B0',
+        width: 1.5,
+        params: { period: 20 }
+      });
+      
+      // Add event listeners for controls
+      document.getElementById('line-curve').addEventListener('change', (e) => {
+        lineChart.setOptions({ curve: e.target.value });
+        lineChart.update();
+      });
+      
+      document.getElementById('line-x-name').addEventListener('input', (e) => {
+        lineChart.setXAxisName(e.target.value);
+      });
+      
+      document.getElementById('line-y-name').addEventListener('input', (e) => {
+        lineChart.setYAxisName(e.target.value);
+      });
+      
+      document.getElementById('line-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        lineChart.toggleLogarithmic(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('line-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        lineChart.togglePanelView(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('line-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        lineChart.toggleRecessionLines(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('line-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        lineChart.toggleZeroLine(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('line-toggle-area').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        lineChart.setOptions({ area: e.target.classList.contains('active') });
+        lineChart.update();
+      });
+    }
+    
+    // Initialize Area Chart
+    function initAreaChart() {
+      if (areaChart) return;
+      
+      areaChart = new AreaChart({
+        container: '#area-chart',
+        data: multipleDatasets,
+        options: {
+          title: 'Area Chart Example',
+          xField: 'date',
+          yField: 'price',
+          xType: 'time',
+          yType: 'number',
+          xAxisName: 'Date',
+          yAxisName: 'Value',
+          curve: 'monotone',
+          showPoints: false,
+          area: true,
+          stacked: false,
+          gradient: true,
+          areaOpacity: 0.2,
+          showZeroLine: false,
+          showRecessionLines: false,
+          recessions: recessions,
+          isPanelView: false,
+          isLogarithmic: false
+        }
+      });
+      
+      areaChart.render();
+      
+      // Add event listeners for controls
+      document.getElementById('area-curve').addEventListener('change', (e) => {
+        areaChart.setOptions({ curve: e.target.value });
+        areaChart.update();
+      });
+      
+      document.getElementById('area-x-name').addEventListener('input', (e) => {
+        areaChart.setXAxisName(e.target.value);
+      });
+      
+      document.getElementById('area-y-name').addEventListener('input', (e) => {
+        areaChart.setYAxisName(e.target.value);
+      });
+      
+      document.getElementById('area-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        areaChart.toggleLogarithmic(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('area-toggle-stacked').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        areaChart.toggleStacked(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('area-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        areaChart.togglePanelView(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        areaChart.toggleRecessionLines(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        areaChart.toggleZeroLine(e.target.classList.contains('active'));
+      });
+    }
+    
+    // Initialize Bar Chart
+    function initBarChart() {
+      if (barChart) return;
+      
+      barChart = new BarChart({
+        container: '#bar-chart',
+        data: barData,
+        options: {
+          title: 'Quarterly Revenue',
+          xField: 'category',
+          yField: 'value',
+          xType: 'category',
+          yType: 'number',
+          xAxisName: 'Category',
+          yAxisName: 'Value',
+          barWidth: 0.7,
+          barSpacing: 0.2,
+          barGap: 0.05,
+          groupBars: true,
+          showValues: false,
+          valuePosition: 'top',
+          showZeroLine: true,
+          isPanelView: false,
+          isLogarithmic: false
+        }
+      });
+      
+      barChart.render();
+      
+      // Add event listeners for controls
+      document.getElementById('bar-width').addEventListener('input', (e) => {
+        barChart.setBarWidth(parseFloat(e.target.value));
+      });
+      
+      document.getElementById('bar-x-name').addEventListener('input', (e) => {
+        barChart.setXAxisName(e.target.value);
+      });
+      
+      document.getElementById('bar-y-name').addEventListener('input', (e) => {
+        barChart.setYAxisName(e.target.value);
+      });
+      
+      document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        barChart.toggleLogarithmic(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('bar-toggle-group').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        barChart.toggleGroupBars(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('bar-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        barChart.togglePanelView(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        barChart.toggleZeroLine(e.target.classList.contains('active'));
+      });
+      
+      document.getElementById('bar-toggle-values').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        barChart.toggleShowValues(e.target.classList.contains('active'), 'top');
+      });
+    }
+    
+    // Generate sample time series data
     function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
       const data = [];
       let price = startPrice;
       const today = new Date();
       
       for (let i = 0; i < days; i++) {
-        const date = new Date(today);
+        const date = new Date();
         date.setDate(today.getDate() - (days - i));
         
         // Random price movement
@@ -279,216 +563,45 @@ chart.render();
       return data;
     }
     
-    // Generate sample stock data for financial charts
-    function generateStockData(days = 30, startPrice = 150, volatility = 0.02) {
-      console.log(`Generating ${days} days of stock data`);
-      const data = [];
-      let price = startPrice;
-      const today = new Date();
+    // Generate multiple datasets
+    function generateMultipleDatasets() {
+      const companies = [
+        { id: 'company-1', name: 'Company A', color: '#1468a8', startPrice: 100 },
+        { id: 'company-2', name: 'Company B', color: '#34A853', startPrice: 80 },
+        { id: 'company-3', name: 'Company C', color: '#FBBC05', startPrice: 120 }
+      ];
       
-      for (let i = 0; i < days; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - (days - i));
-        
-        // Random price movement
-        const changePercent = (Math.random() - 0.5) * volatility * 2;
-        const change = price * changePercent;
-        
-        // Update price
-        price += change;
-        
-        // Random volume - higher on bigger price moves
-        const volumeBase = 1000000 + Math.random() * 5000000;
-        const volumeChange = Math.abs(changePercent) * 10;
-        const volume = Math.round(volumeBase * (1 + volumeChange));
-        
-        data.push({
-          date: date,
-          close: parseFloat(price.toFixed(2)),
-          volume: volume,
-          // Add price for line chart compatibility
-          price: parseFloat(price.toFixed(2))
-        });
-      }
-      
-      console.log(`Generated ${data.length} data points`);
-      return data;
+      return companies.map(company => ({
+        id: company.id,
+        name: company.name,
+        color: company.color,
+        width: 2,
+        data: generateTimeSeriesData(60, company.startPrice, 0.02)
+      }));
     }
     
-    // Get number of days based on timeframe
-    function getDaysFromTimeframe(timeframe) {
-      switch(timeframe) {
-        case '1D': return 24; // Hourly data for 1 day
-        case '1W': return 7;
-        case '1M': return 30;
-        case '3M': return 90;
-        default: return 30;
-      }
+    // Generate bar chart data
+    function generateBarData() {
+      const categories = ['Q1', 'Q2', 'Q3', 'Q4'];
+      const companies = [
+        { id: 'company-1', name: 'Company A', color: '#1468a8' },
+        { id: 'company-2', name: 'Company B', color: '#34A853' },
+        { id: 'company-3', name: 'Company C', color: '#FBBC05' }
+      ];
+      
+      return companies.map(company => ({
+        id: company.id,
+        name: company.name,
+        color: company.color,
+        data: categories.map(category => ({
+          category,
+          value: Math.floor(Math.random() * 100) + 20
+        }))
+      }));
     }
     
-    // Chart instances
-    let lineChart, barChart;
-    
-    // Data
-    let timeSeriesData = generateTimeSeriesData();
-    let stockData = generateStockData();
-    
-    // Initialize Line Chart
-    function initLineChart() {
-      try {
-        if (lineChart) return;
-        
-        console.log('Initializing line chart with data:', timeSeriesData.length, 'items');
-        lineChart = new VisionCharts.LineChart({
-          container: '#line-chart',
-          data: timeSeriesData,
-          options: {
-            title: 'AAPL Stock Price',
-            xField: 'date',
-            yField: 'price',
-            xType: 'time',
-            yType: 'currency',
-            yFormat: { currency: 'USD' },
-            xAxisLabel: 'Date',
-            yAxisLabel: 'Price',
-            curve: 'monotone',
-            area: true
-          }
-        });
-        
-        lineChart.render();
-      } catch (error) {
-        console.error('Error initializing line chart:', error);
-        document.querySelector('#line-chart').innerHTML = 
-          `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
-      }
-    }
-    
-    // Initialize Bar Chart (renamed from Volume Chart)
-    function initBarChart() {
-      try {
-        // Destroy previous chart instance if it exists
-        if (barChart) {
-          barChart.destroy();
-          barChart = null;
-        }
-            
-        const style = document.getElementById('bar-style').value;
-        const useNeutralColor = style === 'neutral';
-            
-        // Ensure colors are always defined
-        const chartColors = useNeutralColor ? 
-          {
-            up: '#4285F4',
-            down: '#4285F4',
-            neutral: '#4285F4'
-          } : 
-          {
-            up: '#34A853',
-            down: '#EA4335',
-            neutral: '#4285F4'
-          };
-            
-        console.log('Initializing bar chart with data:', stockData.length, 'items');
-        barChart = new VisionCharts.VolumeChart({
-          container: '#bar-chart',
-          data: stockData,
-          options: {
-            title: 'AAPL Trading Volume',
-            dateField: 'date',
-            volumeField: 'volume',
-            priceField: useNeutralColor ? null : 'close',
-            xAxisLabel: 'Date',
-            yAxisLabel: 'Volume',
-            tooltip: true,
-            colors: chartColors
-          }
-        });
-            
-        barChart.render();
-      } catch (error) {
-        console.error('Error initializing bar chart:', error);
-        document.querySelector('#bar-chart').innerHTML = 
-          `<div style="color:red;padding:20px">Chart initialization failed: ${error.message}</div>`;
-      }
-    }
-        
-    // Line Chart Controls
-    document.getElementById('curve-type').addEventListener('change', e => {
-      lineChart.setOptions({ curve: e.target.value });
-    });
-    
-    document.getElementById('toggle-area').addEventListener('click', () => {
-      const currentArea = lineChart.getOptions().area;
-      lineChart.setOptions({ area: !currentArea });
-    });
-    
-    document.getElementById('toggle-points').addEventListener('click', () => {
-      const currentPoints = lineChart.getOptions().showPoints;
-      lineChart.setOptions({ showPoints: !currentPoints });
-    });
-    
-    document.getElementById('add-data').addEventListener('click', () => {
-      const lastDate = timeSeriesData[timeSeriesData.length - 1].date;
-      const lastPrice = timeSeriesData[timeSeriesData.length - 1].price;
-      
-      const newDate = new Date(lastDate);
-      newDate.setDate(lastDate.getDate() + 1);
-      
-      const change = (Math.random() - 0.5) * 0.05 * lastPrice;
-      const newPrice = Math.max(0.1, lastPrice + change);
-      
-      timeSeriesData.push({
-        date: newDate,
-        price: newPrice
-      });
-      
-      lineChart.setData(timeSeriesData);
-    });
-    
-    document.getElementById('randomize').addEventListener('click', () => {
-      timeSeriesData = generateTimeSeriesData();
-      lineChart.setData(timeSeriesData);
-    });
-    
-    // Bar Chart Controls (renamed from Volume Chart Controls)
-    document.getElementById('bar-timeframe').addEventListener('change', e => {
-      const days = getDaysFromTimeframe(e.target.value);
-      stockData = generateStockData(days);
-      if (barChart) barChart.setData(stockData);
-    });
-    
-    document.getElementById('bar-style').addEventListener('change', e => {
-      if (!barChart) return;
-      
-      const useNeutralColor = e.target.value === 'neutral';
-      barChart.setOptions({
-        priceField: useNeutralColor ? null : 'close',
-        colors: useNeutralColor ? {
-          up: '#4285F4',
-          down: '#4285F4',
-          neutral: '#4285F4'
-        } : {
-          up: '#34A853',
-          down: '#EA4335',
-          neutral: '#4285F4'
-        }
-      });
-    });
-    
-    document.getElementById('bar-random').addEventListener('click', () => {
-      try {
-        const timeframe = document.getElementById('bar-timeframe').value;
-        const days = getDaysFromTimeframe(timeframe);
-        console.log('Generating new stock data for bar chart with days:', days);
-        stockData = generateStockData(days);
-        
-        // Re-initialize bar chart completely
-        initBarChart();
-      } catch (error) {
-        console.error('Error randomizing bar chart:', error);
-      }
-    });
+    // Initialize line chart on page load
+    initLineChart();
   </script>
 </body>
 </html>

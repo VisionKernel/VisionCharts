@@ -1,6 +1,5 @@
 import Chart from '../core/Chart.js';
-import Axis from '../core/Axis.js';
-import { LinearScale, TimeScale } from '../core/Scale.js';
+import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 
 /**
@@ -12,32 +11,21 @@ export default class LineChart extends Chart {
    * @param {Object} config - Chart configuration
    */
   constructor(config) {
-    // Call parent constructor
-    super(config);
-    
-    // Merge options with specific defaults for line charts
-    this.options = Object.assign({
-      curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
-      showPoints: true,
-      pointRadius: 3,
-      strokeWidth: 2,
-      xField: 'x',
-      yField: 'y',
-      xType: 'number', // 'number', 'time'
-      yType: 'number',
-      xFormat: '',
-      yFormat: '',
-      xAxisLabel: '',
-      yAxisLabel: '',
-      colors: ['#4285F4', '#34A853', '#FBBC05', '#EA4335'], // Google colors as defaults
-      area: false,
-      areaOpacity: 0.2,
-      grid: true,
-      tooltip: true,
-      legend: true,
-      transition: true,
-      transitionDuration: 300
-    }, this.options);
+    // Call parent constructor with merged options
+    super({
+      ...config,
+      options: {
+        chartType: 'line',
+        curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
+        showPoints: true,
+        pointRadius: 3,
+        xField: 'x',
+        yField: 'y',
+        xType: 'number', // 'number', 'time'
+        yType: 'number',
+        ...config.options
+      }
+    });
   }
   
   /**
@@ -45,15 +33,17 @@ export default class LineChart extends Chart {
    * @private
    */
   createScales() {
-    const { xType, yType } = this.options;
+    const { xType, yType, isLogarithmic } = this.options;
     
     // Create X scale
     this.state.scales.x = xType === 'time' ? 
       new TimeScale([0, 1], [0, 1]) :
       new LinearScale([0, 1], [0, 1]);
     
-    // Create Y scale
-    this.state.scales.y = new LinearScale([0, 1], [0, 1]);
+    // Create Y scale - use LogScale if isLogarithmic is true
+    this.state.scales.y = isLogarithmic ? 
+      new LogScale([0.1, 1], [0, 1]) :
+      new LinearScale([0, 1], [0, 1]);
     
     // Update scales with actual data
     this.updateScales();
@@ -65,24 +55,212 @@ export default class LineChart extends Chart {
    */
   createAxes() {
     // Create X axis
-    this.state.axes.x = new Axis({
-      orientation: 'bottom',
-      scale: this.state.scales.x,
-      formatType: this.options.xType,
-      formatOptions: this.options.xFormat,
-      label: this.options.xAxisLabel,
-      grid: this.options.grid
-    });
+    this.state.axes.x = {
+      render: (container, width, height) => {
+        const { xType, xField } = this.options;
+        const scale = this.state.scales.x;
+        
+        // Create axis group
+        const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        axisGroup.setAttribute('class', 'visioncharts-x-axis');
+        
+        // Draw axis line
+        const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        axisLine.setAttribute('x1', 0);
+        axisLine.setAttribute('y1', height);
+        axisLine.setAttribute('x2', width);
+        axisLine.setAttribute('y2', height);
+        axisLine.setAttribute('stroke', '#ccc');
+        axisLine.setAttribute('stroke-width', 1);
+        axisGroup.appendChild(axisLine);
+        
+        // Generate ticks
+        const tickCount = 5;
+        const domain = scale.domain;
+        
+        // Create tick values based on domain
+        let tickValues = [];
+        
+        if (xType === 'time') {
+          // Time scale ticks
+          const start = domain[0];
+          const end = domain[1];
+          const range = end - start;
+          const timeStep = range / tickCount;
+          
+          for (let i = 0; i <= tickCount; i++) {
+            tickValues.push(new Date(start.getTime() + timeStep * i));
+          }
+        } else {
+          // Numeric scale ticks
+          const start = domain[0];
+          const end = domain[1];
+          const step = (end - start) / tickCount;
+          
+          for (let i = 0; i <= tickCount; i++) {
+            tickValues.push(start + step * i);
+          }
+        }
+        
+        // Draw ticks and labels
+        tickValues.forEach(value => {
+          const x = scale.scale(value);
+          
+          // Draw tick
+          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          tick.setAttribute('x1', x);
+          tick.setAttribute('y1', height);
+          tick.setAttribute('x2', x);
+          tick.setAttribute('y2', height + 6);
+          tick.setAttribute('stroke', '#ccc');
+          tick.setAttribute('stroke-width', 1);
+          axisGroup.appendChild(tick);
+          
+          // Format label text
+          let labelText;
+          if (xType === 'time') {
+            labelText = value.toLocaleDateString();
+          } else {
+            labelText = value.toFixed(1);
+          }
+          
+          // Draw label
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', x);
+          label.setAttribute('y', height + 20);
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('font-size', '12px');
+          label.setAttribute('font-family', this.options.fontFamily);
+          label.setAttribute('fill', this.options.textColor);
+          axisGroup.appendChild(label);
+          
+          // Draw grid line if needed
+          if (this.options.grid) {
+            const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            gridLine.setAttribute('x1', x);
+            gridLine.setAttribute('y1', 0);
+            gridLine.setAttribute('x2', x);
+            gridLine.setAttribute('y2', height);
+            gridLine.setAttribute('stroke', '#eee');
+            gridLine.setAttribute('stroke-width', 1);
+            gridLine.setAttribute('stroke-dasharray', '4,4');
+            axisGroup.appendChild(gridLine);
+          }
+        });
+        
+        // Add to container
+        container.appendChild(axisGroup);
+        
+        return axisGroup;
+      }
+    };
     
     // Create Y axis
-    this.state.axes.y = new Axis({
-      orientation: 'left',
-      scale: this.state.scales.y,
-      formatType: this.options.yType,
-      formatOptions: this.options.yFormat,
-      label: this.options.yAxisLabel,
-      grid: this.options.grid
-    });
+    this.state.axes.y = {
+      render: (container, width, height) => {
+        const { yType, isLogarithmic } = this.options;
+        const scale = this.state.scales.y;
+        
+        // Create axis group
+        const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        axisGroup.setAttribute('class', 'visioncharts-y-axis');
+        
+        // Draw axis line
+        const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        axisLine.setAttribute('x1', 0);
+        axisLine.setAttribute('y1', 0);
+        axisLine.setAttribute('x2', 0);
+        axisLine.setAttribute('y2', height);
+        axisLine.setAttribute('stroke', '#ccc');
+        axisLine.setAttribute('stroke-width', 1);
+        axisGroup.appendChild(axisLine);
+        
+        // Generate ticks
+        const tickCount = 5;
+        const domain = scale.domain;
+        
+        // Create tick values based on domain and scale type
+        let tickValues = [];
+        
+        if (isLogarithmic) {
+          // Logarithmic scale ticks
+          const minExp = Math.floor(Math.log10(domain[0]));
+          const maxExp = Math.ceil(Math.log10(domain[1]));
+          
+          for (let exp = minExp; exp <= maxExp; exp++) {
+            tickValues.push(Math.pow(10, exp));
+          }
+        } else {
+          // Linear scale ticks
+          const start = domain[0];
+          const end = domain[1];
+          const step = (end - start) / tickCount;
+          
+          for (let i = 0; i <= tickCount; i++) {
+            tickValues.push(start + step * i);
+          }
+        }
+        
+        // Draw ticks and labels
+        tickValues.forEach(value => {
+          const y = scale.scale(value);
+          
+          // Skip if out of range
+          if (y < 0 || y > height) return;
+          
+          // Draw tick
+          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          tick.setAttribute('x1', 0);
+          tick.setAttribute('y1', y);
+          tick.setAttribute('x2', -6);
+          tick.setAttribute('y2', y);
+          tick.setAttribute('stroke', '#ccc');
+          tick.setAttribute('stroke-width', 1);
+          axisGroup.appendChild(tick);
+          
+          // Format label text
+          let labelText;
+          if (yType === 'percent') {
+            labelText = (value * 100).toFixed(0) + '%';
+          } else if (yType === 'currency') {
+            labelText = '$' + value.toFixed(2);
+          } else {
+            labelText = value.toFixed(isLogarithmic ? 0 : 1);
+          }
+          
+          // Draw label
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', -10);
+          label.setAttribute('y', y);
+          label.setAttribute('text-anchor', 'end');
+          label.setAttribute('dominant-baseline', 'middle');
+          label.setAttribute('font-size', '12px');
+          label.setAttribute('font-family', this.options.fontFamily);
+          label.setAttribute('fill', this.options.textColor);
+          axisGroup.appendChild(label);
+          
+          // Draw grid line if needed
+          if (this.options.grid) {
+            const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            gridLine.setAttribute('x1', 0);
+            gridLine.setAttribute('y1', y);
+            gridLine.setAttribute('x2', width);
+            gridLine.setAttribute('y2', y);
+            gridLine.setAttribute('stroke', '#eee');
+            gridLine.setAttribute('stroke-width', 1);
+            gridLine.setAttribute('stroke-dasharray', '4,4');
+            axisGroup.appendChild(gridLine);
+          }
+        });
+        
+        // Add to container
+        container.appendChild(axisGroup);
+        
+        return axisGroup;
+      }
+    };
   }
   
   /**
@@ -90,13 +268,17 @@ export default class LineChart extends Chart {
    * @private
    */
   updateScales() {
-    const { xField, yField } = this.options;
-    const data = this.config.data;
+    const { xField, yField, isLogarithmic } = this.options;
     
-    if (!data || !data.length) {
+    // Get all data points from all datasets
+    const allPoints = this.state.datasets.reduce((acc, dataset) => {
+      return acc.concat(dataset.data || []);
+    }, []);
+    
+    if (!allPoints.length) {
       // Set default domain if no data
       this.state.scales.x.setDomain([0, 1]);
-      this.state.scales.y.setDomain([0, 1]);
+      this.state.scales.y.setDomain(isLogarithmic ? [0.1, 1] : [0, 1]);
       
       // Set ranges based on dimensions
       this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
@@ -105,47 +287,43 @@ export default class LineChart extends Chart {
     }
     
     // Extract X and Y values
-    const xValues = data.map(d => d[xField]);
-    const yValues = data.map(d => d[yField]);
+    const xValues = allPoints.map(d => d[xField]);
+    const yValues = allPoints.map(d => d[yField]);
     
     // Calculate domains
-    const xMin = Math.min(...xValues);
-    const xMax = Math.max(...xValues);
-    const yMin = Math.min(...yValues);
-    const yMax = Math.max(...yValues);
+    let xMin, xMax, yMin, yMax;
+    
+    if (this.options.xType === 'time') {
+      // For time type, convert string dates to Date objects
+      const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+      xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+      xMax = new Date(Math.max(...dates.map(d => d.getTime())));
+    } else {
+      xMin = Math.min(...xValues);
+      xMax = Math.max(...xValues);
+    }
+    
+    yMin = Math.min(...yValues);
+    yMax = Math.max(...yValues);
     
     // Add some padding to Y domain
     const yPadding = (yMax - yMin) * 0.1;
     
+    // For logarithmic scale, ensure minimum is positive
+    if (isLogarithmic) {
+      yMin = Math.max(yMin, 0.01); // Ensure minimum positive value
+    }
+    
     // Set domains
     this.state.scales.x.setDomain([xMin, xMax]);
-    this.state.scales.y.setDomain([yMin - yPadding, yMax + yPadding]);
+    this.state.scales.y.setDomain([
+      isLogarithmic ? yMin : (yMin - yPadding),
+      yMax + yPadding
+    ]);
     
     // Set ranges based on dimensions
     this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
     this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
-  }
-  
-  /**
-   * Render axes
-   * @private
-   */
-  renderAxes() {
-    if (!this.state.chart) return;
-    
-    // Render X axis
-    this.state.axes.x.render(
-      this.state.chart,
-      this.state.dimensions.innerWidth,
-      this.state.dimensions.innerHeight
-    );
-    
-    // Render Y axis
-    this.state.axes.y.render(
-      this.state.chart,
-      this.state.dimensions.innerWidth,
-      this.state.dimensions.innerHeight
-    );
   }
   
   /**
@@ -160,10 +338,14 @@ export default class LineChart extends Chart {
     const yScale = this.state.scales.y;
     
     // Map data points to coordinates
-    const points = data.map(d => [
-      xScale.scale(d[xField]),
-      yScale.scale(d[yField])
-    ]);
+    const points = data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
+    
+    if (points.length === 0) return '';
     
     // Generate path definition based on curve type
     switch (curve) {
@@ -175,8 +357,28 @@ export default class LineChart extends Chart {
         return this.generateMonotonePath(points);
       case 'linear':
       default:
-        return SvgRenderer.linePathDefinition(points);
+        return this.generateLinearPath(points);
     }
+  }
+  
+  /**
+   * Generate linear path
+   * @private
+   * @param {Array} points - Array of [x, y] coordinates
+   * @returns {string} Path definition
+   */
+  generateLinearPath(points) {
+    if (!points.length) return '';
+    
+    const [firstPoint, ...restPoints] = points;
+    const [firstX, firstY] = firstPoint;
+    
+    const pathParts = [
+      `M ${firstX},${firstY}`,
+      ...restPoints.map(([x, y]) => `L ${x},${y}`)
+    ];
+    
+    return pathParts.join(' ');
   }
   
   /**
@@ -212,7 +414,7 @@ export default class LineChart extends Chart {
    * @returns {string} Path definition
    */
   generateCardinalPath(points, tension = 0.5) {
-    if (points.length < 2) return SvgRenderer.linePathDefinition(points);
+    if (points.length < 2) return this.generateLinearPath(points);
     
     const [firstPoint, ...restPoints] = points;
     const [firstX, firstY] = firstPoint;
@@ -232,7 +434,7 @@ export default class LineChart extends Chart {
     
     // Need at least 3 points for cardinal spline
     if (points.length < 3) {
-      return SvgRenderer.linePathDefinition(points);
+      return this.generateLinearPath(points);
     }
     
     // For the first segment, use the first point as the previous point
@@ -266,13 +468,12 @@ export default class LineChart extends Chart {
   
   /**
    * Generate monotone cubic interpolation path
-   * This ensures the curve is monotonic and doesn't overshoot
    * @private
    * @param {Array} points - Array of [x, y] coordinates
    * @returns {string} Path definition
    */
   generateMonotonePath(points) {
-    if (points.length < 3) return SvgRenderer.linePathDefinition(points);
+    if (points.length < 3) return this.generateLinearPath(points);
     
     const [firstPoint, ...restPoints] = points;
     const [firstX, firstY] = firstPoint;
@@ -335,20 +536,50 @@ export default class LineChart extends Chart {
     const yScale = this.state.scales.y;
     
     // Map data points to coordinates
-    const points = data.map(d => [
-      xScale.scale(d[xField]),
-      yScale.scale(d[yField])
-    ]);
+    const points = data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
+    
+    if (points.length === 0) return '';
     
     // Baseline Y coordinate (bottom of chart)
     const baselineY = this.state.dimensions.innerHeight;
     
-    // Generate path definition
-    return SvgRenderer.areaPathDefinition(points, baselineY);
+    // Get line path
+    let linePath;
+    switch (curve) {
+      case 'step':
+        linePath = this.generateStepPath(points);
+        break;
+      case 'cardinal':
+        linePath = this.generateCardinalPath(points);
+        break;
+      case 'monotone':
+        linePath = this.generateMonotonePath(points);
+        break;
+      case 'linear':
+      default:
+        linePath = this.generateLinearPath(points);
+        break;
+    }
+    
+    if (!linePath) return '';
+    
+    // Add area path
+    const [firstPoint] = points;
+    const [firstX] = firstPoint;
+    
+    const [lastPoint] = [...points].reverse();
+    const [lastX] = lastPoint;
+    
+    return `${linePath} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
   }
   
   /**
-   * Render data
+   * Render chart data
    * @private
    */
   renderData() {
@@ -359,289 +590,411 @@ export default class LineChart extends Chart {
       yField,
       showPoints,
       pointRadius,
-      strokeWidth,
-      colors,
-      area,
-      areaOpacity
+      area
     } = this.options;
     
-    const data = this.config.data;
-    if (!data || !data.length) return;
-    
     // Create data group
-    const dataGroup = SvgRenderer.createGroup({
-      class: 'visioncharts-data'
-    });
+    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    dataGroup.setAttribute('class', 'visioncharts-data');
     
-    // Get color for this series
-    const color = colors[0];
-    
-    // Render area if enabled
-    if (area) {
-      const areaPath = this.generateAreaPath(data);
-      const areaElement = SvgRenderer.createPath(areaPath, {
-        class: 'visioncharts-area',
-        fill: color,
-        'fill-opacity': areaOpacity,
-        stroke: 'none'
-      });
-      
-      dataGroup.appendChild(areaElement);
+    // No data to render
+    if (!this.state.datasets.length) {
+      this.state.chart.appendChild(dataGroup);
+      return;
     }
     
-    // Render line
-    const linePath = this.generateLinePath(data);
-    const lineElement = SvgRenderer.createPath(linePath, {
-      class: 'visioncharts-line',
-      stroke: color,
-      'stroke-width': strokeWidth,
-      fill: 'none'
-    });
-    
-    dataGroup.appendChild(lineElement);
-    
-    // Render points if enabled
-    if (showPoints) {
-      const pointsGroup = SvgRenderer.createGroup({
-        class: 'visioncharts-points'
-      });
+    // Render each dataset
+    this.state.datasets.forEach(dataset => {
+      if (!dataset.data || !dataset.data.length) return;
       
-      data.forEach(d => {
-        const x = this.state.scales.x.scale(d[xField]);
-        const y = this.state.scales.y.scale(d[yField]);
+      // Create dataset group
+      const datasetGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      datasetGroup.setAttribute('class', `visioncharts-dataset-${dataset.id}`);
+      
+      // Render area if enabled
+      if (area) {
+        const areaPath = this.generateAreaPath(dataset.data);
+        const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        areaElement.setAttribute('d', areaPath);
+        areaElement.setAttribute('fill', dataset.color);
+        areaElement.setAttribute('fill-opacity', 0.2);
+        areaElement.setAttribute('stroke', 'none');
+        areaElement.setAttribute('class', 'visioncharts-area');
         
-        const point = SvgRenderer.createCircle(x, y, pointRadius, {
-          class: 'visioncharts-point',
-          fill: '#fff',
-          stroke: color,
-          'stroke-width': strokeWidth / 2
+        datasetGroup.appendChild(areaElement);
+      }
+      
+      // Render line
+      const linePath = this.generateLinePath(dataset.data);
+      const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      lineElement.setAttribute('d', linePath);
+      lineElement.setAttribute('stroke', dataset.color);
+      lineElement.setAttribute('stroke-width', dataset.width);
+      lineElement.setAttribute('fill', 'none');
+      lineElement.setAttribute('class', 'visioncharts-line');
+      
+      datasetGroup.appendChild(lineElement);
+      
+      // Render points if enabled
+      if (showPoints) {
+        const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        pointsGroup.setAttribute('class', 'visioncharts-points');
+        
+        dataset.data.forEach(d => {
+          if (d[xField] === undefined || d[yField] === undefined) return;
+          
+          const x = this.state.scales.x.scale(d[xField]);
+          const y = this.state.scales.y.scale(d[yField]);
+          
+          const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          point.setAttribute('cx', x);
+          point.setAttribute('cy', y);
+          point.setAttribute('r', pointRadius);
+          point.setAttribute('fill', '#fff');
+          point.setAttribute('stroke', dataset.color);
+          point.setAttribute('stroke-width', dataset.width / 2);
+          point.setAttribute('class', 'visioncharts-point');
+          
+          pointsGroup.appendChild(point);
         });
         
-        pointsGroup.appendChild(point);
-      });
+        datasetGroup.appendChild(pointsGroup);
+      }
       
-      dataGroup.appendChild(pointsGroup);
-    }
+      // Add to data group
+      dataGroup.appendChild(datasetGroup);
+    });
     
     // Add data group to chart
     this.state.chart.appendChild(dataGroup);
   }
   
   /**
-   * Render tooltip
+   * Render panels for multi-panel view
    * @private
    */
-  renderTooltip() {
-    if (!this.options.tooltip || !this.state.svg) return;
+  renderPanels() {
+    if (!this.state.chart) return;
     
-    // Create tooltip elements
-    const tooltipGroup = SvgRenderer.createGroup({
-      class: 'visioncharts-tooltip',
-      opacity: 0
-    });
+    const { innerWidth, innerHeight } = this.state.dimensions;
     
-    // Create tooltip background
-    const tooltipBg = SvgRenderer.createRect(0, 0, 0, 0, {
-      class: 'visioncharts-tooltip-bg',
-      rx: 4,
-      ry: 4,
-      fill: '#fff',
-      stroke: '#ccc',
-      'stroke-width': 1
-    });
+    // Determine number of panels (one per dataset)
+    const panelCount = this.state.datasets.length;
+    if (panelCount === 0) return;
     
-    // Create tooltip text
-    const tooltipText = SvgRenderer.createText('', 0, 0, {
-      class: 'visioncharts-tooltip-text',
-      'font-size': '12px',
-      'font-family': 'sans-serif'
-    });
+    // Calculate panel dimensions
+    const panelHeight = innerHeight / panelCount;
+    const panelMargin = 20;
+    const effectivePanelHeight = panelHeight - panelMargin;
     
-    // Create vertical crosshair
-    const crosshairX = SvgRenderer.createLine(0, 0, 0, this.state.dimensions.innerHeight, {
-      class: 'visioncharts-crosshair-x',
-      stroke: '#999',
-      'stroke-width': 1,
-      'stroke-dasharray': '4,4',
-      opacity: 0
-    });
-    
-    // Create horizontal crosshair
-    const crosshairY = SvgRenderer.createLine(0, 0, this.state.dimensions.innerWidth, 0, {
-      class: 'visioncharts-crosshair-y',
-      stroke: '#999',
-      'stroke-width': 1,
-      'stroke-dasharray': '4,4',
-      opacity: 0
-    });
-    
-    // Add elements to group
-    tooltipGroup.appendChild(tooltipBg);
-    tooltipGroup.appendChild(tooltipText);
-    
-    // Add crosshairs to chart
-    this.state.chart.appendChild(crosshairX);
-    this.state.chart.appendChild(crosshairY);
-    
-    // Add tooltip group to chart (outside of inner chart area)
-    this.state.svg.appendChild(tooltipGroup);
-    
-    // Create event listener area
-    const eventRect = SvgRenderer.createRect(
-      0,
-      0,
-      this.state.dimensions.innerWidth,
-      this.state.dimensions.innerHeight,
-      {
-        class: 'visioncharts-event-rect',
-        fill: 'transparent',
-        'pointer-events': 'all'
-      }
-    );
-    
-    // Add event listeners
-    eventRect.addEventListener('mousemove', e => {
-      // Get mouse position relative to chart
-      const rect = this.state.svg.getBoundingClientRect();
-      const x = e.clientX - rect.left - this.options.margins.left;
-      const y = e.clientY - rect.top - this.options.margins.top;
+    // Create panel for each dataset
+    this.state.datasets.forEach((dataset, index) => {
+      // Create panel group
+      const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
+      panelGroup.setAttribute('transform', `translate(0, ${index * panelHeight})`);
       
-      // Find closest data point
-      const { xField, yField, xType, yType } = this.options;
-      const xScale = this.state.scales.x;
-      const yScale = this.state.scales.y;
+      // Create panel background
+      const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      panelBg.setAttribute('x', 0);
+      panelBg.setAttribute('y', 0);
+      panelBg.setAttribute('width', innerWidth);
+      panelBg.setAttribute('height', effectivePanelHeight);
+      panelBg.setAttribute('fill', '#f9f9f9');
+      panelBg.setAttribute('stroke', '#eee');
+      panelGroup.appendChild(panelBg);
       
-      // Convert mouse position back to data domain
-      const xValue = xScale.invert(x);
+      // Create local scales for this panel
+      const xScale = { ...this.state.scales.x };
+      const yScale = this.options.isLogarithmic ? 
+        new LogScale([0.1, 1], [0, 1]) :
+        new LinearScale([0, 1], [0, 1]);
       
-      // Find closest data point
-      let closestPoint = null;
-      let minDistance = Infinity;
+      // Update Y scale range to panel height
+      yScale.setRange([effectivePanelHeight, 0]);
       
-      this.config.data.forEach(d => {
-        const distance = Math.abs(d[xField] - xValue);
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestPoint = d;
+      // Calculate Y domain for this dataset
+      const yValues = dataset.data.map(d => d[this.options.yField]);
+      if (yValues.length) {
+        const yMin = Math.min(...yValues);
+        const yMax = Math.max(...yValues);
+        const yPadding = (yMax - yMin) * 0.1;
+        
+        // Set domain based on scale type
+        if (this.options.isLogarithmic) {
+          yScale.setDomain([Math.max(yMin, 0.01), yMax + yPadding]);
+        } else {
+          yScale.setDomain([yMin - yPadding, yMax + yPadding]);
         }
-      });
-      
-      if (!closestPoint) return;
-      
-      // Get point coordinates
-      const pointX = xScale.scale(closestPoint[xField]);
-      const pointY = yScale.scale(closestPoint[yField]);
-      
-      // Update crosshairs
-      crosshairX.setAttribute('x1', pointX);
-      crosshairX.setAttribute('x2', pointX);
-      crosshairX.setAttribute('opacity', 1);
-      
-      crosshairY.setAttribute('y1', pointY);
-      crosshairY.setAttribute('y2', pointY);
-      crosshairY.setAttribute('opacity', 1);
-      
-      // Format values
-      const xFormatted = SvgRenderer.formatTickValue(
-        closestPoint[xField],
-        xType,
-        this.options.xFormat
-      );
-      
-      const yFormatted = SvgRenderer.formatTickValue(
-        closestPoint[yField],
-        yType,
-        this.options.yFormat
-      );
-      
-      // Update tooltip text
-      tooltipText.textContent = `${xFormatted}: ${yFormatted}`;
-      
-      // Get tooltip dimensions
-      const tooltipWidth = tooltipText.getBBox().width + 16;
-      const tooltipHeight = tooltipText.getBBox().height + 8;
-      
-      // Position tooltip to avoid going off chart
-      let tooltipX = pointX + 8;
-      let tooltipY = pointY - tooltipHeight - 8;
-      
-      // Adjust if it would go off the right edge
-      if (tooltipX + tooltipWidth > this.state.dimensions.innerWidth) {
-        tooltipX = pointX - tooltipWidth - 8;
       }
       
-      // Adjust if it would go off the top edge
-      if (tooltipY < 0) {
-        tooltipY = pointY + 8;
-      }
+      // Render panel axes
+      this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
       
-      // Update tooltip position and dimensions
-      tooltipGroup.setAttribute('transform', `translate(${tooltipX + this.options.margins.left},${tooltipY + this.options.margins.top})`);
-      tooltipBg.setAttribute('width', tooltipWidth);
-      tooltipBg.setAttribute('height', tooltipHeight);
-      tooltipText.setAttribute('x', 8);
-      tooltipText.setAttribute('y', tooltipHeight / 2 + 4);
+      // Render panel data
+      this.renderPanelData(panelGroup, dataset, xScale, yScale);
       
-      // Show tooltip
-      tooltipGroup.setAttribute('opacity', 1);
+      // Render panel label
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = dataset.name;
+      label.setAttribute('x', 5);
+      label.setAttribute('y', 15);
+      label.setAttribute('font-size', '12px');
+      label.setAttribute('font-weight', 'bold');
+      label.setAttribute('fill', dataset.color);
+      panelGroup.appendChild(label);
+      
+      // Add panel to chart
+      this.state.chart.appendChild(panelGroup);
     });
-    
-    eventRect.addEventListener('mouseleave', () => {
-      // Hide tooltip and crosshairs
-      tooltipGroup.setAttribute('opacity', 0);
-      crosshairX.setAttribute('opacity', 0);
-      crosshairY.setAttribute('opacity', 0);
-    });
-    
-    // Add event rect to chart
-    this.state.chart.appendChild(eventRect);
   }
   
   /**
-   * Render the chart
-   * @public
-   */
-  render() {
-    // Call parent render method
-    super.render();
-    
-    // Render tooltip if enabled
-    if (this.options.tooltip) {
-      this.renderTooltip();
-    }
-    
-    return this;
-  }
-  
-  /**
-   * Update scales
+   * Render axes for a panel
    * @private
    */
-  updateScales() {
-    if (this.config.data && this.config.data.length) {
-      const { xField, yField } = this.options;
+  renderPanelAxes(panel, xScale, yScale, width, height) {
+    // X-axis (simplified, only draw line)
+    const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    xAxis.setAttribute('x1', 0);
+    xAxis.setAttribute('y1', height);
+    xAxis.setAttribute('x2', width);
+    xAxis.setAttribute('y2', height);
+    xAxis.setAttribute('stroke', '#ccc');
+    xAxis.setAttribute('stroke-width', 1);
+    panel.appendChild(xAxis);
+    
+    // Y-axis (simplified, only show a few ticks)
+    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    yAxis.setAttribute('x1', 0);
+    yAxis.setAttribute('y1', 0);
+    yAxis.setAttribute('x2', 0);
+    yAxis.setAttribute('y2', height);
+    yAxis.setAttribute('stroke', '#ccc');
+    yAxis.setAttribute('stroke-width', 1);
+    panel.appendChild(yAxis);
+    
+    // Y-axis ticks (only show min and max)
+    const domain = yScale.domain;
+    const tickValues = [domain[0], (domain[0] + domain[1]) / 2, domain[1]];
+    
+    tickValues.forEach(value => {
+      const y = yScale.scale(value);
       
-      // Extract X and Y values
-      const xValues = this.config.data.map(d => d[xField]);
-      const yValues = this.config.data.map(d => d[yField]);
+      // Skip if out of range
+      if (y < 0 || y > height) return;
       
-      // Calculate domains
-      const xMin = Math.min(...xValues);
-      const xMax = Math.max(...xValues);
-      const yMin = Math.min(...yValues);
-      const yMax = Math.max(...yValues);
+      // Format label text
+      let labelText;
+      if (this.options.yType === 'percent') {
+        labelText = (value * 100).toFixed(0) + '%';
+      } else if (this.options.yType === 'currency') {
+        labelText = '$' + value.toFixed(2);
+      } else {
+        labelText = value.toFixed(this.options.isLogarithmic ? 0 : 1);
+      }
       
-      // Add some padding to Y domain
-      const yPadding = (yMax - yMin) * 0.1 || 1;
-      
-      // Set domains
-      this.state.scales.x.setDomain([xMin, xMax]);
-      this.state.scales.y.setDomain([yMin - yPadding, yMax + yPadding]);
-      
-      // Set ranges based on dimensions
-      this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
-      this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+      // Draw label
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = labelText;
+      label.setAttribute('x', 5);
+      label.setAttribute('y', y);
+      label.setAttribute('font-size', '10px');
+      label.setAttribute('dominant-baseline', 'middle');
+      label.setAttribute('fill', '#666');
+      panel.appendChild(label);
+    });
+  }
+  
+  /**
+   * Render data for a panel
+   * @private
+   */
+  renderPanelData(panel, dataset, xScale, yScale) {
+    const { xField, yField, curve, showPoints, pointRadius } = this.options;
+    
+    if (!dataset.data || !dataset.data.length) return;
+    
+    // Map data points to coordinates using panel-specific scales
+    const points = dataset.data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
+    
+    // Generate line path based on curve type
+    let pathD;
+    switch (curve) {
+      case 'step':
+        pathD = this.generateStepPath(points);
+        break;
+      case 'cardinal':
+        pathD = this.generateCardinalPath(points);
+        break;
+      case 'monotone':
+        pathD = this.generateMonotonePath(points);
+        break;
+      case 'linear':
+      default:
+        pathD = this.generateLinearPath(points);
+        break;
     }
+    
+    // Render line
+    const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    lineElement.setAttribute('d', pathD);
+    lineElement.setAttribute('stroke', dataset.color);
+    lineElement.setAttribute('stroke-width', dataset.width);
+    lineElement.setAttribute('fill', 'none');
+    lineElement.setAttribute('class', 'visioncharts-panel-line');
+    panel.appendChild(lineElement);
+    
+    // Render points if enabled
+    if (showPoints) {
+      dataset.data.forEach(d => {
+        if (d[xField] === undefined || d[yField] === undefined) return;
+        
+        const x = xScale.scale(d[xField]);
+        const y = yScale.scale(d[yField]);
+        
+        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        point.setAttribute('cx', x);
+        point.setAttribute('cy', y);
+        point.setAttribute('r', pointRadius);
+        point.setAttribute('fill', '#fff');
+        point.setAttribute('stroke', dataset.color);
+        point.setAttribute('stroke-width', dataset.width / 2);
+        point.setAttribute('class', 'visioncharts-panel-point');
+        
+        panel.appendChild(point);
+      });
+    }
+  }
+  
+  /**
+   * Process studies/indicators
+   * @private
+   */
+  processStudies() {
+    const { studies } = this.options;
+    
+    // Skip if no studies
+    if (!studies || !studies.length) return;
+    
+    // Process each study
+    studies.forEach(study => {
+      // Find dataset to apply the study to
+      const dataset = this.state.datasets.find(d => d.id === study.datasetId);
+      if (!dataset || !dataset.data || !dataset.data.length) return;
+      
+      // Create study dataset
+      let studyData;
+      switch (study.type) {
+        case 'sma':
+          studyData = this.calculateSMA(dataset.data, study.params);
+          break;
+        case 'ema':
+          studyData = this.calculateEMA(dataset.data, study.params);
+          break;
+        default:
+          console.warn(`Unsupported study type: ${study.type}`);
+          return;
+      }
+      
+      // Add study dataset
+      this.state.datasets.push({
+        id: study.id,
+        name: study.name || `${study.type.toUpperCase()}(${study.params?.period || 14})`,
+        color: study.color || '#888',
+        width: study.width || 1,
+        type: 'line',
+        data: studyData
+      });
+    });
+  }
+  
+  /**
+   * Calculate Simple Moving Average (SMA)
+   * @private
+   * @param {Array} data - Data array
+   * @param {Object} params - SMA parameters
+   * @returns {Array} Data with SMA values
+   */
+  calculateSMA(data, params = {}) {
+    const { period = 14, valueField = 'y' } = params;
+    const xField = this.options.xField;
+    const result = [];
+    
+    // Calculate SMA
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        // Not enough data yet
+        continue;
+      }
+      
+      let sum = 0;
+      for (let j = 0; j < period; j++) {
+        sum += data[i - j][valueField];
+      }
+      
+      const sma = sum / period;
+      
+      // Create data point
+      result.push({
+        [xField]: data[i][xField],
+        [valueField]: sma
+      });
+    }
+    
+    return result;
+  }
+  
+  /**
+   * Calculate Exponential Moving Average (EMA)
+   * @private
+   * @param {Array} data - Data array
+   * @param {Object} params - EMA parameters
+   * @returns {Array} Data with EMA values
+   */
+  calculateEMA(data, params = {}) {
+    const { period = 14, valueField = 'y' } = params;
+    const xField = this.options.xField;
+    const result = [];
+    
+    // Calculate multiplier
+    const multiplier = 2 / (period + 1);
+    
+    // Calculate EMA
+    let ema = null;
+    
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        // Not enough data yet
+        continue;
+      }
+      
+      // For the first point, use SMA as the initial EMA
+      if (i === period - 1) {
+        let sum = 0;
+        for (let j = 0; j < period; j++) {
+          sum += data[i - j][valueField];
+        }
+        ema = sum / period;
+      } else {
+        // Calculate EMA using previous EMA
+        const value = data[i][valueField];
+        ema = (value - ema) * multiplier + ema;
+      }
+      
+      // Create data point
+      result.push({
+        [xField]: data[i][xField],
+        [valueField]: ema
+      });
+    }
+    
+    return result;
   }
   
   /**
@@ -649,13 +1002,19 @@ export default class LineChart extends Chart {
    * @private
    */
   updateAxes() {
-    if (this.state.axes.x) {
-      this.state.axes.x.update();
+    // Remove existing axes
+    const xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
+    if (xAxis) {
+      xAxis.parentNode.removeChild(xAxis);
     }
     
-    if (this.state.axes.y) {
-      this.state.axes.y.update();
+    const yAxis = this.state.chart.querySelector('.visioncharts-y-axis');
+    if (yAxis) {
+      yAxis.parentNode.removeChild(yAxis);
     }
+    
+    // Re-render axes
+    this.renderAxes();
   }
   
   /**
@@ -663,13 +1022,29 @@ export default class LineChart extends Chart {
    * @private
    */
   updateData() {
-    // Remove existing data group
-    const existingDataGroup = this.state.chart.querySelector('.visioncharts-data');
-    if (existingDataGroup) {
-      this.state.chart.removeChild(existingDataGroup);
+    // Remove existing data
+    const dataGroup = this.state.chart.querySelector('.visioncharts-data');
+    if (dataGroup) {
+      dataGroup.parentNode.removeChild(dataGroup);
     }
     
     // Re-render data
     this.renderData();
+  }
+  
+  /**
+   * Toggle logarithmic scale
+   * @public
+   * @param {boolean} isLogarithmic - Whether to use logarithmic scale
+   */
+  toggleLogarithmic(isLogarithmic) {
+    this.options.isLogarithmic = isLogarithmic;
+    
+    // Re-create Y scale based on type
+    this.state.scales.y = isLogarithmic ? 
+      new LogScale([0.1, 1], [0, 1]) :
+      new LinearScale([0, 1], [0, 1]);
+    
+    return this.update();
   }
 }
