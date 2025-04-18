@@ -16,6 +16,7 @@ import ZeroLine from './components/ZeroLine.js';
 import Tooltip from './components/Tooltip.js';
 import Legend from './components/Legend.js';
 import Crosshair from './components/Crosshair.js';
+import RecessionLines from './components/RecessionLines.js';
 
 // Renderers
 import SvgRenderer from './renderers/SvgRenderer.js';
@@ -104,7 +105,7 @@ export function parseChartConfig(config) {
   };
 }
 
-// Export the public API - Export everything just once
+// Export the public API
 export {
   // Core
   Chart,
@@ -119,6 +120,7 @@ export {
   Tooltip,
   Legend,
   Crosshair,
+  RecessionLines,
   
   // Renderers
   SvgRenderer,
@@ -153,6 +155,7 @@ export default {
   Tooltip,
   Legend,
   Crosshair,
+  RecessionLines,
   
   SvgRenderer,
   

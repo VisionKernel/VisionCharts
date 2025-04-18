@@ -89,6 +89,11 @@ export default class Chart {
     // Select the container
     this.state.container = this.getContainer();
     
+    if (!this.state.container) {
+      console.error('Failed to get container for chart');
+      return;
+    }
+    
     // Process datasets
     this.processDatasets();
     
@@ -106,21 +111,27 @@ export default class Chart {
   /**
    * Get the container element
    * @private
-   * @returns {HTMLElement} The container element
+   * @returns {HTMLElement|null} The container element or null if not found
    */
   getContainer() {
-    let container;
+    let container = null;
     
-    if (typeof this.config.container === 'string') {
-      container = document.querySelector(this.config.container);
-    } else if (this.config.container instanceof HTMLElement) {
-      container = this.config.container;
-    } else {
-      throw new Error('Container must be a CSS selector string or HTML element');
-    }
-    
-    if (!container) {
-      throw new Error(`Container not found: ${this.config.container}`);
+    try {
+      if (typeof this.config.container === 'string') {
+        container = document.querySelector(this.config.container);
+        if (!container) {
+          console.error(`Container selector not found: ${this.config.container}`);
+          return null;
+        }
+      } else if (this.config.container instanceof HTMLElement) {
+        container = this.config.container;
+      } else {
+        console.error('Container must be a CSS selector string or HTML element');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error getting container:', error);
+      return null;
     }
     
     return container;
@@ -259,6 +270,11 @@ export default class Chart {
    * @private
    */
   updateDimensions() {
+    if (!this.state.container) {
+      console.error('Cannot update dimensions: container is null');
+      return;
+    }
+    
     const containerRect = this.state.container.getBoundingClientRect();
     
     // Chart width and height (respecting user-defined values if provided)
@@ -293,8 +309,22 @@ export default class Chart {
    * @private
    */
   bindEvents() {
-    // Window resize event
-    window.addEventListener('resize', this.handleResize.bind(this));
+    // Window resize event - using debounced handler to prevent excessive updates
+    const debounce = (func, wait) => {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    };
+    
+    // Debounced resize handler
+    this.resizeHandler = debounce(this.handleResize.bind(this), 250);
+    window.addEventListener('resize', this.resizeHandler);
     
     // Additional events to be implemented by subclasses
   }
@@ -318,6 +348,11 @@ export default class Chart {
    * @private
    */
   createSvg() {
+    if (!this.state.container) {
+      console.error('Cannot create SVG: container is null');
+      return;
+    }
+    
     // Create SVG element
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', this.state.dimensions.width);
@@ -346,10 +381,20 @@ export default class Chart {
    */
   render() {
     // Clear the container
+    if (!this.state.container) {
+      console.error('Cannot render chart: container is null');
+      return this;
+    }
+    
     this.state.container.innerHTML = '';
     
     // Create SVG
     this.createSvg();
+    
+    if (!this.state.chart) {
+      console.error('Failed to create SVG chart element');
+      return this;
+    }
     
     // Render panels if in panel view mode
     if (this.options.isPanelView) {
@@ -393,7 +438,11 @@ export default class Chart {
    * @private
    */
   renderZeroLine() {
+    if (!this.state.chart) return;
+    
     const yScale = this.state.scales.y;
+    if (!yScale) return;
+    
     const zeroY = yScale.scale(0);
     
     // Only render if zero is within the visible range
@@ -417,9 +466,13 @@ export default class Chart {
    * @private
    */
   renderRecessionLines() {
+    if (!this.state.chart) return;
+    
     const { recessions } = this.options;
     const { innerHeight, innerWidth } = this.state.dimensions;
     const xScale = this.state.scales.x;
+    
+    if (!xScale) return;
     
     // Create recession lines group
     const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -444,37 +497,41 @@ export default class Chart {
         return;
       }
       
-      // Get x coordinates using the scale
-      const startX = xScale.scale(startDate);
-      const endX = xScale.scale(endDate);
-      
-      // Create recession area
-      const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      recessionArea.setAttribute('x', startX);
-      recessionArea.setAttribute('y', 0);
-      recessionArea.setAttribute('width', endX - startX);
-      recessionArea.setAttribute('height', innerHeight);
-      recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
-      recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
-      recessionArea.setAttribute('stroke-width', 1);
-      recessionArea.setAttribute('class', `visioncharts-recession-area recession-${index}`);
-      
-      // Add to group
-      recessionsGroup.appendChild(recessionArea);
-      
-      // Add label if there's enough space
-      if (endX - startX > 30) {
-        const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = labelText;
-        label.setAttribute('x', startX + (endX - startX) / 2);
-        label.setAttribute('y', 15);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#888');
-        label.setAttribute('class', 'visioncharts-recession-label');
+      try {
+        // Get x coordinates using the scale
+        const startX = xScale.scale(startDate);
+        const endX = xScale.scale(endDate);
         
-        recessionsGroup.appendChild(label);
+        // Create recession area
+        const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        recessionArea.setAttribute('x', startX);
+        recessionArea.setAttribute('y', 0);
+        recessionArea.setAttribute('width', endX - startX);
+        recessionArea.setAttribute('height', innerHeight);
+        recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
+        recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
+        recessionArea.setAttribute('stroke-width', 1);
+        recessionArea.setAttribute('class', `visioncharts-recession-area recession-${index}`);
+        
+        // Add to group
+        recessionsGroup.appendChild(recessionArea);
+        
+        // Add label if there's enough space
+        if (endX - startX > 30) {
+          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', startX + (endX - startX) / 2);
+          label.setAttribute('y', 15);
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('font-size', '10px');
+          label.setAttribute('fill', '#888');
+          label.setAttribute('class', 'visioncharts-recession-label');
+          
+          recessionsGroup.appendChild(label);
+        }
+      } catch (error) {
+        console.error('Error rendering recession area:', error);
       }
     });
     
@@ -505,6 +562,8 @@ export default class Chart {
    * @private
    */
   renderLegend() {
+    if (!this.state.svg) return;
+    
     // Only render legend if we have multiple datasets
     if (this.state.datasets.length <= 1) return;
     
@@ -572,7 +631,15 @@ export default class Chart {
       legendGroup.appendChild(itemGroup);
       
       // Calculate width for next item
-      const labelWidth = label.getComputedTextLength ? label.getComputedTextLength() : 80;
+      let labelWidth = 80; // Default width estimate
+      try {
+        if (label.getComputedTextLength) {
+          labelWidth = label.getComputedTextLength();
+        }
+      } catch (error) {
+        console.warn('Error getting text length, using default', error);
+      }
+      
       currentX += 20 + labelWidth + itemSpacing;
     });
     
@@ -585,6 +652,8 @@ export default class Chart {
    * @private
    */
   renderTitle() {
+    if (!this.state.svg) return;
+    
     if (this.options.title) {
       const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       title.textContent = this.options.title;
@@ -609,6 +678,8 @@ export default class Chart {
    * @private
    */
   renderAxisNames() {
+    if (!this.state.svg) return;
+    
     const { xAxisName, yAxisName } = this.options;
     const { width, height, innerWidth, innerHeight } = this.state.dimensions;
     const { left, top, right, bottom } = this.options.margins;
@@ -652,6 +723,11 @@ export default class Chart {
   update() {
     if (!this.state.rendered) {
       return this.render();
+    }
+    
+    if (!this.state.chart) {
+      console.error('Cannot update chart: chart element is null');
+      return this;
     }
     
     // Process datasets
@@ -709,6 +785,8 @@ export default class Chart {
    * @private
    */
   updateZeroLine() {
+    if (!this.state.chart) return;
+    
     // Remove existing zero line
     const existingZeroLine = this.state.chart.querySelector('.visioncharts-zero-line');
     if (existingZeroLine) {
@@ -726,6 +804,8 @@ export default class Chart {
    * @private
    */
   updateRecessionLines() {
+    if (!this.state.chart) return;
+    
     // Remove existing recession lines
     const existingRecessionLines = this.state.chart.querySelector('.visioncharts-recession-lines');
     if (existingRecessionLines) {
@@ -839,7 +919,7 @@ export default class Chart {
   setXAxisName(name) {
     this.options.xAxisName = name;
     
-    if (this.state.rendered) {
+    if (this.state.rendered && this.state.svg) {
       // Update axis name
       const xAxisName = this.state.svg.querySelector('.x-axis-name');
       if (xAxisName) {
@@ -861,7 +941,7 @@ export default class Chart {
   setYAxisName(name) {
     this.options.yAxisName = name;
     
-    if (this.state.rendered) {
+    if (this.state.rendered && this.state.svg) {
       // Update axis name
       const yAxisName = this.state.svg.querySelector('.y-axis-name');
       if (yAxisName) {
@@ -883,7 +963,7 @@ export default class Chart {
   setTitle(title) {
     this.options.title = title;
     
-    if (this.state.rendered) {
+    if (this.state.rendered && this.state.svg) {
       // Update title
       const titleElement = this.state.svg.querySelector('.visioncharts-title');
       if (titleElement) {
@@ -1113,11 +1193,13 @@ export default class Chart {
    */
   destroy() {
     // Remove event listeners
-    window.removeEventListener('resize', this.handleResize.bind(this));
+    window.removeEventListener('resize', this.resizeHandler);
     
     // Remove SVG
-    if (this.state.svg && this.state.container.contains(this.state.svg)) {
-      this.state.container.removeChild(this.state.svg);
+    if (this.state.svg && this.state.container) {
+      if (this.state.container.contains(this.state.svg)) {
+        this.state.container.removeChild(this.state.svg);
+      }
     }
     
     // Reset state

@@ -16,9 +16,12 @@ export default [
       file: 'dist/visioncharts.js',
       format: 'umd',
       sourcemap: true,
+      exports: 'named'
     },
     plugins: [
-      resolve(),
+      resolve({
+        browser: true
+      }),
       commonjs(),
       babel({
         babelHelpers: 'bundled',
@@ -38,9 +41,12 @@ export default [
       file: 'dist/visioncharts.min.js',
       format: 'umd',
       sourcemap: true,
+      exports: 'named'
     },
     plugins: [
-      resolve(),
+      resolve({
+        browser: true
+      }),
       commonjs(),
       babel({
         babelHelpers: 'bundled',
@@ -63,7 +69,9 @@ export default [
       sourcemap: true,
     },
     plugins: [
-      resolve(),
+      resolve({
+        browser: true
+      }),
       babel({
         babelHelpers: 'bundled',
         exclude: 'node_modules/**',

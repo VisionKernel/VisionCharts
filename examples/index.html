@@ -32,6 +32,7 @@
       padding: 20px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
       background-color: #fff;
+      position: relative; /* Added for error messages */
     }
     
     .controls {
@@ -126,6 +127,28 @@
       text-align: center;
       color: #666;
     }
+    
+    /* Error message styling */
+    .error-message {
+      color: #d32f2f;
+      background-color: #ffebee;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      border-left: 4px solid #d32f2f;
+      font-size: 14px;
+    }
+    
+    .debug-info {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
   </style>
 </head>
 <body>
@@ -133,6 +156,8 @@
     <h1>VisionCharts Demo</h1>
     <p>A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.</p>
   </header>
+  
+  <div id="debug-output" class="debug-info" style="display: none;"></div>
   
   <div class="tabs">
     <div class="tab active" data-tab="line">Line Chart</div>
@@ -262,346 +287,599 @@
   </footer>
   
   <script type="module">
-    import VisionCharts from '../dist/visioncharts.esm.js';
-    const { LineChart, AreaChart, BarChart, calculateIndicator } = VisionCharts;
-    
-    // Demo data
-    const mockTimeSeriesData = generateTimeSeriesData();
-    const multipleDatasets = generateMultipleDatasets();
-    const barData = generateBarData();
-    
-    // US recessions data
-    const recessions = [
-      { start: new Date('2007-12-01'), end: new Date('2009-06-30') },
-      { start: new Date('2020-02-01'), end: new Date('2020-04-30') }
-    ];
-    
-    // Chart instances
-    let lineChart;
-    let areaChart;
-    let barChart;
-    
-    // Tab functionality
-    const tabs = document.querySelectorAll('.tab');
-    const sections = document.querySelectorAll('.chart-section');
-    
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        // Deactivate all tabs
-        tabs.forEach(t => t.classList.remove('active'));
-        
-        // Hide all sections
-        sections.forEach(s => s.style.display = 'none');
-        
-        // Activate clicked tab
-        tab.classList.add('active');
-        
-        // Show corresponding section
-        const tabName = tab.getAttribute('data-tab');
-        const section = document.getElementById(`${tabName}-section`);
-        section.style.display = 'block';
-        
-        // Initialize chart if not already created
-        switch(tabName) {
-          case 'line':
-            initLineChart();
-            break;
-          case 'area':
-            initAreaChart();
-            break;
-          case 'bar':
-            initBarChart();
-            break;
+    // Debug helper function
+    function log(message, obj = null) {
+      const debugOutput = document.getElementById('debug-output');
+      if (debugOutput) {
+        debugOutput.style.display = 'block';
+        if (obj) {
+          debugOutput.innerHTML += `${message}: ${JSON.stringify(obj, null, 2)}\n`;
+        } else {
+          debugOutput.innerHTML += `${message}\n`;
         }
-      });
-    });
-    
-    // Initialize Line Chart
-    function initLineChart() {
-      if (lineChart) return;
-      
-      lineChart = new LineChart({
-        container: '#line-chart',
-        data: multipleDatasets,
-        options: {
-          title: 'Stock Price Comparison',
-          xField: 'date',
-          yField: 'price',
-          xType: 'time',
-          yType: 'number',
-          xAxisName: 'Date',
-          yAxisName: 'Price ($)',
-          curve: 'monotone',
-          showPoints: false,
-          area: false,
-          showZeroLine: false,
-          showRecessionLines: false,
-          recessions: recessions,
-          isPanelView: false,
-          isLogarithmic: false
-        }
-      });
-      
-      lineChart.render();
-      
-      // Add study for first dataset
-      const smaData = calculateIndicator('sma', multipleDatasets[0].data, {
-        period: 20,
-        valueField: 'price',
-        xField: 'date'
-      });
-      
-      lineChart.addStudy(multipleDatasets[0].id, {
-        id: 'sma-20',
-        type: 'sma',
-        name: 'SMA (20)',
-        color: '#9C27B0',
-        width: 1.5,
-        params: { period: 20 }
-      });
-      
-      // Add event listeners for controls
-      document.getElementById('line-curve').addEventListener('change', (e) => {
-        lineChart.setOptions({ curve: e.target.value });
-        lineChart.update();
-      });
-      
-      document.getElementById('line-x-name').addEventListener('input', (e) => {
-        lineChart.setXAxisName(e.target.value);
-      });
-      
-      document.getElementById('line-y-name').addEventListener('input', (e) => {
-        lineChart.setYAxisName(e.target.value);
-      });
-      
-      document.getElementById('line-toggle-log').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        lineChart.toggleLogarithmic(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('line-toggle-panel').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        lineChart.togglePanelView(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('line-toggle-recession').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        lineChart.toggleRecessionLines(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('line-toggle-zero').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        lineChart.toggleZeroLine(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('line-toggle-area').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        lineChart.setOptions({ area: e.target.classList.contains('active') });
-        lineChart.update();
-      });
-    }
-    
-    // Initialize Area Chart
-    function initAreaChart() {
-      if (areaChart) return;
-      
-      areaChart = new AreaChart({
-        container: '#area-chart',
-        data: multipleDatasets,
-        options: {
-          title: 'Area Chart Example',
-          xField: 'date',
-          yField: 'price',
-          xType: 'time',
-          yType: 'number',
-          xAxisName: 'Date',
-          yAxisName: 'Value',
-          curve: 'monotone',
-          showPoints: false,
-          area: true,
-          stacked: false,
-          gradient: true,
-          areaOpacity: 0.2,
-          showZeroLine: false,
-          showRecessionLines: false,
-          recessions: recessions,
-          isPanelView: false,
-          isLogarithmic: false
-        }
-      });
-      
-      areaChart.render();
-      
-      // Add event listeners for controls
-      document.getElementById('area-curve').addEventListener('change', (e) => {
-        areaChart.setOptions({ curve: e.target.value });
-        areaChart.update();
-      });
-      
-      document.getElementById('area-x-name').addEventListener('input', (e) => {
-        areaChart.setXAxisName(e.target.value);
-      });
-      
-      document.getElementById('area-y-name').addEventListener('input', (e) => {
-        areaChart.setYAxisName(e.target.value);
-      });
-      
-      document.getElementById('area-toggle-log').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        areaChart.toggleLogarithmic(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('area-toggle-stacked').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        areaChart.toggleStacked(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('area-toggle-panel').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        areaChart.togglePanelView(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        areaChart.toggleRecessionLines(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        areaChart.toggleZeroLine(e.target.classList.contains('active'));
-      });
-    }
-    
-    // Initialize Bar Chart
-    function initBarChart() {
-      if (barChart) return;
-      
-      barChart = new BarChart({
-        container: '#bar-chart',
-        data: barData,
-        options: {
-          title: 'Quarterly Revenue',
-          xField: 'category',
-          yField: 'value',
-          xType: 'category',
-          yType: 'number',
-          xAxisName: 'Category',
-          yAxisName: 'Value',
-          barWidth: 0.7,
-          barSpacing: 0.2,
-          barGap: 0.05,
-          groupBars: true,
-          showValues: false,
-          valuePosition: 'top',
-          showZeroLine: true,
-          isPanelView: false,
-          isLogarithmic: false
-        }
-      });
-      
-      barChart.render();
-      
-      // Add event listeners for controls
-      document.getElementById('bar-width').addEventListener('input', (e) => {
-        barChart.setBarWidth(parseFloat(e.target.value));
-      });
-      
-      document.getElementById('bar-x-name').addEventListener('input', (e) => {
-        barChart.setXAxisName(e.target.value);
-      });
-      
-      document.getElementById('bar-y-name').addEventListener('input', (e) => {
-        barChart.setYAxisName(e.target.value);
-      });
-      
-      document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        barChart.toggleLogarithmic(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('bar-toggle-group').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        barChart.toggleGroupBars(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('bar-toggle-panel').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        barChart.togglePanelView(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        barChart.toggleZeroLine(e.target.classList.contains('active'));
-      });
-      
-      document.getElementById('bar-toggle-values').addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        barChart.toggleShowValues(e.target.classList.contains('active'), 'top');
-      });
-    }
-    
-    // Generate sample time series data
-    function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
-      const data = [];
-      let price = startPrice;
-      const today = new Date();
-      
-      for (let i = 0; i < days; i++) {
-        const date = new Date();
-        date.setDate(today.getDate() - (days - i));
-        
-        // Random price movement
-        const change = (Math.random() - 0.5) * volatility * price;
-        price += change;
-        
-        data.push({
-          date: date,
-          price: Math.max(0.1, price)
-        });
       }
-      
-      return data;
+      console.log(message, obj);
     }
     
-    // Generate multiple datasets
-    function generateMultipleDatasets() {
-      const companies = [
-        { id: 'company-1', name: 'Company A', color: '#1468a8', startPrice: 100 },
-        { id: 'company-2', name: 'Company B', color: '#34A853', startPrice: 80 },
-        { id: 'company-3', name: 'Company C', color: '#FBBC05', startPrice: 120 }
-      ];
-      
-      return companies.map(company => ({
-        id: company.id,
-        name: company.name,
-        color: company.color,
-        width: 2,
-        data: generateTimeSeriesData(60, company.startPrice, 0.02)
-      }));
+    // Error handler helper function
+    function handleError(containerId, error) {
+      const container = document.getElementById(containerId);
+      if (container) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+        
+        // Add stack trace in debug mode
+        if (debugMode) {
+          const stackDiv = document.createElement('div');
+          stackDiv.className = 'debug-info';
+          stackDiv.textContent = error.stack;
+          errorDiv.appendChild(stackDiv);
+        }
+        
+        // Clear container and add error message
+        container.innerHTML = '';
+        container.appendChild(errorDiv);
+      }
+      log(`Error in ${containerId}:`, error);
     }
     
-    // Generate bar chart data
-    function generateBarData() {
-      const categories = ['Q1', 'Q2', 'Q3', 'Q4'];
-      const companies = [
-        { id: 'company-1', name: 'Company A', color: '#1468a8' },
-        { id: 'company-2', name: 'Company B', color: '#34A853' },
-        { id: 'company-3', name: 'Company C', color: '#FBBC05' }
-      ];
-      
-      return companies.map(company => ({
-        id: company.id,
-        name: company.name,
-        color: company.color,
-        data: categories.map(category => ({
-          category,
-          value: Math.floor(Math.random() * 100) + 20
-        }))
-      }));
-    }
+    // Debug mode (set to true to enable debugging)
+    const debugMode = true;
+
+    // Wait for DOM to be fully loaded
+    log('Script started, waiting for DOMContentLoaded');
     
-    // Initialize line chart on page load
-    initLineChart();
+    document.addEventListener('DOMContentLoaded', async function() {
+      log('DOM fully loaded');
+      
+      // Check if chart containers exist
+      ['line-chart', 'area-chart', 'bar-chart'].forEach(id => {
+        const el = document.getElementById(id);
+        log(`Container #${id} exists: ${el !== null}`);
+      });
+      
+      try {
+        log('Attempting to import VisionCharts...');
+        
+        // Dynamically import the library
+        let VisionChartsModule;
+        try {
+          // Try to import from dist directory (production build)
+          VisionChartsModule = await import('../dist/visioncharts.esm.js');
+          log('Imported from dist/visioncharts.esm.js');
+        } catch (e) {
+          log('Failed to import from dist, trying src/index.js', e);
+          // Fallback to direct import from source (development)
+          try {
+            VisionChartsModule = await import('../src/index.js');
+            log('Imported from src/index.js');
+          } catch (e2) {
+            log('Failed to import from src/index.js', e2);
+            throw new Error('Failed to import VisionCharts library. Check console for details.');
+          }
+        }
+        
+        // Destructure needed components
+        const { LineChart, AreaChart, BarChart, calculateIndicator } = VisionChartsModule;
+        log('Successfully extracted chart components');
+        
+        // Demo data
+        log('Generating sample data...');
+        const mockTimeSeriesData = generateTimeSeriesData();
+        const multipleDatasets = generateMultipleDatasets();
+        const barData = generateBarData();
+        
+        // US recessions data
+        const recessions = [
+          { start: new Date('2007-12-01'), end: new Date('2009-06-30') },
+          { start: new Date('2020-02-01'), end: new Date('2020-04-30') }
+        ];
+        
+        // Chart instances
+        let lineChart;
+        let areaChart;
+        let barChart;
+        
+        // Tab functionality
+        const tabs = document.querySelectorAll('.tab');
+        const sections = document.querySelectorAll('.chart-section');
+        
+        log('Setting up tab event listeners');
+        tabs.forEach(tab => {
+          tab.addEventListener('click', () => {
+            log(`Tab clicked: ${tab.getAttribute('data-tab')}`);
+            
+            // Deactivate all tabs
+            tabs.forEach(t => t.classList.remove('active'));
+            
+            // Hide all sections
+            sections.forEach(s => s.style.display = 'none');
+            
+            // Activate clicked tab
+            tab.classList.add('active');
+            
+            // Show corresponding section
+            const tabName = tab.getAttribute('data-tab');
+            const section = document.getElementById(`${tabName}-section`);
+            if (section) {
+              section.style.display = 'block';
+              
+              // Initialize chart if not already created
+              switch(tabName) {
+                case 'line':
+                  initLineChart();
+                  break;
+                case 'area':
+                  initAreaChart();
+                  break;
+                case 'bar':
+                  initBarChart();
+                  break;
+              }
+            } else {
+              log(`Section not found: ${tabName}-section`);
+            }
+          });
+        });
+        
+        // Initialize Line Chart
+        function initLineChart() {
+          log('Initializing Line Chart');
+          if (lineChart) {
+            log('Line chart already initialized, skipping');
+            return;
+          }
+          
+          try {
+            const container = document.getElementById('line-chart');
+            if (!container) {
+              throw new Error('Line chart container not found');
+            }
+            
+            log('Creating LineChart instance');
+            lineChart = new LineChart({
+              container: '#line-chart',
+              data: multipleDatasets,
+              options: {
+                title: 'Stock Price Comparison',
+                xField: 'date',
+                yField: 'price',
+                xType: 'time',
+                yType: 'number',
+                xAxisName: 'Date',
+                yAxisName: 'Price ($)',
+                curve: 'monotone',
+                showPoints: false,
+                area: false,
+                showZeroLine: false,
+                showRecessionLines: false,
+                recessions: recessions,
+                isPanelView: false,
+                isLogarithmic: false
+              }
+            });
+            
+            log('Rendering line chart');
+            lineChart.render();
+            
+            // Add study for first dataset
+            if (multipleDatasets[0] && multipleDatasets[0].data && multipleDatasets[0].data.length > 0) {
+              log('Adding SMA study to line chart');
+              try {
+                const smaData = calculateIndicator('sma', multipleDatasets[0].data, {
+                  period: 20,
+                  valueField: 'price',
+                  xField: 'date'
+                });
+                
+                lineChart.addStudy(multipleDatasets[0].id, {
+                  id: 'sma-20',
+                  type: 'sma',
+                  name: 'SMA (20)',
+                  color: '#9C27B0',
+                  width: 1.5,
+                  params: { period: 20 }
+                });
+              } catch (studyError) {
+                log('Error adding study to line chart', studyError);
+              }
+            } else {
+              log('Cannot add study: no data in first dataset');
+            }
+            
+            // Add event listeners for controls
+            log('Adding event listeners for line chart controls');
+            
+            const lineControls = {
+              'line-curve': (e) => {
+                log(`Line curve changed to: ${e.target.value}`);
+                lineChart.setOptions({ curve: e.target.value });
+                lineChart.update();
+              },
+              'line-x-name': (e) => {
+                log(`Line X axis name changed to: ${e.target.value}`);
+                lineChart.setXAxisName(e.target.value);
+              },
+              'line-y-name': (e) => {
+                log(`Line Y axis name changed to: ${e.target.value}`);
+                lineChart.setYAxisName(e.target.value);
+              },
+              'line-toggle-log': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Line logarithmic toggled: ${isActive}`);
+                lineChart.toggleLogarithmic(isActive);
+              },
+              'line-toggle-panel': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Line panel view toggled: ${isActive}`);
+                lineChart.togglePanelView(isActive);
+              },
+              'line-toggle-recession': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Line recession lines toggled: ${isActive}`);
+                lineChart.toggleRecessionLines(isActive);
+              },
+              'line-toggle-zero': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Line zero line toggled: ${isActive}`);
+                lineChart.toggleZeroLine(isActive);
+              },
+              'line-toggle-area': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Line area toggled: ${isActive}`);
+                lineChart.setOptions({ area: isActive });
+                lineChart.update();
+              }
+            };
+            
+            // Add all event listeners with error handling
+            Object.keys(lineControls).forEach(id => {
+              const element = document.getElementById(id);
+              if (element) {
+                const eventType = element.tagName === 'SELECT' || element.tagName === 'INPUT' && element.type !== 'range' 
+                  ? 'change' 
+                  : element.type === 'range' ? 'input' : 'click';
+                
+                element.addEventListener(eventType, e => {
+                  try {
+                    lineControls[id](e);
+                  } catch (controlError) {
+                    log(`Error in ${id} control:`, controlError);
+                  }
+                });
+                
+                log(`Added ${eventType} event listener to ${id}`);
+              } else {
+                log(`Element not found: ${id}`);
+              }
+            });
+            
+            log('Line chart initialized successfully');
+          } catch (error) {
+            log('Error initializing line chart:', error);
+            handleError('line-chart', error);
+          }
+        }
+        
+        // Initialize Area Chart
+        function initAreaChart() {
+          log('Initializing Area Chart');
+          if (areaChart) {
+            log('Area chart already initialized, skipping');
+            return;
+          }
+          
+          try {
+            const container = document.getElementById('area-chart');
+            if (!container) {
+              throw new Error('Area chart container not found');
+            }
+            
+            log('Creating AreaChart instance');
+            areaChart = new AreaChart({
+              container: '#area-chart',
+              data: multipleDatasets,
+              options: {
+                title: 'Area Chart Example',
+                xField: 'date',
+                yField: 'price',
+                xType: 'time',
+                yType: 'number',
+                xAxisName: 'Date',
+                yAxisName: 'Value',
+                curve: 'monotone',
+                showPoints: false,
+                area: true,
+                stacked: false,
+                gradient: true,
+                areaOpacity: 0.2,
+                showZeroLine: false,
+                showRecessionLines: false,
+                recessions: recessions,
+                isPanelView: false,
+                isLogarithmic: false
+              }
+            });
+            
+            log('Rendering area chart');
+            areaChart.render();
+            
+            // Add event listeners for controls
+            log('Adding event listeners for area chart controls');
+            
+            const areaControls = {
+              'area-curve': (e) => {
+                log(`Area curve changed to: ${e.target.value}`);
+                areaChart.setOptions({ curve: e.target.value });
+                areaChart.update();
+              },
+              'area-x-name': (e) => {
+                log(`Area X axis name changed to: ${e.target.value}`);
+                areaChart.setXAxisName(e.target.value);
+              },
+              'area-y-name': (e) => {
+                log(`Area Y axis name changed to: ${e.target.value}`);
+                areaChart.setYAxisName(e.target.value);
+              },
+              'area-toggle-log': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Area logarithmic toggled: ${isActive}`);
+                areaChart.toggleLogarithmic(isActive);
+              },
+              'area-toggle-stacked': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Area stacked toggled: ${isActive}`);
+                areaChart.toggleStacked(isActive);
+              },
+              'area-toggle-panel': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Area panel view toggled: ${isActive}`);
+                areaChart.togglePanelView(isActive);
+              },
+              'area-toggle-recession': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Area recession lines toggled: ${isActive}`);
+                areaChart.toggleRecessionLines(isActive);
+              },
+              'area-toggle-zero': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Area zero line toggled: ${isActive}`);
+                areaChart.toggleZeroLine(isActive);
+              }
+            };
+            
+            // Add all event listeners with error handling
+            Object.keys(areaControls).forEach(id => {
+              const element = document.getElementById(id);
+              if (element) {
+                const eventType = element.tagName === 'SELECT' || element.tagName === 'INPUT' && element.type !== 'range' 
+                  ? 'change' 
+                  : element.type === 'range' ? 'input' : 'click';
+                
+                element.addEventListener(eventType, e => {
+                  try {
+                    areaControls[id](e);
+                  } catch (controlError) {
+                    log(`Error in ${id} control:`, controlError);
+                  }
+                });
+                
+                log(`Added ${eventType} event listener to ${id}`);
+              } else {
+                log(`Element not found: ${id}`);
+              }
+            });
+            
+            log('Area chart initialized successfully');
+          } catch (error) {
+            log('Error initializing area chart:', error);
+            handleError('area-chart', error);
+          }
+        }
+        
+        // Initialize Bar Chart
+        function initBarChart() {
+          log('Initializing Bar Chart');
+          if (barChart) {
+            log('Bar chart already initialized, skipping');
+            return;
+          }
+          
+          try {
+            const container = document.getElementById('bar-chart');
+            if (!container) {
+              throw new Error('Bar chart container not found');
+            }
+            
+            log('Creating BarChart instance');
+            barChart = new BarChart({
+              container: '#bar-chart',
+              data: barData,
+              options: {
+                title: 'Quarterly Revenue',
+                xField: 'category',
+                yField: 'value',
+                xType: 'category',
+                yType: 'number',
+                xAxisName: 'Category',
+                yAxisName: 'Value',
+                barWidth: 0.7,
+                barSpacing: 0.2,
+                barGap: 0.05,
+                groupBars: true,
+                showValues: false,
+                valuePosition: 'top',
+                showZeroLine: true,
+                isPanelView: false,
+                isLogarithmic: false
+              }
+            });
+            
+            log('Rendering bar chart');
+            barChart.render();
+            
+            // Add event listeners for controls
+            log('Adding event listeners for bar chart controls');
+            
+            const barControls = {
+              'bar-width': (e) => {
+                const value = parseFloat(e.target.value);
+                log(`Bar width changed to: ${value}`);
+                barChart.setBarWidth(value);
+              },
+              'bar-x-name': (e) => {
+                log(`Bar X axis name changed to: ${e.target.value}`);
+                barChart.setXAxisName(e.target.value);
+              },
+              'bar-y-name': (e) => {
+                log(`Bar Y axis name changed to: ${e.target.value}`);
+                barChart.setYAxisName(e.target.value);
+              },
+              'bar-toggle-log': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Bar logarithmic toggled: ${isActive}`);
+                barChart.toggleLogarithmic(isActive);
+              },
+              'bar-toggle-group': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Bar group toggled: ${isActive}`);
+                barChart.toggleGroupBars(isActive);
+              },
+              'bar-toggle-panel': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Bar panel view toggled: ${isActive}`);
+                barChart.togglePanelView(isActive);
+              },
+              'bar-toggle-zero': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Bar zero line toggled: ${isActive}`);
+                barChart.toggleZeroLine(isActive);
+              },
+              'bar-toggle-values': (e) => {
+                e.target.classList.toggle('active');
+                const isActive = e.target.classList.contains('active');
+                log(`Bar values toggled: ${isActive}`);
+                barChart.toggleShowValues(isActive, 'top');
+              }
+            };
+            
+            // Add all event listeners with error handling
+            Object.keys(barControls).forEach(id => {
+              const element = document.getElementById(id);
+              if (element) {
+                const eventType = element.tagName === 'SELECT' || element.tagName === 'INPUT' && element.type !== 'range' 
+                  ? 'change' 
+                  : element.type === 'range' ? 'input' : 'click';
+                
+                element.addEventListener(eventType, e => {
+                  try {
+                    barControls[id](e);
+                  } catch (controlError) {
+                    log(`Error in ${id} control:`, controlError);
+                  }
+                });
+                
+                log(`Added ${eventType} event listener to ${id}`);
+              } else {
+                log(`Element not found: ${id}`);
+              }
+            });
+            
+            log('Bar chart initialized successfully');
+          } catch (error) {
+            log('Error initializing bar chart:', error);
+            handleError('bar-chart', error);
+          }
+        }
+        
+        // Generate sample time series data
+        function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
+          const data = [];
+          let price = startPrice;
+          const today = new Date();
+          
+          for (let i = 0; i < days; i++) {
+            const date = new Date();
+            date.setDate(today.getDate() - (days - i));
+            
+            // Random price movement
+            const change = (Math.random() - 0.5) * volatility * price;
+            price += change;
+            
+            data.push({
+              date: date,
+              price: Math.max(0.1, price)
+            });
+          }
+          
+          return data;
+        }
+        
+        // Generate multiple datasets
+        function generateMultipleDatasets() {
+          const companies = [
+            { id: 'company-1', name: 'Company A', color: '#1468a8', startPrice: 100 },
+            { id: 'company-2', name: 'Company B', color: '#34A853', startPrice: 80 },
+            { id: 'company-3', name: 'Company C', color: '#FBBC05', startPrice: 120 }
+          ];
+          
+          return companies.map(company => ({
+            id: company.id,
+            name: company.name,
+            color: company.color,
+            width: 2,
+            data: generateTimeSeriesData(60, company.startPrice, 0.02)
+          }));
+        }
+        
+        // Generate bar chart data
+        function generateBarData() {
+          const categories = ['Q1', 'Q2', 'Q3', 'Q4'];
+          const companies = [
+            { id: 'company-1', name: 'Company A', color: '#1468a8' },
+            { id: 'company-2', name: 'Company B', color: '#34A853' },
+            { id: 'company-3', name: 'Company C', color: '#FBBC05' }
+          ];
+          
+          return companies.map(company => ({
+            id: company.id,
+            name: company.name,
+            color: company.color,
+            data: categories.map(category => ({
+              category,
+              value: Math.floor(Math.random() * 100) + 20
+            }))
+          }));
+        }
+        
+        // Initialize line chart on page load
+        log('Initializing first chart (line chart)');
+        initLineChart();
+      } catch (e) {
+        log('Fatal error:', e);
+        document.body.innerHTML += `
+          <div class="error-message" style="margin: 20px;">
+            <strong>Fatal Error:</strong> ${e.message}
+            ${debugMode ? `<div class="debug-info">${e.stack}</div>` : ''}
+          </div>
+        `;
+      }
+    });
   </script>
 </body>
 </html>
