@@ -21,7 +21,6 @@ VisionCharts is a specialized charting library designed for financial and econom
 ## Planned Chart Types
 
 - Line and Area Charts
-- Candlestick/OHLC Charts
 - Volume Charts
 - Technical Indicators
 - Advanced Time-Series Visualizations

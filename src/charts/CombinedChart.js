@@ -20,7 +20,7 @@ export default class CombinedChart extends Chart {
     this.options = Object.assign({
       // Layout options
       layout: [
-        { type: 'candlestick', height: 0.7 },
+        { type: 'line', height: 0.7 },
         { type: 'volume', height: 0.3 }
       ],
       // Time axis options
@@ -30,23 +30,6 @@ export default class CombinedChart extends Chart {
       xAxisLabel: 'Date',
       // Chart-specific options
       charts: {
-        candlestick: {
-          openField: 'open',
-          highField: 'high',
-          lowField: 'low',
-          closeField: 'close',
-          yFormat: { 
-            style: 'currency', 
-            currency: 'USD', 
-            minimumFractionDigits: 2
-          },
-          yAxisLabel: 'Price',
-          colors: {
-            up: '#34A853', // Green for up candles
-            down: '#EA4335', // Red for down candles
-            wick: '#333333'  // Dark gray for wicks
-          }
-        },
         line: {
           yField: 'close',
           yFormat: { 
@@ -263,9 +246,6 @@ export default class CombinedChart extends Chart {
     // Create scale and render the appropriate chart type
     try {
       switch (type) {
-        case 'candlestick':
-          return this.createCandlestickChart(area, chartOptions);
-        
         case 'line':
           return this.createLineChart(area, chartOptions);
         
@@ -278,55 +258,6 @@ export default class CombinedChart extends Chart {
       }
     } catch (err) {
       console.error(`Error creating ${type} chart:`, err);
-      return null;
-    }
-  }
-  
-  /**
-   * Create a candlestick chart
-   * @private
-   * @param {Object} area - Chart area
-   * @param {Object} chartOptions - Chart options
-   * @returns {Object} Chart configuration
-   */
-  createCandlestickChart(area, chartOptions) {
-    const { group, width, height, index } = area;
-    
-    // Create Y scale
-    const yScale = new LinearScale([0, 1], [height, 0]);
-    
-    try {
-      // Extract price values
-      const highs = this.config.data.map(d => d[chartOptions.highField] || 0);
-      const lows = this.config.data.map(d => d[chartOptions.lowField] || 0);
-      
-      // Calculate domain
-      const yMin = Math.min(...lows);
-      const yMax = Math.max(...highs);
-      
-      // Add padding
-      const yPadding = (yMax - yMin) * 0.05 || 1; // Avoid division by zero
-      yScale.setDomain([yMin - yPadding, yMax + yPadding]);
-      
-      // Create Y axis
-      const yAxis = new Axis({
-        orientation: 'left',
-        scale: yScale,
-        formatType: 'number',
-        formatOptions: chartOptions.yFormat,
-        label: chartOptions.yAxisLabel,
-        grid: index === 0 ? this.options.grid : false
-      });
-      
-      // Render Y axis
-      yAxis.render(group, width, height);
-      
-      // Render candlesticks
-      this.renderCandlesticks(group, yScale, chartOptions);
-      
-      return { type: 'candlestick', area, yScale, yAxis };
-    } catch (err) {
-      console.error('Error rendering candlestick chart:', err);
       return null;
     }
   }
@@ -421,116 +352,6 @@ export default class CombinedChart extends Chart {
       console.error('Error rendering volume chart:', err);
       return null;
     }
-  }
-  
-  /**
-   * Render candlesticks in a subchart
-   * @private
-   * @param {SVGElement} group - Chart group element
-   * @param {Scale} yScale - Y scale
-   * @param {Object} options - Chart options
-   */
-  renderCandlesticks(group, yScale, options) {
-    const {
-      openField,
-      highField,
-      lowField,
-      closeField,
-      colors
-    } = options;
-    
-    const { dateField } = this.options;
-    const xScale = this.state.scales.x;
-    const data = this.config.data;
-    const width = this.state.dimensions.innerWidth;
-    
-    // Create data group
-    const candlesticksGroup = SvgRenderer.createGroup({
-      class: 'visioncharts-candlesticks'
-    });
-    
-    // Calculate candle width
-    const availableWidth = width / data.length;
-    const candleWidth = availableWidth * 0.6;
-    
-    // Render each candlestick
-    data.forEach((d, i) => {
-      const date = d[dateField];
-      const open = d[openField];
-      const high = d[highField];
-      const low = d[lowField];
-      const close = d[closeField];
-      
-      // Skip if missing required data
-      if (open === undefined || high === undefined || 
-          low === undefined || close === undefined) {
-        return;
-      }
-      
-      // Determine if this is an up or down candle
-      const isUp = close >= open;
-      const candleColor = isUp ? colors.up : colors.down;
-      
-      // Get scaled coordinates
-      const x = xScale.scale(date);
-      const yOpen = yScale.scale(open);
-      const yHigh = yScale.scale(high);
-      const yLow = yScale.scale(low);
-      const yClose = yScale.scale(close);
-      
-      // Calculate candle body coordinates
-      const bodyTop = isUp ? yClose : yOpen;
-      const bodyBottom = isUp ? yOpen : yClose;
-      const bodyHeight = Math.max(1, Math.abs(bodyBottom - bodyTop));
-      
-      // Create candle group
-      const candleGroup = SvgRenderer.createGroup({
-        class: `visioncharts-candle ${isUp ? 'up' : 'down'}`,
-        'data-index': i,
-        'data-date': date,
-        'data-open': open,
-        'data-high': high,
-        'data-low': low,
-        'data-close': close
-      });
-      
-      // Create wick
-      const wick = SvgRenderer.createLine(
-        x,
-        yHigh,
-        x,
-        yLow,
-        {
-          class: 'visioncharts-candle-wick',
-          stroke: colors.wick,
-          'stroke-width': 1
-        }
-      );
-      
-      // Create body
-      const body = SvgRenderer.createRect(
-        x - candleWidth / 2,
-        bodyTop,
-        candleWidth,
-        bodyHeight,
-        {
-          class: 'visioncharts-candle-body',
-          fill: candleColor,
-          stroke: candleColor,
-          'stroke-width': 1
-        }
-      );
-      
-      // Add elements to candle group
-      candleGroup.appendChild(wick);
-      candleGroup.appendChild(body);
-      
-      // Add candle to group
-      candlesticksGroup.appendChild(candleGroup);
-    });
-    
-    // Add data group to chart
-    group.appendChild(candlesticksGroup);
   }
   
   /**
@@ -633,11 +454,10 @@ export default class CombinedChart extends Chart {
     const height = group.parentNode ? parseFloat(group.parentNode.getAttribute('height')) : 0;
     
     // Track previous close for determining direction
-    let prevClose = null;
+    let prevPrice = null;
     
     // Field to check for up/down
-    const priceField = this.options.charts.candlestick ? 
-      this.options.charts.candlestick.closeField : 'close';
+    const priceField = 'close';
     
     // Create data group
     const volumeGroup = SvgRenderer.createGroup({
@@ -652,16 +472,16 @@ export default class CombinedChart extends Chart {
     data.forEach((d, i) => {
       const date = d[dateField];
       const volume = d[volumeField] || 0;
-      const close = d[priceField];
+      const price = d[priceField];
       
       // Get direction
       let direction = 'neutral';
       
-      if (close !== undefined && prevClose !== null) {
-        direction = close > prevClose ? 'up' : (close < prevClose ? 'down' : 'neutral');
+      if (price !== undefined && prevPrice !== null) {
+        direction = price > prevPrice ? 'up' : (price < prevPrice ? 'down' : 'neutral');
       }
       
-      prevClose = close;
+      prevPrice = price;
       
       // Get bar color
       const barColor = colors[direction];
@@ -981,62 +801,6 @@ export default class CombinedChart extends Chart {
         const chartOptions = this.options.charts[layout.type];
         
         switch (layout.type) {
-          case 'candlestick':
-            {
-              const { openField, highField, lowField, closeField, yFormat } = chartOptions;
-              
-              // Add OHLC values
-              const openFormatted = SvgRenderer.formatTickValue(
-                closestPoint[openField],
-                'number',
-                yFormat
-              );
-              
-              const highFormatted = SvgRenderer.formatTickValue(
-                closestPoint[highField],
-                'number',
-                yFormat
-              );
-              
-              const lowFormatted = SvgRenderer.formatTickValue(
-                closestPoint[lowField],
-                'number',
-                yFormat
-              );
-              
-              const closeFormatted = SvgRenderer.formatTickValue(
-                closestPoint[closeField],
-                'number',
-                yFormat
-              );
-              
-              const openSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-              openSpan.textContent = `O: ${openFormatted}`;
-              openSpan.setAttribute('x', 8);
-              openSpan.setAttribute('dy', 16);
-              tooltipText.appendChild(openSpan);
-              
-              const highSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-              highSpan.textContent = `H: ${highFormatted}`;
-              highSpan.setAttribute('x', 8);
-              highSpan.setAttribute('dy', 16);
-              tooltipText.appendChild(highSpan);
-              
-              const lowSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-              lowSpan.textContent = `L: ${lowFormatted}`;
-              lowSpan.setAttribute('x', 8);
-              lowSpan.setAttribute('dy', 16);
-              tooltipText.appendChild(lowSpan);
-              
-              const closeSpan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-              closeSpan.textContent = `C: ${closeFormatted}`;
-              closeSpan.setAttribute('x', 8);
-              closeSpan.setAttribute('dy', 16);
-              tooltipText.appendChild(closeSpan);
-              
-              break;
-            }
-          
           case 'line':
             {
               const { yField, yFormat } = chartOptions;
@@ -1122,18 +886,10 @@ export default class CombinedChart extends Chart {
    */
   highlightElements(index) {
     // Dim all elements
-    const allCandles = this.state.chart.querySelectorAll('.visioncharts-candle');
-    allCandles.forEach(candle => candle.setAttribute('opacity', 0.5));
-    
     const allBars = this.state.chart.querySelectorAll('.visioncharts-volume-bar');
     allBars.forEach(bar => bar.setAttribute('opacity', 0.5));
     
     // Highlight active elements
-    const activeCandle = this.state.chart.querySelector(`.visioncharts-candle[data-index="${index}"]`);
-    if (activeCandle) {
-      activeCandle.setAttribute('opacity', 1);
-    }
-    
     const activeBar = this.state.chart.querySelector(`.visioncharts-volume-bar[data-index="${index}"]`);
     if (activeBar) {
       activeBar.setAttribute('opacity', 1);
@@ -1145,9 +901,6 @@ export default class CombinedChart extends Chart {
    * @private
    */
   resetHighlights() {
-    const allCandles = this.state.chart.querySelectorAll('.visioncharts-candle');
-    allCandles.forEach(candle => candle.setAttribute('opacity', 1));
-    
     const allBars = this.state.chart.querySelectorAll('.visioncharts-volume-bar');
     allBars.forEach(bar => bar.setAttribute('opacity', 1));
   }
