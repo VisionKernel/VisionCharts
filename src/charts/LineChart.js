@@ -10,6 +10,8 @@ export default class LineChart extends Chart {
    * @param {Object} config - Chart configuration
    */
   constructor(config) {
+    console.log('LineChart constructor called');
+    
     // Call parent constructor with merged options
     super({
       ...config,
@@ -25,6 +27,8 @@ export default class LineChart extends Chart {
         ...config.options
       }
     });
+    
+    console.log('LineChart constructor finished');
   }
   
   /**
@@ -32,6 +36,8 @@ export default class LineChart extends Chart {
    * @private
    */
   createScales() {
+    console.log('LineChart.createScales called');
+    
     const { xType, yType, isLogarithmic } = this.options;
     
     // Create X scale
@@ -46,6 +52,8 @@ export default class LineChart extends Chart {
     
     // Update scales with actual data
     this.updateScales();
+    
+    console.log('LineChart scales created');
   }
   
   /**
@@ -53,6 +61,8 @@ export default class LineChart extends Chart {
    * @private
    */
   createAxes() {
+    console.log('LineChart.createAxes called');
+    
     // Create X axis
     this.state.axes.x = {
       render: (container, width, height) => {
@@ -260,6 +270,8 @@ export default class LineChart extends Chart {
         return axisGroup;
       }
     };
+    
+    console.log('LineChart axes created (render functions defined)');
   }
   
   /**
@@ -267,12 +279,16 @@ export default class LineChart extends Chart {
    * @private
    */
   updateScales() {
+    console.log('LineChart.updateScales called');
+    
     const { xField, yField, isLogarithmic } = this.options;
     
     // Get all data points from all datasets
     const allPoints = this.state.datasets.reduce((acc, dataset) => {
       return acc.concat(dataset.data || []);
     }, []);
+    
+    console.log('Collected data points:', allPoints.length);
     
     if (!allPoints.length) {
       // Set default domain if no data
@@ -282,6 +298,7 @@ export default class LineChart extends Chart {
       // Set ranges based on dimensions
       this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
       this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+      console.log('No data points, using default domains');
       return;
     }
     
@@ -323,6 +340,41 @@ export default class LineChart extends Chart {
     // Set ranges based on dimensions
     this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
     this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+    
+    console.log('Scales updated with domains:', 
+        'x:', [xMin, xMax],
+        'y:', [isLogarithmic ? yMin : (yMin - yPadding), yMax + yPadding]);
+  }
+  
+  /**
+   * Render axes
+   * @private
+   */
+  renderAxes() {
+    console.log('LineChart.renderAxes called');
+    
+    try {
+      if (!this.state.chart) {
+        console.error('Cannot render axes: chart element is null');
+        return;
+      }
+      
+      const { innerWidth, innerHeight } = this.state.dimensions;
+      
+      // Render X axis
+      if (this.state.axes.x && this.state.axes.x.render) {
+        this.state.axes.x.render(this.state.chart, innerWidth, innerHeight);
+      }
+      
+      // Render Y axis
+      if (this.state.axes.y && this.state.axes.y.render) {
+        this.state.axes.y.render(this.state.chart, innerWidth, innerHeight);
+      }
+      
+      console.log('Axes rendered successfully');
+    } catch (error) {
+      console.error('Error rendering axes:', error);
+    }
   }
   
   /**
@@ -582,90 +634,108 @@ export default class LineChart extends Chart {
    * @private
    */
   renderData() {
-    if (!this.state.chart) return;
+    console.log('LineChart.renderData called');
     
-    const {
-      xField,
-      yField,
-      showPoints,
-      pointRadius,
-      area
-    } = this.options;
-    
-    // Create data group
-    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    dataGroup.setAttribute('class', 'visioncharts-data');
-    
-    // No data to render
-    if (!this.state.datasets.length) {
-      this.state.chart.appendChild(dataGroup);
+    if (!this.state.chart) {
+      console.error('Cannot render data: chart element is null');
       return;
     }
     
-    // Render each dataset
-    this.state.datasets.forEach(dataset => {
-      if (!dataset.data || !dataset.data.length) return;
+    try {
+      const {
+        xField,
+        yField,
+        showPoints,
+        pointRadius,
+        area
+      } = this.options;
       
-      // Create dataset group
-      const datasetGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      datasetGroup.setAttribute('class', `visioncharts-dataset-${dataset.id}`);
+      // Create data group
+      const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      dataGroup.setAttribute('class', 'visioncharts-data');
       
-      // Render area if enabled
-      if (area) {
-        const areaPath = this.generateAreaPath(dataset.data);
-        const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        areaElement.setAttribute('d', areaPath);
-        areaElement.setAttribute('fill', dataset.color);
-        areaElement.setAttribute('fill-opacity', 0.2);
-        areaElement.setAttribute('stroke', 'none');
-        areaElement.setAttribute('class', 'visioncharts-area');
-        
-        datasetGroup.appendChild(areaElement);
+      // No data to render
+      if (!this.state.datasets.length) {
+        this.state.chart.appendChild(dataGroup);
+        console.log('No datasets to render');
+        return;
       }
       
-      // Render line
-      const linePath = this.generateLinePath(dataset.data);
-      const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      lineElement.setAttribute('d', linePath);
-      lineElement.setAttribute('stroke', dataset.color);
-      lineElement.setAttribute('stroke-width', dataset.width);
-      lineElement.setAttribute('fill', 'none');
-      lineElement.setAttribute('class', 'visioncharts-line');
+      console.log('Rendering', this.state.datasets.length, 'datasets');
       
-      datasetGroup.appendChild(lineElement);
-      
-      // Render points if enabled
-      if (showPoints) {
-        const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        pointsGroup.setAttribute('class', 'visioncharts-points');
+      // Render each dataset
+      this.state.datasets.forEach((dataset, index) => {
+        if (!dataset.data || !dataset.data.length) {
+          console.log('Dataset', index, 'has no data, skipping');
+          return;
+        }
         
-        dataset.data.forEach(d => {
-          if (d[xField] === undefined || d[yField] === undefined) return;
-          
-          const x = this.state.scales.x.scale(d[xField]);
-          const y = this.state.scales.y.scale(d[yField]);
-          
-          const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          point.setAttribute('cx', x);
-          point.setAttribute('cy', y);
-          point.setAttribute('r', pointRadius);
-          point.setAttribute('fill', '#fff');
-          point.setAttribute('stroke', dataset.color);
-          point.setAttribute('stroke-width', dataset.width / 2);
-          point.setAttribute('class', 'visioncharts-point');
-          
-          pointsGroup.appendChild(point);
-        });
+        console.log('Rendering dataset', index, 'with', dataset.data.length, 'points');
         
-        datasetGroup.appendChild(pointsGroup);
-      }
+        // Create dataset group
+        const datasetGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        datasetGroup.setAttribute('class', `visioncharts-dataset-${dataset.id}`);
+        
+        // Render area if enabled
+        if (area) {
+          const areaPath = this.generateAreaPath(dataset.data);
+          const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          areaElement.setAttribute('d', areaPath);
+          areaElement.setAttribute('fill', dataset.color);
+          areaElement.setAttribute('fill-opacity', 0.2);
+          areaElement.setAttribute('stroke', 'none');
+          areaElement.setAttribute('class', 'visioncharts-area');
+          
+          datasetGroup.appendChild(areaElement);
+        }
+        
+        // Render line
+        const linePath = this.generateLinePath(dataset.data);
+        const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        lineElement.setAttribute('d', linePath);
+        lineElement.setAttribute('stroke', dataset.color);
+        lineElement.setAttribute('stroke-width', dataset.width);
+        lineElement.setAttribute('fill', 'none');
+        lineElement.setAttribute('class', 'visioncharts-line');
+        
+        datasetGroup.appendChild(lineElement);
+        
+        // Render points if enabled
+        if (showPoints) {
+          const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          pointsGroup.setAttribute('class', 'visioncharts-points');
+          
+          dataset.data.forEach(d => {
+            if (d[xField] === undefined || d[yField] === undefined) return;
+            
+            const x = this.state.scales.x.scale(d[xField]);
+            const y = this.state.scales.y.scale(d[yField]);
+            
+            const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            point.setAttribute('cx', x);
+            point.setAttribute('cy', y);
+            point.setAttribute('r', pointRadius);
+            point.setAttribute('fill', '#fff');
+            point.setAttribute('stroke', dataset.color);
+            point.setAttribute('stroke-width', dataset.width / 2);
+            point.setAttribute('class', 'visioncharts-point');
+            
+            pointsGroup.appendChild(point);
+          });
+          
+          datasetGroup.appendChild(pointsGroup);
+        }
+        
+        // Add to data group
+        dataGroup.appendChild(datasetGroup);
+      });
       
-      // Add to data group
-      dataGroup.appendChild(datasetGroup);
-    });
-    
-    // Add data group to chart
-    this.state.chart.appendChild(dataGroup);
+      // Add data group to chart
+      this.state.chart.appendChild(dataGroup);
+      console.log('Data rendered successfully');
+    } catch (error) {
+      console.error('Error rendering data:', error);
+    }
   }
   
   /**
@@ -673,79 +743,95 @@ export default class LineChart extends Chart {
    * @private
    */
   renderPanels() {
-    if (!this.state.chart) return;
+    console.log('LineChart.renderPanels called');
     
-    const { innerWidth, innerHeight } = this.state.dimensions;
+    if (!this.state.chart) {
+      console.error('Cannot render panels: chart element is null');
+      return;
+    }
     
-    // Determine number of panels (one per dataset)
-    const panelCount = this.state.datasets.length;
-    if (panelCount === 0) return;
-    
-    // Calculate panel dimensions
-    const panelHeight = innerHeight / panelCount;
-    const panelMargin = 20;
-    const effectivePanelHeight = panelHeight - panelMargin;
-    
-    // Create panel for each dataset
-    this.state.datasets.forEach((dataset, index) => {
-      // Create panel group
-      const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-      panelGroup.setAttribute('transform', `translate(0, ${index * panelHeight})`);
+    try {
+      const { innerWidth, innerHeight } = this.state.dimensions;
       
-      // Create panel background
-      const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      panelBg.setAttribute('x', 0);
-      panelBg.setAttribute('y', 0);
-      panelBg.setAttribute('width', innerWidth);
-      panelBg.setAttribute('height', effectivePanelHeight);
-      panelBg.setAttribute('fill', '#f9f9f9');
-      panelBg.setAttribute('stroke', '#eee');
-      panelGroup.appendChild(panelBg);
-      
-      // Create local scales for this panel
-      const xScale = { ...this.state.scales.x };
-      const yScale = this.options.isLogarithmic ? 
-        new LogScale([0.1, 1], [0, 1]) :
-        new LinearScale([0, 1], [0, 1]);
-      
-      // Update Y scale range to panel height
-      yScale.setRange([effectivePanelHeight, 0]);
-      
-      // Calculate Y domain for this dataset
-      const yValues = dataset.data.map(d => d[this.options.yField]);
-      if (yValues.length) {
-        const yMin = Math.min(...yValues);
-        const yMax = Math.max(...yValues);
-        const yPadding = (yMax - yMin) * 0.1;
-        
-        // Set domain based on scale type
-        if (this.options.isLogarithmic) {
-          yScale.setDomain([Math.max(yMin, 0.01), yMax + yPadding]);
-        } else {
-          yScale.setDomain([yMin - yPadding, yMax + yPadding]);
-        }
+      // Determine number of panels (one per dataset)
+      const panelCount = this.state.datasets.length;
+      if (panelCount === 0) {
+        console.log('No datasets for panels');
+        return;
       }
       
-      // Render panel axes
-      this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
+      console.log('Rendering', panelCount, 'panels');
       
-      // Render panel data
-      this.renderPanelData(panelGroup, dataset, xScale, yScale);
+      // Calculate panel dimensions
+      const panelHeight = innerHeight / panelCount;
+      const panelMargin = 20;
+      const effectivePanelHeight = panelHeight - panelMargin;
       
-      // Render panel label
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = dataset.name;
-      label.setAttribute('x', 5);
-      label.setAttribute('y', 15);
-      label.setAttribute('font-size', '12px');
-      label.setAttribute('font-weight', 'bold');
-      label.setAttribute('fill', dataset.color);
-      panelGroup.appendChild(label);
+      // Create panel for each dataset
+      this.state.datasets.forEach((dataset, index) => {
+        // Create panel group
+        const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
+        panelGroup.setAttribute('transform', `translate(0, ${index * panelHeight})`);
+        
+        // Create panel background
+        const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        panelBg.setAttribute('x', 0);
+        panelBg.setAttribute('y', 0);
+        panelBg.setAttribute('width', innerWidth);
+        panelBg.setAttribute('height', effectivePanelHeight);
+        panelBg.setAttribute('fill', '#f9f9f9');
+        panelBg.setAttribute('stroke', '#eee');
+        panelGroup.appendChild(panelBg);
+        
+        // Create local scales for this panel
+        const xScale = { ...this.state.scales.x };
+        const yScale = this.options.isLogarithmic ? 
+          new LogScale([0.1, 1], [0, 1]) :
+          new LinearScale([0, 1], [0, 1]);
+        
+        // Update Y scale range to panel height
+        yScale.setRange([effectivePanelHeight, 0]);
+        
+        // Calculate Y domain for this dataset
+        const yValues = dataset.data.map(d => d[this.options.yField]);
+        if (yValues.length) {
+          const yMin = Math.min(...yValues);
+          const yMax = Math.max(...yValues);
+          const yPadding = (yMax - yMin) * 0.1;
+          
+          // Set domain based on scale type
+          if (this.options.isLogarithmic) {
+            yScale.setDomain([Math.max(yMin, 0.01), yMax + yPadding]);
+          } else {
+            yScale.setDomain([yMin - yPadding, yMax + yPadding]);
+          }
+        }
+        
+        // Render panel axes
+        this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
+        
+        // Render panel data
+        this.renderPanelData(panelGroup, dataset, xScale, yScale);
+        
+        // Render panel label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = dataset.name;
+        label.setAttribute('x', 5);
+        label.setAttribute('y', 15);
+        label.setAttribute('font-size', '12px');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', dataset.color);
+        panelGroup.appendChild(label);
+        
+        // Add panel to chart
+        this.state.chart.appendChild(panelGroup);
+      });
       
-      // Add panel to chart
-      this.state.chart.appendChild(panelGroup);
-    });
+      console.log('Panels rendered successfully');
+    } catch (error) {
+      console.error('Error rendering panels:', error);
+    }
   }
   
   /**
@@ -876,16 +962,26 @@ export default class LineChart extends Chart {
    * @private
    */
   processStudies() {
+    console.log('LineChart.processStudies called');
+    
     const { studies } = this.options;
     
     // Skip if no studies
-    if (!studies || !studies.length) return;
+    if (!studies || !studies.length) {
+      console.log('No studies to process');
+      return;
+    }
     
     // Process each study
     studies.forEach(study => {
       // Find dataset to apply the study to
       const dataset = this.state.datasets.find(d => d.id === study.datasetId);
-      if (!dataset || !dataset.data || !dataset.data.length) return;
+      if (!dataset || !dataset.data || !dataset.data.length) {
+        console.log('Dataset not found for study:', study.id);
+        return;
+      }
+      
+      console.log('Processing study:', study.type, 'for dataset:', dataset.id);
       
       // Create study dataset
       let studyData;
@@ -910,6 +1006,8 @@ export default class LineChart extends Chart {
         type: 'line',
         data: studyData
       });
+      
+      console.log('Study added as dataset:', study.id);
     });
   }
   
@@ -1001,24 +1099,80 @@ export default class LineChart extends Chart {
    * @private
    */
   updateAxes() {
+    console.log('LineChart.updateAxes called');
+    
+    // Print chart state for debugging
+    console.log('Chart state:', {
+      rendered: this.state.rendered,
+      hasChart: Boolean(this.state.chart),
+      chartClassName: this.state.chart ? this.state.chart.className : 'N/A'
+    });
+    
     // Safety check - don't try to update DOM elements that don't exist yet
-    if (!this.state.chart) {
+    if (!this.state.rendered) {
+      console.log('Chart not rendered yet, skipping updateAxes');
       return;
     }
-
-    // Remove existing axes
-    const xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
-    if (xAxis) {
-      xAxis.parentNode.removeChild(xAxis);
+    
+    if (!this.state.chart) {
+      console.error('Cannot update axes: chart element is null');
+      return;
     }
     
-    const yAxis = this.state.chart.querySelector('.visioncharts-y-axis');
-    if (yAxis) {
-      yAxis.parentNode.removeChild(yAxis);
+    try {
+      // Checking if chart is attached to DOM
+      if (!this.state.chart.ownerDocument || !this.state.chart.parentNode) {
+        console.error('Chart element is not attached to DOM');
+        return;
+      }
+      
+      console.log('Finding existing axes elements');
+      
+      // Look for existing axes with error handling
+      let xAxis = null;
+      let yAxis = null;
+      
+      try {
+        xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
+        console.log('Found X axis:', Boolean(xAxis));
+      } catch (error) {
+        console.error('Error finding X axis:', error);
+      }
+      
+      try {
+        yAxis = this.state.chart.querySelector('.visioncharts-y-axis');
+        console.log('Found Y axis:', Boolean(yAxis));
+      } catch (error) {
+        console.error('Error finding Y axis:', error);
+      }
+      
+      // Remove existing axes if found
+      if (xAxis) {
+        try {
+          xAxis.parentNode.removeChild(xAxis);
+          console.log('Removed X axis');
+        } catch (error) {
+          console.error('Error removing X axis:', error);
+        }
+      }
+      
+      if (yAxis) {
+        try {
+          yAxis.parentNode.removeChild(yAxis);
+          console.log('Removed Y axis');
+        } catch (error) {
+          console.error('Error removing Y axis:', error);
+        }
+      }
+      
+      // Re-render axes
+      console.log('Re-rendering axes');
+      this.renderAxes();
+      
+      console.log('Axes updated successfully');
+    } catch (error) {
+      console.error('Fatal error in updateAxes:', error);
     }
-    
-    // Re-render axes
-    this.renderAxes();
   }
   
   /**
@@ -1026,14 +1180,28 @@ export default class LineChart extends Chart {
    * @private
    */
   updateData() {
-    // Remove existing data
-    const dataGroup = this.state.chart.querySelector('.visioncharts-data');
-    if (dataGroup) {
-      dataGroup.parentNode.removeChild(dataGroup);
+    console.log('LineChart.updateData called');
+    
+    if (!this.state.chart) {
+      console.error('Cannot update data: chart element is null');
+      return;
     }
     
-    // Re-render data
-    this.renderData();
+    try {
+      // Remove existing data
+      const dataGroup = this.state.chart.querySelector('.visioncharts-data');
+      if (dataGroup) {
+        dataGroup.parentNode.removeChild(dataGroup);
+        console.log('Removed existing data');
+      } else {
+        console.log('No existing data to remove');
+      }
+      
+      // Re-render data
+      this.renderData();
+    } catch (error) {
+      console.error('Error updating data:', error);
+    }
   }
   
   /**
@@ -1042,6 +1210,8 @@ export default class LineChart extends Chart {
    * @param {boolean} isLogarithmic - Whether to use logarithmic scale
    */
   toggleLogarithmic(isLogarithmic) {
+    console.log('LineChart.toggleLogarithmic called:', isLogarithmic);
+    
     this.options.isLogarithmic = isLogarithmic;
     
     // Re-create Y scale based on type

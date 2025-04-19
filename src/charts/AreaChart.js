@@ -135,14 +135,14 @@ export default class AreaChart extends LineChart {
       return super.renderData();
     }
     
+    // Create data group
+    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    dataGroup.setAttribute('class', 'visioncharts-data');
+    
     // Create gradient definitions if needed
     if (gradient) {
       this.createGradients();
     }
-    
-    // Create data group
-    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    dataGroup.setAttribute('class', 'visioncharts-data');
     
     // Render datasets in reverse order for proper stacking visualization
     // (first dataset should be on top in the SVG)

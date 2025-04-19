@@ -10,6 +10,8 @@ export default class Chart {
    * @param {Object} config.options - Chart options
    */
   constructor(config) {
+    console.log('Chart constructor called');
+    
     // Store the configuration
     this.config = Object.assign({
       // Default configuration
@@ -86,6 +88,8 @@ export default class Chart {
    * @private
    */
   init() {
+    console.log('Chart init called');
+    
     // Select the container
     this.state.container = this.getContainer();
     
@@ -94,6 +98,8 @@ export default class Chart {
       return;
     }
     
+    console.log('Container obtained:', this.state.container);
+    
     // Process datasets
     this.processDatasets();
     
@@ -101,18 +107,22 @@ export default class Chart {
     this.createScales();
     this.createAxes();
     
-    // Set dimensions without updating axes
-    this.setDimensions();
+    // Set dimensions WITHOUT updating axes
+    this.setDimensionsWithoutUpdatingAxes();
     
     // Create event listeners
     this.bindEvents();
+    
+    console.log('Chart init completed');
   }
 
   /**
-   * Set dimensions without updating axes
+   * Set dimensions without updating axes - new method that doesn't trigger axis updates
    * @private
    */
-  setDimensions() {
+  setDimensionsWithoutUpdatingAxes() {
+    console.log('setDimensionsWithoutUpdatingAxes called');
+    
     if (!this.state.container) {
       console.error('Cannot update dimensions: container is null');
       return;
@@ -141,9 +151,10 @@ export default class Chart {
     if (Object.keys(this.state.scales).length > 0) {
       this.updateScales();
     }
+    
+    // DO NOT update axes here at all
+    console.log('Dimensions set, scales updated, skipping axes update');
   }
-
-
 
   /**
    * Get the container element
@@ -179,6 +190,8 @@ export default class Chart {
    * @private
    */
   processDatasets() {
+    console.log('processDatasets called');
+    
     const data = this.config.data;
     
     // Skip if no data
@@ -231,6 +244,8 @@ export default class Chart {
     
     // Apply date filtering if needed
     this.applyDateFilter();
+    
+    console.log('Datasets processed:', this.state.datasets.length);
   }
   
   /**
@@ -290,6 +305,7 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   createScales() {
+    console.log('createScales called - to be implemented by subclass');
     // To be implemented by subclasses
   }
 
@@ -299,19 +315,25 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   createAxes() {
+    console.log('createAxes called - to be implemented by subclass');
     // To be implemented by subclasses
   }
 
-   /**
-   * Update the chart dimensions
+  /**
+   * Update the chart dimensions - but don't call updateAxes unless the chart is rendered
    * @private
    */
   updateDimensions() {
-    this.setDimensions();
+    console.log('updateDimensions called');
     
-    // Only update axes if we have rendered the chart
-    if (this.state.rendered && Object.keys(this.state.axes).length > 0) {
+    this.setDimensionsWithoutUpdatingAxes();
+    
+    // IMPORTANT: Only update axes if the chart has already been rendered
+    if (this.state.rendered && this.state.chart) {
+      console.log('Chart is already rendered, safe to update axes');
       this.updateAxes();
+    } else {
+      console.log('Chart is not rendered yet, skipping axes update');
     }
   }
 
@@ -320,6 +342,8 @@ export default class Chart {
    * @private
    */
   bindEvents() {
+    console.log('bindEvents called');
+    
     // Window resize event - using debounced handler to prevent excessive updates
     const debounce = (func, wait) => {
       let timeout;
@@ -337,6 +361,7 @@ export default class Chart {
     this.resizeHandler = debounce(this.handleResize.bind(this), 250);
     window.addEventListener('resize', this.resizeHandler);
     
+    console.log('Resize event handler bound');
     // Additional events to be implemented by subclasses
   }
 
@@ -345,6 +370,8 @@ export default class Chart {
    * @private
    */
   handleResize() {
+    console.log('handleResize called');
+    
     if (!this.options.width || !this.options.height) {
       this.updateDimensions();
       
@@ -359,6 +386,8 @@ export default class Chart {
    * @private
    */
   createSvg() {
+    console.log('createSvg called');
+    
     if (!this.state.container) {
       console.error('Cannot create SVG: container is null');
       return;
@@ -384,6 +413,8 @@ export default class Chart {
     // Update state
     this.state.svg = svg;
     this.state.chart = chart;
+    
+    console.log('SVG created and added to DOM, chart reference stored');
   }
 
   /**
@@ -391,6 +422,8 @@ export default class Chart {
    * @public
    */
   render() {
+    console.log('render called');
+    
     // Clear the container
     if (!this.state.container) {
       console.error('Cannot render chart: container is null');
@@ -406,6 +439,8 @@ export default class Chart {
       console.error('Failed to create SVG chart element');
       return this;
     }
+    
+    console.log('About to render chart content');
     
     // Render panels if in panel view mode
     if (this.options.isPanelView) {
@@ -433,6 +468,8 @@ export default class Chart {
     // Update state
     this.state.rendered = true;
     
+    console.log('Chart rendering completed, rendered=true');
+    
     return this;
   }
   
@@ -441,6 +478,7 @@ export default class Chart {
    * @private
    */
   renderPanels() {
+    console.log('renderPanels called');
     // To be implemented by subclasses
   }
   
@@ -449,6 +487,8 @@ export default class Chart {
    * @private
    */
   renderZeroLine() {
+    console.log('renderZeroLine called');
+    
     if (!this.state.chart) return;
     
     const yScale = this.state.scales.y;
@@ -477,6 +517,8 @@ export default class Chart {
    * @private
    */
   renderRecessionLines() {
+    console.log('renderRecessionLines called');
+    
     if (!this.state.chart) return;
     
     const { recessions } = this.options;
@@ -556,6 +598,7 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   renderAxes() {
+    console.log('renderAxes called - to be implemented by subclass');
     // To be implemented by subclasses
   }
 
@@ -565,6 +608,7 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   renderData() {
+    console.log('renderData called - to be implemented by subclass');
     // To be implemented by subclasses
   }
 
@@ -573,6 +617,8 @@ export default class Chart {
    * @private
    */
   renderLegend() {
+    console.log('renderLegend called');
+    
     if (!this.state.svg) return;
     
     // Only render legend if we have multiple datasets
@@ -663,6 +709,8 @@ export default class Chart {
    * @private
    */
   renderTitle() {
+    console.log('renderTitle called');
+    
     if (!this.state.svg) return;
     
     if (this.options.title) {
@@ -689,6 +737,8 @@ export default class Chart {
    * @private
    */
   renderAxisNames() {
+    console.log('renderAxisNames called');
+    
     if (!this.state.svg) return;
     
     const { xAxisName, yAxisName } = this.options;
@@ -732,7 +782,10 @@ export default class Chart {
    * @public
    */
   update() {
+    console.log('update called');
+    
     if (!this.state.rendered) {
+      console.log('Chart not rendered yet, calling render instead');
       return this.render();
     }
     
@@ -747,7 +800,7 @@ export default class Chart {
     // Update scales
     this.updateScales();
     
-    // Update components
+    // Update components - these operations are now safe as the chart has been rendered
     this.updateAxes();
     this.updateData();
     
@@ -770,6 +823,7 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   updateScales() {
+    console.log('updateScales called - to be implemented by subclass');
     // To be implemented by subclasses
   }
 
@@ -779,6 +833,7 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   updateAxes() {
+    console.log('updateAxes called - to be implemented by subclass');
     // To be implemented by subclasses
   }
 
@@ -788,6 +843,7 @@ export default class Chart {
    * This should be implemented by subclasses
    */
   updateData() {
+    console.log('updateData called - to be implemented by subclass');
     // To be implemented by subclasses
   }
   
@@ -796,6 +852,8 @@ export default class Chart {
    * @private
    */
   updateZeroLine() {
+    console.log('updateZeroLine called');
+    
     if (!this.state.chart) return;
     
     // Remove existing zero line
@@ -815,6 +873,8 @@ export default class Chart {
    * @private
    */
   updateRecessionLines() {
+    console.log('updateRecessionLines called');
+    
     if (!this.state.chart) return;
     
     // Remove existing recession lines
@@ -835,6 +895,8 @@ export default class Chart {
    * @param {Array} data - New chart data
    */
   setData(data) {
+    console.log('setData called');
+    
     this.config.data = data;
     return this.update();
   }
@@ -845,6 +907,8 @@ export default class Chart {
    * @param {Object} options - New chart options
    */
   setOptions(options) {
+    console.log('setOptions called');
+    
     this.options = Object.assign(this.options, options);
     return this.update();
   }
@@ -874,6 +938,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   toggleLogarithmic(isLogarithmic) {
+    console.log('toggleLogarithmic called:', isLogarithmic);
+    
     this.options.isLogarithmic = isLogarithmic;
     return this.update();
   }
@@ -885,6 +951,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   togglePanelView(isPanelView) {
+    console.log('togglePanelView called:', isPanelView);
+    
     this.options.isPanelView = isPanelView;
     return this.render(); // Full re-render needed for panel view change
   }
@@ -896,6 +964,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   toggleRecessionLines(showRecessionLines) {
+    console.log('toggleRecessionLines called:', showRecessionLines);
+    
     this.options.showRecessionLines = showRecessionLines;
     
     if (this.state.rendered) {
@@ -912,6 +982,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   toggleZeroLine(showZeroLine) {
+    console.log('toggleZeroLine called:', showZeroLine);
+    
     this.options.showZeroLine = showZeroLine;
     
     if (this.state.rendered) {
@@ -928,6 +1000,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   setXAxisName(name) {
+    console.log('setXAxisName called:', name);
+    
     this.options.xAxisName = name;
     
     if (this.state.rendered && this.state.svg) {
@@ -950,6 +1024,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   setYAxisName(name) {
+    console.log('setYAxisName called:', name);
+    
     this.options.yAxisName = name;
     
     if (this.state.rendered && this.state.svg) {
@@ -972,6 +1048,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   setTitle(title) {
+    console.log('setTitle called:', title);
+    
     this.options.title = title;
     
     if (this.state.rendered && this.state.svg) {
@@ -995,6 +1073,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   filterByDate(startDate, endDate) {
+    console.log('filterByDate called:', startDate, endDate);
+    
     this.options.startDate = startDate;
     this.options.endDate = endDate;
     
@@ -1008,6 +1088,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   addDataset(dataset) {
+    console.log('addDataset called');
+    
     // Get current datasets
     const datasets = Array.isArray(this.config.data) ? this.config.data : [];
     
@@ -1028,6 +1110,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   removeDataset(datasetId) {
+    console.log('removeDataset called:', datasetId);
+    
     // Get current datasets
     const datasets = Array.isArray(this.config.data) ? this.config.data : [];
     
@@ -1049,6 +1133,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   addStudy(datasetId, study) {
+    console.log('addStudy called:', datasetId, study);
+    
     // Add study to options
     this.options.studies = this.options.studies || [];
     this.options.studies.push({
@@ -1068,6 +1154,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   removeStudy(datasetId, studyId) {
+    console.log('removeStudy called:', datasetId, studyId);
+    
     // Remove study from options
     if (this.options.studies) {
       this.options.studies = this.options.studies.filter(
@@ -1085,6 +1173,8 @@ export default class Chart {
    * @returns {string} SVG string
    */
   exportSVG() {
+    console.log('exportSVG called');
+    
     if (!this.state.svg) return '';
     
     // Clone the SVG to avoid modifying the original
@@ -1106,6 +1196,8 @@ export default class Chart {
    * @returns {Promise<string>} PNG data URL
    */
   exportPNG(scale = 2) {
+    console.log('exportPNG called');
+    
     return new Promise((resolve, reject) => {
       if (!this.state.svg) {
         reject(new Error('Chart is not rendered'));
@@ -1160,6 +1252,8 @@ export default class Chart {
    * @returns {Object} Serialized chart configuration
    */
   serialize() {
+    console.log('serialize called');
+    
     // Create a clean object with configuration for saving
     return {
       id: this.options.id || 'chart',
@@ -1188,6 +1282,8 @@ export default class Chart {
    * @returns {Chart} This chart instance
    */
   loadConfig(config) {
+    console.log('loadConfig called');
+    
     // Update options with loaded configuration
     Object.assign(this.options, config);
     
@@ -1203,6 +1299,8 @@ export default class Chart {
    * @public
    */
   destroy() {
+    console.log('destroy called');
+    
     // Remove event listeners
     window.removeEventListener('resize', this.resizeHandler);
     
