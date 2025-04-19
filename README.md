@@ -190,28 +190,6 @@ chart.exportPNG(2).then(dataUrl => {
 });
 ```
 
-## VisionKernel Integration
-
-VisionCharts is designed to work seamlessly with the VisionKernel platform, providing a consistent API that matches the functionality of the multiple charting libraries previously used.
-
-```javascript
-// Load saved chart from VisionKernel
-import { parseChartConfig, createChart } from 'visioncharts';
-
-// Parse saved configuration
-const parsedConfig = parseChartConfig(savedChartConfig);
-
-// Create appropriate chart type
-const chart = createChart(parsedConfig.chartType, {
-  container: '#chart-container',
-  data: chartData,
-  options: parsedConfig
-});
-
-// Render chart
-chart.render();
-```
-
 ## Development
 
 ```bash
