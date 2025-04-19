@@ -214,6 +214,15 @@
         <div class="control-group">
           <button id="area-toggle-stacked" class="toggle-button">Toggle Stacked</button>
         </div>
+        <div class="control-group">
+          <button id="area-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-zero" class="toggle-button">Toggle Zero Line</button>
+        </div>
+        <div class="control-group">
+          <button id="area-toggle-recession" class="toggle-button">Toggle Recessions</button>
+        </div>
       </div>
       <div id="area-chart" class="chart-container"></div>
     </section>
@@ -236,6 +245,15 @@
         </div>
         <div class="control-group">
           <button id="bar-toggle-group" class="toggle-button active">Toggle Grouped</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-zero" class="toggle-button active">Toggle Zero Line</button>
+        </div>
+        <div class="control-group">
+          <button id="bar-toggle-values" class="toggle-button">Toggle Values</button>
         </div>
       </div>
       <div id="bar-chart" class="chart-container"></div>
@@ -402,7 +420,7 @@
       }
     }
     
-    // Initialize Area Chart
+          // Initialize Area Chart
     function initAreaChart() {
       log('Initializing Area Chart');
       
@@ -428,7 +446,10 @@
             stacked: false,
             gradient: true,
             areaOpacity: 0.2,
-            recessions: recessions
+            recessions: recessions,
+            showZeroLine: false,
+            showRecessionLines: false,
+            isLogarithmic: false
           }
         });
         
@@ -452,7 +473,33 @@
         
         document.getElementById('area-toggle-stacked').addEventListener('click', (e) => {
           e.target.classList.toggle('active');
-          areaChart.toggleStacked(e.target.classList.contains('active'));
+          const isStacked = e.target.classList.contains('active');
+          log(`Area stacked toggled: ${isStacked}`);
+          
+          // Update the stacked property and re-render the chart
+          areaChart.setOptions({ stacked: isStacked });
+          areaChart.update();
+        });
+        
+        document.getElementById('area-toggle-log').addEventListener('click', (e) => {
+          e.target.classList.toggle('active');
+          const isLogarithmic = e.target.classList.contains('active');
+          log(`Area logarithmic toggled: ${isLogarithmic}`);
+          areaChart.toggleLogarithmic(isLogarithmic);
+        });
+        
+        document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
+          e.target.classList.toggle('active');
+          const showZeroLine = e.target.classList.contains('active');
+          log(`Area zero line toggled: ${showZeroLine}`);
+          areaChart.toggleZeroLine(showZeroLine);
+        });
+        
+        document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
+          e.target.classList.toggle('active');
+          const showRecessionLines = e.target.classList.contains('active');
+          log(`Area recession lines toggled: ${showRecessionLines}`);
+          areaChart.toggleRecessionLines(showRecessionLines);
         });
       } catch (error) {
         log('Error initializing area chart:', error);
@@ -460,7 +507,7 @@
       }
     }
     
-    // Initialize Bar Chart
+          // Initialize Bar Chart
     function initBarChart() {
       log('Initializing Bar Chart');
       
@@ -486,7 +533,8 @@
             groupBars: true,
             showValues: false,
             valuePosition: 'top',
-            showZeroLine: true
+            showZeroLine: true,
+            isLogarithmic: false
           }
         });
         
@@ -497,7 +545,11 @@
         // Set up event listeners for controls
         document.getElementById('bar-width').addEventListener('input', (e) => {
           const value = parseFloat(e.target.value);
-          barChart.setBarWidth(value);
+          log(`Bar width changed to: ${value}`);
+          
+          // Update bar width using setOptions instead of setBarWidth
+          barChart.setOptions({ barWidth: value });
+          barChart.update();
         });
         
         document.getElementById('bar-x-name').addEventListener('change', (e) => {
@@ -510,7 +562,36 @@
         
         document.getElementById('bar-toggle-group').addEventListener('click', (e) => {
           e.target.classList.toggle('active');
-          barChart.toggleGroupBars(e.target.classList.contains('active'));
+          const isGrouped = e.target.classList.contains('active');
+          log(`Bar group toggled: ${isGrouped}`);
+          
+          // Update the groupBars property and re-render the chart
+          barChart.setOptions({ groupBars: isGrouped });
+          barChart.update();
+        });
+        
+        document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
+          e.target.classList.toggle('active');
+          const isLogarithmic = e.target.classList.contains('active');
+          log(`Bar logarithmic toggled: ${isLogarithmic}`);
+          barChart.toggleLogarithmic(isLogarithmic);
+        });
+        
+        document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
+          e.target.classList.toggle('active');
+          const showZeroLine = e.target.classList.contains('active');
+          log(`Bar zero line toggled: ${showZeroLine}`);
+          barChart.toggleZeroLine(showZeroLine);
+        });
+        
+        document.getElementById('bar-toggle-values').addEventListener('click', (e) => {
+          e.target.classList.toggle('active');
+          const showValues = e.target.classList.contains('active');
+          log(`Bar values toggled: ${showValues}`);
+          
+          // Update the showValues property and re-render the chart
+          barChart.setOptions({ showValues: showValues });
+          barChart.update();
         });
       } catch (error) {
         log('Error initializing bar chart:', error);
