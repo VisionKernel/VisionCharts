@@ -330,14 +330,27 @@
     // Wait for DOM to be fully loaded
     log('Script started, waiting for DOMContentLoaded');
     
+    // Ensure all chart containers exist and have proper dimensions
+    function prepareChartContainers() {
+      ['line-chart', 'area-chart', 'bar-chart'].forEach(id => {
+        const container = document.getElementById(id);
+        if (container) {
+          // Ensure container has dimensions by setting a minimum height
+          if (container.clientHeight < 200) {
+            container.style.height = '400px';
+          }
+          log(`Container #${id}: width=${container.clientWidth}, height=${container.clientHeight}`);
+        } else {
+          log(`Container #${id} not found!`);
+        }
+      });
+    }
+    
     document.addEventListener('DOMContentLoaded', async function() {
       log('DOM fully loaded');
       
-      // Check if chart containers exist
-      ['line-chart', 'area-chart', 'bar-chart'].forEach(id => {
-        const el = document.getElementById(id);
-        log(`Container #${id} exists: ${el !== null}`);
-      });
+      // Ensure containers are prepared
+      prepareChartContainers();
       
       try {
         log('Attempting to import VisionCharts...');
@@ -405,18 +418,23 @@
             if (section) {
               section.style.display = 'block';
               
-              // Initialize chart if not already created
-              switch(tabName) {
-                case 'line':
-                  initLineChart();
-                  break;
-                case 'area':
-                  initAreaChart();
-                  break;
-                case 'bar':
-                  initBarChart();
-                  break;
-              }
+              // Ensure containers are prepared after section is displayed
+              setTimeout(() => {
+                prepareChartContainers();
+                
+                // Initialize chart if not already created
+                switch(tabName) {
+                  case 'line':
+                    initLineChart();
+                    break;
+                  case 'area':
+                    initAreaChart();
+                    break;
+                  case 'bar':
+                    initBarChart();
+                    break;
+                }
+              }, 50); // Small delay to ensure DOM updates
             } else {
               log(`Section not found: ${tabName}-section`);
             }
@@ -868,8 +886,10 @@
         }
         
         // Initialize line chart on page load
-        log('Initializing first chart (line chart)');
-        initLineChart();
+        setTimeout(() => {
+          log('Initializing first chart (line chart)');
+          initLineChart();
+        }, 100);
       } catch (e) {
         log('Fatal error:', e);
         document.body.innerHTML += `

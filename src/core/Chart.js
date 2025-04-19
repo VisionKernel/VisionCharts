@@ -101,12 +101,49 @@ export default class Chart {
     this.createScales();
     this.createAxes();
     
-    // Set dimensions
-    this.updateDimensions();
+    // Set dimensions without updating axes
+    this.setDimensions();
     
     // Create event listeners
     this.bindEvents();
   }
+
+  /**
+   * Set dimensions without updating axes
+   * @private
+   */
+  setDimensions() {
+    if (!this.state.container) {
+      console.error('Cannot update dimensions: container is null');
+      return;
+    }
+    
+    const containerRect = this.state.container.getBoundingClientRect();
+    
+    // Chart width and height (respecting user-defined values if provided)
+    // Ensure dimensions are at least 1px to avoid SVG rendering issues
+    const width = Math.max(1, this.options.width || containerRect.width || 300);
+    const height = Math.max(1, this.options.height || containerRect.height || 200);
+    
+    // Inner chart area dimensions (excluding margins)
+    const innerWidth = Math.max(1, width - this.options.margins.left - this.options.margins.right);
+    const innerHeight = Math.max(1, height - this.options.margins.top - this.options.margins.bottom);
+    
+    // Update state
+    this.state.dimensions = {
+      width,
+      height,
+      innerWidth,
+      innerHeight
+    };
+    
+    // Update scales if already created
+    if (Object.keys(this.state.scales).length > 0) {
+      this.updateScales();
+    }
+  }
+
+
 
   /**
    * Get the container element
@@ -265,41 +302,15 @@ export default class Chart {
     // To be implemented by subclasses
   }
 
-  /**
+   /**
    * Update the chart dimensions
    * @private
    */
   updateDimensions() {
-    if (!this.state.container) {
-      console.error('Cannot update dimensions: container is null');
-      return;
-    }
+    this.setDimensions();
     
-    const containerRect = this.state.container.getBoundingClientRect();
-    
-    // Chart width and height (respecting user-defined values if provided)
-    // Ensure dimensions are at least 1px to avoid SVG rendering issues
-    const width = Math.max(1, this.options.width || containerRect.width || 300);
-    const height = Math.max(1, this.options.height || containerRect.height || 200);
-    
-    // Inner chart area dimensions (excluding margins)
-    const innerWidth = Math.max(1, width - this.options.margins.left - this.options.margins.right);
-    const innerHeight = Math.max(1, height - this.options.margins.top - this.options.margins.bottom);
-    
-    // Update state
-    this.state.dimensions = {
-      width,
-      height,
-      innerWidth,
-      innerHeight
-    };
-    
-    // Update scales and axes if already created
-    if (Object.keys(this.state.scales).length > 0) {
-      this.updateScales();
-    }
-    
-    if (Object.keys(this.state.axes).length > 0) {
+    // Only update axes if we have rendered the chart
+    if (this.state.rendered && Object.keys(this.state.axes).length > 0) {
       this.updateAxes();
     }
   }

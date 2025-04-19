@@ -1,6 +1,5 @@
 import Chart from '../core/Chart.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
-import SvgRenderer from '../renderers/SvgRenderer.js';
 
 /**
  * LineChart class for rendering line charts
@@ -1002,6 +1001,11 @@ export default class LineChart extends Chart {
    * @private
    */
   updateAxes() {
+    // Safety check - don't try to update DOM elements that don't exist yet
+    if (!this.state.chart) {
+      return;
+    }
+
     // Remove existing axes
     const xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
     if (xAxis) {
