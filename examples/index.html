@@ -25,15 +25,49 @@
     }
     
     .chart-container {
-      height: 400px;
+      /* Remove fixed height */
+      /* height: 400px; */
+      
+      /* Add aspect ratio (modern browsers) */
+      aspect-ratio: 2/1;
+      
+      /* Fallback for browsers that don't support aspect-ratio */
+      position: relative;
+      width: 100%;
+      
+      /* Keep other styles */
       margin-bottom: 40px;
       border: 1px solid #eee;
       border-radius: 8px;
       padding: 20px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
       background-color: #fff;
-      position: relative;
+      overflow: hidden;
+      box-sizing: border-box;
     }
+
+    /* Fallback for older browsers that don't support aspect-ratio */
+    @supports not (aspect-ratio: 2/1) {
+      .chart-container::before {
+        content: "";
+        display: block;
+        padding-top: 50%; /* 50% = 1:2 aspect ratio */
+      }
+      
+      .chart-container > * {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 20px;
+      }
+    }
+
+    /* Make sure chart sections take up full height */
+    .chart-section {
+      height: 100%;
+    } 
     
     .controls {
       display: flex;

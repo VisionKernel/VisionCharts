@@ -84,7 +84,7 @@ export default class LineChart extends Chart {
         axisGroup.appendChild(axisLine);
         
         // Generate ticks
-        const tickCount = 5;
+        const tickCount = Math.min(5, Math.floor(width / 100)); // Reduce tick count on small screens
         const domain = scale.domain;
         
         // Create tick values based on domain
@@ -111,6 +111,9 @@ export default class LineChart extends Chart {
           }
         }
         
+        // Calculate if labels need rotation (if there are many or if container is small)
+        const needsRotation = tickValues.length > 4 || width < 400;
+        
         // Draw ticks and labels
         tickValues.forEach(value => {
           const x = scale.scale(value);
@@ -133,12 +136,23 @@ export default class LineChart extends Chart {
             labelText = value.toFixed(1);
           }
           
-          // Draw label
+          // Draw label with rotation if needed
           const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           label.textContent = labelText;
-          label.setAttribute('x', x);
-          label.setAttribute('y', height + 20);
-          label.setAttribute('text-anchor', 'middle');
+          
+          if (needsRotation) {
+            // For rotated labels, position them further below
+            label.setAttribute('x', x);
+            label.setAttribute('y', height + 16); // Move down a bit
+            label.setAttribute('transform', `rotate(-45, ${x}, ${height + 16})`);
+            label.setAttribute('text-anchor', 'end');
+          } else {
+            label.setAttribute('x', x);
+            label.setAttribute('y', height + 20);
+            label.setAttribute('text-anchor', 'middle');
+          }
+          
+          
           label.setAttribute('font-size', '12px');
           label.setAttribute('font-family', this.options.fontFamily);
           label.setAttribute('fill', this.options.textColor);
@@ -1147,13 +1161,19 @@ export default class LineChart extends Chart {
       }
       
       // Remove existing axes if found
-      if (xAxis) {
-        try {
-          xAxis.parentNode.removeChild(xAxis);
-          console.log('Removed X axis');
-        } catch (error) {
-          console.error('Error removing X axis:', error);
-        }
+      if (xAxisName) {
+        const xAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        xAxisNameElement.textContent = xAxisName;
+        xAxisNameElement.setAttribute('x', left + innerWidth / 2);
+        // Move axis name further down
+        xAxisNameElement.setAttribute('y', height - 10); 
+        xAxisNameElement.setAttribute('text-anchor', 'middle');
+        xAxisNameElement.setAttribute('font-size', '14px');
+        xAxisNameElement.setAttribute('font-family', this.options.fontFamily);
+        xAxisNameElement.setAttribute('fill', this.options.textColor);
+        xAxisNameElement.setAttribute('class', 'visioncharts-axis-name x-axis-name');
+        
+        this.state.svg.appendChild(xAxisNameElement);
       }
       
       if (yAxis) {

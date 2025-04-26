@@ -21,38 +21,35 @@ export default class Chart {
     }, config);
 
     // Merge options with defaults
-    this.options = Object.assign({
-      // Default options
-      width: null,
-      height: null,
-      margins: { top: 20, right: 20, bottom: 30, left: 40 },
-      title: '',
-      xAxisName: '',
-      yAxisName: '',
-      isLogarithmic: false,
-      isPanelView: false,
-      showRecessionLines: false,
-      recessions: [],
-      showZeroLine: false,
-      
-      // Data display options
-      colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-      lineWidth: 2,
-      
-      // Studies/indicators
-      studies: [],
-      
-      // Theme options
-      theme: 'light',
-      fontFamily: 'sans-serif',
-      textColor: '#333',
-      
-      // Animation
-      animation: {
-        duration: 300,
-        easing: 'ease'
-      }
-    }, this.config.options);
+    
+this.options = Object.assign({
+  // Default options
+  width: null,
+  height: null,
+  // Increase bottom margin significantly to accommodate rotated labels
+  margins: { top: 20, right: 20, bottom: 60, left: 40 },
+  title: '',
+  xAxisName: '',
+  yAxisName: '',
+  isLogarithmic: false,
+  isPanelView: false,
+  showRecessionLines: false,
+  recessions: [],
+  showZeroLine: false,
+  
+  // Keep other options
+  responsive: true,
+  colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
+  lineWidth: 2,
+  studies: [],
+  theme: 'light',
+  fontFamily: 'sans-serif',
+  textColor: '#333',
+  animation: {
+    duration: 300,
+    easing: 'ease'
+  }
+}, this.config.options);
 
     // Initialize state
     this.state = {
@@ -135,6 +132,19 @@ export default class Chart {
     const width = Math.max(1, this.options.width || containerRect.width || 300);
     const height = Math.max(1, this.options.height || containerRect.height || 200);
     
+    // Automatically adjust margins based on chart size
+    if (this.options.responsive) {
+      // For smaller charts, reduce margins
+      if (width < 400) {
+        this.options.margins = {
+          top: Math.max(10, this.options.margins.top * 0.8),
+          right: Math.max(10, this.options.margins.right * 0.8),
+          bottom: Math.max(30, this.options.margins.bottom), // Keep minimum bottom margin for labels
+          left: Math.max(25, this.options.margins.left * 0.8)
+        };
+      }
+    }
+    
     // Inner chart area dimensions (excluding margins)
     const innerWidth = Math.max(1, width - this.options.margins.left - this.options.margins.right);
     const innerHeight = Math.max(1, height - this.options.margins.top - this.options.margins.bottom);
@@ -177,12 +187,63 @@ export default class Chart {
         console.error('Container must be a CSS selector string or HTML element');
         return null;
       }
+      
+      // Add resize observer to track container size changes
+      if (typeof ResizeObserver !== 'undefined') {
+        const resizeObserver = new ResizeObserver(entries => {
+          if (this.state.rendered) {
+            this.updateDimensions();
+            this.update();
+          }
+        });
+        
+        resizeObserver.observe(container);
+        this.state.resizeObserver = resizeObserver;
+      }
     } catch (error) {
       console.error('Error getting container:', error);
       return null;
     }
     
     return container;
+  }
+  
+  // Adjust the handleResize method to properly handle aspect ratio
+  handleResize() {
+    console.log('handleResize called');
+    
+    // Always update dimensions when container size changes
+    this.updateDimensions();
+    
+    if (this.state.rendered) {
+      this.update();
+    }
+  }
+  
+  // Modify destroy method to clean up the ResizeObserver
+  destroy() {
+    console.log('destroy called');
+    
+    // Remove event listeners
+    window.removeEventListener('resize', this.resizeHandler);
+    
+    // Clean up resize observer
+    if (this.state.resizeObserver) {
+      this.state.resizeObserver.disconnect();
+      this.state.resizeObserver = null;
+    }
+    
+    // Remove SVG
+    if (this.state.svg && this.state.container) {
+      if (this.state.container.contains(this.state.svg)) {
+        this.state.container.removeChild(this.state.svg);
+      }
+    }
+    
+    // Reset state
+    this.state.rendered = false;
+    this.state.svg = null;
+    this.state.chart = null;
   }
   
   /**
