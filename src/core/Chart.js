@@ -460,6 +460,11 @@ this.options = Object.assign({
     svg.setAttribute('height', this.state.dimensions.height);
     svg.setAttribute('class', 'visioncharts-svg');
     
+    // Add viewport - This is the key fix to ensure all elements are visible 
+    // Including extra space below for axis labels
+    svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 30}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    
     // Create chart group with transform for margins
     const chart = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     chart.setAttribute('transform', `translate(${this.options.margins.left},${this.options.margins.top})`);
