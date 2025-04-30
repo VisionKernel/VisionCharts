@@ -3,6 +3,7 @@ import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 
 /**
  * BarChart class for rendering bar charts with time series data
+ * Styled to match the Line and Area charts
  */
 export default class BarChart extends Chart {
   /**
@@ -62,7 +63,7 @@ export default class BarChart extends Chart {
   }
   
   /**
-   * Create axes for the chart - customized for time series
+   * Create axes for the chart - consistent with Line and Area charts
    * @private
    */
   createAxes() {
@@ -436,9 +437,10 @@ export default class BarChart extends Chart {
         'y:', [effectiveYMin, yMax]);
   }
   
-  // The rest of the BarChart class implementation remains the same as the previous stacked bar chart
-  // We'll keep the renderData, renderAxes, and other methods from the previous implementation
-  
+  /**
+   * Render chart data
+   * @private
+   */
   renderData() {
     console.log('BarChart.renderData called');
     
@@ -612,7 +614,54 @@ export default class BarChart extends Chart {
     }
   }
   
-  // Include all the axis rendering and update methods from the previous implementation
+  /**
+   * Render chart title - consistent with other charts
+   * @private
+   */
+  renderTitle() {
+    console.log('BarChart.renderTitle called');
+    
+    // Use the parent Chart class's renderTitle method
+    super.renderTitle();
+  }
+  
+  /**
+   * Render chart legend - consistent with other charts
+   * @private
+   */
+  renderLegend() {
+    console.log('BarChart.renderLegend called');
+    
+    // Use the parent Chart class's renderLegend method
+    super.renderLegend();
+  }
+  
+  /**
+   * Render axis names - consistent with other charts
+   * @private
+   */
+  renderAxisNames() {
+    console.log('BarChart.renderAxisNames called');
+    
+    // Use the parent Chart class's renderAxisNames method
+    super.renderAxisNames();
+  }
+  
+  /**
+   * Render the chart
+   * @public
+   */
+  render() {
+    console.log('BarChart.render called');
+    
+    // Use the parent Chart class's render method
+    return super.render();
+  }
+  
+  /**
+   * Render axes
+   * @private
+   */
   renderAxes() {
     console.log('BarChart.renderAxes called');
     
@@ -640,6 +689,10 @@ export default class BarChart extends Chart {
     }
   }
   
+  /**
+   * Update axes
+   * @private
+   */
   updateAxes() {
     console.log('BarChart.updateAxes called');
     
@@ -717,6 +770,10 @@ export default class BarChart extends Chart {
     }
   }
   
+  /**
+   * Update chart data
+   * @private
+   */
   updateData() {
     console.log('BarChart.updateData called');
     
@@ -740,6 +797,17 @@ export default class BarChart extends Chart {
     } catch (error) {
       console.error('Error updating data:', error);
     }
+  }
+  
+  /**
+   * Update the chart
+   * @public
+   */
+  update() {
+    console.log('BarChart.update called');
+    
+    // Use the parent Chart class's update method
+    return super.update();
   }
   
   /**
