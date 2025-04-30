@@ -410,276 +410,319 @@
     
     // Initialize Line Chart
     function initLineChart() {
-      log('Initializing Line Chart');
-      
-      try {
-        // Generate data if we don't have it yet
-        const data = generateMultipleDatasets();
-        
-        // Create the line chart
-        lineChart = new LineChart({
-          container: '#line-chart',
-          data: data,
-          options: {
-            title: 'Stock Price Comparison',
-            xField: 'date',
-            yField: 'price',
-            xType: 'time',
-            yType: 'number',
-            xAxisName: 'Date',
-            yAxisName: 'Price ($)',
-            curve: 'monotone',
-            showPoints: false,
-            area: false,
-            showZeroLine: false,
-            recessions: recessions
-          }
-        });
-        
-        // Render the chart
-        lineChart.render();
-        log('Line chart rendered successfully');
-        
-        // Set up event listeners for controls
-        document.getElementById('line-curve').addEventListener('change', (e) => {
-          lineChart.setOptions({ curve: e.target.value });
-          lineChart.update();
-        });
-        
-        document.getElementById('line-x-name').addEventListener('change', (e) => {
-          lineChart.setXAxisName(e.target.value);
-        });
-        
-        document.getElementById('line-y-name').addEventListener('change', (e) => {
-          lineChart.setYAxisName(e.target.value);
-        });
-        
-        document.getElementById('line-toggle-log').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          lineChart.toggleLogarithmic(e.target.classList.contains('active'));
-        });
-        
-        document.getElementById('line-toggle-area').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          lineChart.setOptions({ area: e.target.classList.contains('active') });
-          lineChart.update();
-        });
-      } catch (error) {
-        log('Error initializing line chart:', error);
-        handleError('line-chart', error);
+  log('Initializing Line Chart');
+  
+  try {
+    // Generate data if we don't have it yet
+    const data = [
+      {
+        id: 'australia',
+        name: 'Australia',
+        color: '#1468a8', 
+        width: 2,
+        data: generateTimeSeriesData(60, 100, 0.02)
+      },
+      {
+        id: 'brazil',
+        name: 'Brazil',
+        color: '#34A853',
+        width: 2,
+        data: generateTimeSeriesData(60, 80, 0.02)
+      },
+      {
+        id: 'canada',
+        name: 'Canada',
+        color: '#EA4335',
+        width: 2,
+        data: generateTimeSeriesData(60, 120, 0.02)
       }
-    }
+    ];
+    
+    // Create the line chart
+    lineChart = new LineChart({
+      container: '#line-chart',
+      data: data,
+      options: {
+        title: 'Economic Indicators Comparison',
+        xField: 'date',
+        yField: 'price',
+        xType: 'time',
+        yType: 'number',
+        xAxisName: 'Date',
+        yAxisName: 'Value (USD)',
+        curve: 'monotone',
+        showPoints: false,
+        area: false,
+        showZeroLine: false,
+        recessions: recessions
+      }
+    });
+    
+    // Render the chart
+    lineChart.render();
+    log('Line chart rendered successfully');
+    
+    // Set up event listeners for controls - unchanged
+    document.getElementById('line-curve').addEventListener('change', (e) => {
+      lineChart.setOptions({ curve: e.target.value });
+      lineChart.update();
+    });
+    
+    document.getElementById('line-x-name').addEventListener('change', (e) => {
+      lineChart.setXAxisName(e.target.value);
+    });
+    
+    document.getElementById('line-y-name').addEventListener('change', (e) => {
+      lineChart.setYAxisName(e.target.value);
+    });
+    
+    document.getElementById('line-toggle-log').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      lineChart.toggleLogarithmic(e.target.classList.contains('active'));
+    });
+    
+    document.getElementById('line-toggle-area').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      lineChart.setOptions({ area: e.target.classList.contains('active') });
+      lineChart.update();
+    });
+  } catch (error) {
+    log('Error initializing line chart:', error);
+    handleError('line-chart', error);
+  }
+}
     
     // Initialize Area Chart
     function initAreaChart() {
-      log('Initializing Area Chart');
-      
-      try {
-        // Generate data if we don't have it yet
-        const data = generateMultipleDatasets();
-        
-        // Create the area chart
-        areaChart = new AreaChart({
-          container: '#area-chart',
-          data: data,
-          options: {
-            title: 'Area Chart Example',
-            xField: 'date',
-            yField: 'price',
-            xType: 'time',
-            yType: 'number',
-            xAxisName: 'Date',
-            yAxisName: 'Value',
-            curve: 'monotone',
-            showPoints: false,
-            area: true,
-            stacked: false,
-            gradient: true,
-            areaOpacity: 0.2,
-            recessions: recessions,
-            showZeroLine: false,
-            showRecessionLines: false,
-            isLogarithmic: false
-          }
-        });
-        
-        // Render the chart
-        areaChart.render();
-        log('Area chart rendered successfully');
-        
-        // Set up event listeners for controls
-        document.getElementById('area-curve').addEventListener('change', (e) => {
-          areaChart.setOptions({ curve: e.target.value });
-          areaChart.update();
-        });
-        
-        document.getElementById('area-x-name').addEventListener('change', (e) => {
-          areaChart.setXAxisName(e.target.value);
-        });
-        
-        document.getElementById('area-y-name').addEventListener('change', (e) => {
-          areaChart.setYAxisName(e.target.value);
-        });
-        
-        document.getElementById('area-toggle-stacked').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const isStacked = e.target.classList.contains('active');
-          log(`Area stacked toggled: ${isStacked}`);
-          
-          // Update the stacked property and re-render the chart
-          areaChart.setOptions({ stacked: isStacked });
-          areaChart.update();
-        });
-        
-        document.getElementById('area-toggle-log').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const isLogarithmic = e.target.classList.contains('active');
-          log(`Area logarithmic toggled: ${isLogarithmic}`);
-          areaChart.toggleLogarithmic(isLogarithmic);
-        });
-        
-        document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const showZeroLine = e.target.classList.contains('active');
-          log(`Area zero line toggled: ${showZeroLine}`);
-          areaChart.toggleZeroLine(showZeroLine);
-        });
-        
-        document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const showRecessionLines = e.target.classList.contains('active');
-          log(`Area recession lines toggled: ${showRecessionLines}`);
-          areaChart.toggleRecessionLines(showRecessionLines);
-        });
-      } catch (error) {
-        log('Error initializing area chart:', error);
-        handleError('area-chart', error);
+  log('Initializing Area Chart');
+  
+  try {
+    // Generate data if we don't have it yet
+    const data = [
+      {
+        id: 'australia',
+        name: 'Australia',
+        color: '#1468a8', 
+        width: 2,
+        data: generateTimeSeriesData(60, 100, 0.02)
+      },
+      {
+        id: 'brazil',
+        name: 'Brazil',
+        color: '#34A853',
+        width: 2,
+        data: generateTimeSeriesData(60, 80, 0.02)
+      },
+      {
+        id: 'canada',
+        name: 'Canada',
+        color: '#EA4335',
+        width: 2,
+        data: generateTimeSeriesData(60, 120, 0.02)
       }
-    }
+    ];
+    
+    // Create the area chart
+    areaChart = new AreaChart({
+      container: '#area-chart',
+      data: data,
+      options: {
+        title: 'Economic Indicators Comparison',
+        xField: 'date',
+        yField: 'price',
+        xType: 'time',
+        yType: 'number',
+        xAxisName: 'Date',
+        yAxisName: 'Value (USD)',
+        curve: 'monotone',
+        showPoints: false,
+        area: true,
+        stacked: false,
+        gradient: true,
+        areaOpacity: 0.2,
+        recessions: recessions,
+        showZeroLine: false,
+        showRecessionLines: false,
+        isLogarithmic: false
+      }
+    });
+    
+    // Render the chart
+    areaChart.render();
+    log('Area chart rendered successfully');
+    
+    // Set up event listeners for controls - unchanged
+    document.getElementById('area-curve').addEventListener('change', (e) => {
+      areaChart.setOptions({ curve: e.target.value });
+      areaChart.update();
+    });
+    
+    document.getElementById('area-x-name').addEventListener('change', (e) => {
+      areaChart.setXAxisName(e.target.value);
+    });
+    
+    document.getElementById('area-y-name').addEventListener('change', (e) => {
+      areaChart.setYAxisName(e.target.value);
+    });
+    
+    document.getElementById('area-toggle-stacked').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const isStacked = e.target.classList.contains('active');
+      log(`Area stacked toggled: ${isStacked}`);
+      
+      // Update the stacked property and re-render the chart
+      areaChart.setOptions({ stacked: isStacked });
+      areaChart.update();
+    });
+    
+    document.getElementById('area-toggle-log').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const isLogarithmic = e.target.classList.contains('active');
+      log(`Area logarithmic toggled: ${isLogarithmic}`);
+      areaChart.toggleLogarithmic(isLogarithmic);
+    });
+    
+    document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showZeroLine = e.target.classList.contains('active');
+      log(`Area zero line toggled: ${showZeroLine}`);
+      areaChart.toggleZeroLine(showZeroLine);
+    });
+    
+    document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showRecessionLines = e.target.classList.contains('active');
+      log(`Area recession lines toggled: ${showRecessionLines}`);
+      areaChart.toggleRecessionLines(showRecessionLines);
+    });
+  } catch (error) {
+    log('Error initializing area chart:', error);
+    handleError('area-chart', error);
+  }
+}
     
     // Initialize Bar Chart with time series data
     async function initBarChart() {
-      log('Initializing Bar Chart with Time Series Data');
-      
-      try {
-        // Load the time series data
-        const timeSeriesData = await loadTimeSeriesData();
-        
-        // Transform data for display - add formatted date as category
-        const transformedData = timeSeriesData.map(item => ({
-          x: item.x, // Keep original timestamp
-          y: item.y, // Keep original value
-          category: formatDate(item.x) // Add formatted date
-        }));
-        
-        // Create three datasets with the same x values but different proportions
-        // This simulates having data from three different series
-        const data = [
-          {
-            id: 'dataset-1',
-            name: 'Australia',
-            color: '#1468a8',
-            data: transformedData.map(item => ({
-              x: item.x,
-              y: item.y * 0.3, // 30% of total
-              category: item.category
-            }))
-          },
-          {
-            id: 'dataset-2',
-            name: 'Brazil',
-            color: '#34A853',
-            data: transformedData.map(item => ({
-              x: item.x,
-              y: item.y * 0.4, // 40% of total
-              category: item.category
-            }))
-          },
-          {
-            id: 'dataset-3',
-            name: 'Canada',
-            color: '#EA4335',
-            data: transformedData.map(item => ({
-              x: item.x,
-              y: item.y * 0.3, // 30% of total
-              category: item.category
-            }))
-          }
-        ];
-        
-        // Create the bar chart
-        barChart = new BarChart({
-          container: '#bar-chart',
-          data: data,
-          options: {
-            title: 'GDP Comparison',
-            xField: 'category', // Use the formatted date as the category
-            yField: 'y',
-            xType: 'category', // Use category type for x-axis
-            yType: 'number',
-            xAxisName: 'Date',
-            yAxisName: 'Value (USD)',
-            barWidth: 0.7,
-            barSpacing: 0.2,
-            showValues: false,
-            valuePosition: 'top',
-            showZeroLine: true,
-            isLogarithmic: false,
-            dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-            skipLabels: 3 // Only show every 3rd label for readability
-          }
-        });
-        
-        // Render the chart
-        barChart.render();
-        log('Bar chart rendered successfully');
-        
-        // Set up event listeners for controls
-        document.getElementById('bar-width').addEventListener('input', (e) => {
-          const value = parseFloat(e.target.value);
-          log(`Bar width changed to: ${value}`);
-          
-          // Update bar width using setOptions
-          barChart.setOptions({ barWidth: value });
-          barChart.update();
-        });
-        
-        document.getElementById('bar-x-name').addEventListener('change', (e) => {
-          barChart.setXAxisName(e.target.value);
-        });
-        
-        document.getElementById('bar-y-name').addEventListener('change', (e) => {
-          barChart.setYAxisName(e.target.value);
-        });
-        
-        document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const isLogarithmic = e.target.classList.contains('active');
-          log(`Bar logarithmic toggled: ${isLogarithmic}`);
-          barChart.toggleLogarithmic(isLogarithmic);
-        });
-        
-        document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const showZeroLine = e.target.classList.contains('active');
-          log(`Bar zero line toggled: ${showZeroLine}`);
-          barChart.toggleZeroLine(showZeroLine);
-        });
-        
-        document.getElementById('bar-toggle-values').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const showValues = e.target.classList.contains('active');
-          log(`Bar values toggled: ${showValues}`);
-          
-          // Update the showValues property and re-render the chart
-          barChart.setOptions({ showValues: showValues });
-          barChart.update();
-        });
-      } catch (error) {
-        log('Error initializing bar chart:', error);
-        handleError('bar-chart', error);
+  log('Initializing Bar Chart with Time Series Data');
+  
+  try {
+    // Load the time series data
+    const timeSeriesData = await loadTimeSeriesData();
+    
+    // Transform data for display - add formatted date as category
+    const transformedData = timeSeriesData.map(item => ({
+      x: item.x, // Keep original timestamp
+      y: item.y, // Keep original value
+      category: formatDate(item.x) // Add formatted date
+    }));
+    
+    // Create three datasets with the same x values but different proportions
+    const data = [
+      {
+        id: 'australia',
+        name: 'Australia',
+        color: '#1468a8',
+        data: transformedData.map(item => ({
+          x: item.x,
+          y: item.y * 0.3, // 30% of total
+          category: item.category
+        }))
+      },
+      {
+        id: 'brazil',
+        name: 'Brazil',
+        color: '#34A853',
+        data: transformedData.map(item => ({
+          x: item.x,
+          y: item.y * 0.4, // 40% of total
+          category: item.category
+        }))
+      },
+      {
+        id: 'canada',
+        name: 'Canada',
+        color: '#EA4335',
+        data: transformedData.map(item => ({
+          x: item.x,
+          y: item.y * 0.3, // 30% of total
+          category: item.category
+        }))
       }
-    }
+    ];
+    
+    // Create the bar chart
+    barChart = new BarChart({
+      container: '#bar-chart',
+      data: data,
+      options: {
+        title: 'GDP Comparison',
+        xField: 'category', // Use the formatted date as the category
+        yField: 'y',
+        xType: 'category', // Use category type for x-axis
+        yType: 'number',
+        xAxisName: 'Date',
+        yAxisName: 'Value (USD)',
+        barWidth: 0.7,
+        barSpacing: 0.2,
+        showValues: false,
+        valuePosition: 'top',
+        showZeroLine: true,
+        isLogarithmic: false,
+        dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
+        skipLabels: 3 // Only show every 3rd label for readability
+      }
+    });
+    
+    // Render the chart
+    barChart.render();
+    log('Bar chart rendered successfully');
+    
+    // Set up event listeners for controls - unchanged
+    document.getElementById('bar-width').addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      log(`Bar width changed to: ${value}`);
+      
+      // Update bar width using setOptions
+      barChart.setOptions({ barWidth: value });
+      barChart.update();
+    });
+    
+    document.getElementById('bar-x-name').addEventListener('change', (e) => {
+      barChart.setXAxisName(e.target.value);
+    });
+    
+    document.getElementById('bar-y-name').addEventListener('change', (e) => {
+      barChart.setYAxisName(e.target.value);
+    });
+    
+    document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const isLogarithmic = e.target.classList.contains('active');
+      log(`Bar logarithmic toggled: ${isLogarithmic}`);
+      barChart.toggleLogarithmic(isLogarithmic);
+    });
+    
+    document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showZeroLine = e.target.classList.contains('active');
+      log(`Bar zero line toggled: ${showZeroLine}`);
+      barChart.toggleZeroLine(showZeroLine);
+    });
+    
+    document.getElementById('bar-toggle-values').addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showValues = e.target.classList.contains('active');
+      log(`Bar values toggled: ${showValues}`);
+      
+      // Update the showValues property and re-render the chart
+      barChart.setOptions({ showValues: showValues });
+      barChart.update();
+    });
+  } catch (error) {
+    log('Error initializing bar chart:', error);
+    handleError('bar-chart', error);
+  }
+}
     
     // Tab functionality
     function setupTabs() {
