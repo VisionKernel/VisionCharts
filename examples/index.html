@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VisionCharts Demo</title>
+  <title>VisionCharts Demo with Time Series Data</title>
   <style>
     body {
       font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
@@ -25,9 +25,6 @@
     }
     
     .chart-container {
-      /* Remove fixed height */
-      /* height: 400px; */
-      
       /* Add aspect ratio (modern browsers) */
       aspect-ratio: 2/1;
       
@@ -45,7 +42,7 @@
       overflow: hidden;
       box-sizing: border-box;
     }
-
+    
     /* Fallback for older browsers that don't support aspect-ratio */
     @supports not (aspect-ratio: 2/1) {
       .chart-container::before {
@@ -180,7 +177,7 @@
 </head>
 <body>
   <header>
-    <h1>VisionCharts Demo</h1>
+    <h1>VisionCharts Demo with Time Series Data</h1>
     <p>A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.</p>
   </header>
   
@@ -263,7 +260,7 @@
     
     <!-- Bar Chart Section -->
     <section id="bar-section" class="chart-section" style="display: none;">
-      <h2>Bar Chart</h2>
+      <h2>Bar Chart with Time Series Data</h2>
       <div class="controls">
         <div class="control-group">
           <label for="bar-width">Bar Width</label>
@@ -271,14 +268,11 @@
         </div>
         <div class="control-group">
           <label for="bar-x-name">X Axis Name</label>
-          <input type="text" id="bar-x-name" value="Category" placeholder="X Axis Name">
+          <input type="text" id="bar-x-name" value="Date" placeholder="X Axis Name">
         </div>
         <div class="control-group">
           <label for="bar-y-name">Y Axis Name</label>
           <input type="text" id="bar-y-name" value="Value" placeholder="Y Axis Name">
-        </div>
-        <div class="control-group">
-          <button id="bar-toggle-group" class="toggle-button active">Toggle Grouped</button>
         </div>
         <div class="control-group">
           <button id="bar-toggle-log" class="toggle-button">Toggle Logarithmic</button>
@@ -323,6 +317,47 @@
       console.error(`Error in ${containerId}:`, error);
     }
     
+    // Function to load time series data
+    async function loadTimeSeriesData() {
+      try {
+        // In a real application, this would be an API call or fetch
+        return fetch('../examples/data/timeseries.json')
+          .then(response => response.json())
+          .catch(error => {
+            console.error('Error loading time series data:', error);
+            // Fall back to embedded data if fetch fails
+            return [
+              {"x": 1325397600000, "y": 395047.21724},
+              {"x": 1333256400000, "y": 383193.04203},
+              {"x": 1341118800000, "y": 395197.96324},
+              {"x": 1349067600000, "y": 396612.1442},
+              {"x": 1357020000000, "y": 400485.37204},
+              {"x": 1364792400000, "y": 385334.45099},
+              {"x": 1372654800000, "y": 360941.57118},
+              {"x": 1380603600000, "y": 370633.93024},
+              {"x": 1388556000000, "y": 361745.01486},
+              {"x": 1396328400000, "y": 375814.71808},
+              {"x": 1404190800000, "y": 372347.33206},
+              {"x": 1412139600000, "y": 346274.20792},
+              {"x": 1420092000000, "y": 320882.67004}
+              // Truncated for brevity
+            ];
+          });
+      } catch (error) {
+        console.error('Error in loadTimeSeriesData:', error);
+        return [];
+      }
+    }
+
+    // Helper function to format dates for the bar chart
+    function formatDate(timestamp) {
+      const date = new Date(timestamp);
+      return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: 'short'
+      }).format(date);
+    }
+    
     // Data generation functions
     function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
       const data = [];
@@ -359,25 +394,6 @@
         color: company.color,
         width: 2,
         data: generateTimeSeriesData(60, company.startPrice, 0.02)
-      }));
-    }
-    
-    function generateBarData() {
-      const categories = ['Q1', 'Q2', 'Q3', 'Q4'];
-      const companies = [
-        { id: 'company-1', name: 'Company A', color: '#1468a8' },
-        { id: 'company-2', name: 'Company B', color: '#34A853' },
-        { id: 'company-3', name: 'Company C', color: '#FBBC05' }
-      ];
-      
-      return companies.map(company => ({
-        id: company.id,
-        name: company.name,
-        color: company.color,
-        data: categories.map(category => ({
-          category,
-          value: Math.floor(Math.random() * 100) + 20
-        }))
       }));
     }
     
@@ -454,7 +470,7 @@
       }
     }
     
-          // Initialize Area Chart
+    // Initialize Area Chart
     function initAreaChart() {
       log('Initializing Area Chart');
       
@@ -541,34 +557,76 @@
       }
     }
     
-          // Initialize Bar Chart
-    function initBarChart() {
-      log('Initializing Bar Chart');
+    // Initialize Bar Chart with time series data
+    async function initBarChart() {
+      log('Initializing Bar Chart with Time Series Data');
       
       try {
-        // Generate data if we don't have it yet
-        const data = generateBarData();
+        // Load the time series data
+        const timeSeriesData = await loadTimeSeriesData();
+        
+        // Transform data for display - add formatted date as category
+        const transformedData = timeSeriesData.map(item => ({
+          x: item.x, // Keep original timestamp
+          y: item.y, // Keep original value
+          category: formatDate(item.x) // Add formatted date
+        }));
+        
+        // Create three datasets with the same x values but different proportions
+        // This simulates having data from three different series
+        const data = [
+          {
+            id: 'dataset-1',
+            name: 'Australia',
+            color: '#1468a8',
+            data: transformedData.map(item => ({
+              x: item.x,
+              y: item.y * 0.3, // 30% of total
+              category: item.category
+            }))
+          },
+          {
+            id: 'dataset-2',
+            name: 'Brazil',
+            color: '#34A853',
+            data: transformedData.map(item => ({
+              x: item.x,
+              y: item.y * 0.4, // 40% of total
+              category: item.category
+            }))
+          },
+          {
+            id: 'dataset-3',
+            name: 'Canada',
+            color: '#EA4335',
+            data: transformedData.map(item => ({
+              x: item.x,
+              y: item.y * 0.3, // 30% of total
+              category: item.category
+            }))
+          }
+        ];
         
         // Create the bar chart
         barChart = new BarChart({
           container: '#bar-chart',
           data: data,
           options: {
-            title: 'Quarterly Revenue',
-            xField: 'category',
-            yField: 'value',
-            xType: 'category',
+            title: 'GDP Comparison',
+            xField: 'category', // Use the formatted date as the category
+            yField: 'y',
+            xType: 'category', // Use category type for x-axis
             yType: 'number',
-            xAxisName: 'Category',
-            yAxisName: 'Value',
+            xAxisName: 'Date',
+            yAxisName: 'Value (USD)',
             barWidth: 0.7,
             barSpacing: 0.2,
-            barGap: 0.05,
-            groupBars: true,
             showValues: false,
             valuePosition: 'top',
             showZeroLine: true,
-            isLogarithmic: false
+            isLogarithmic: false,
+            dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
+            skipLabels: 3 // Only show every 3rd label for readability
           }
         });
         
@@ -581,7 +639,7 @@
           const value = parseFloat(e.target.value);
           log(`Bar width changed to: ${value}`);
           
-          // Update bar width using setOptions instead of setBarWidth
+          // Update bar width using setOptions
           barChart.setOptions({ barWidth: value });
           barChart.update();
         });
@@ -592,16 +650,6 @@
         
         document.getElementById('bar-y-name').addEventListener('change', (e) => {
           barChart.setYAxisName(e.target.value);
-        });
-        
-        document.getElementById('bar-toggle-group').addEventListener('click', (e) => {
-          e.target.classList.toggle('active');
-          const isGrouped = e.target.classList.contains('active');
-          log(`Bar group toggled: ${isGrouped}`);
-          
-          // Update the groupBars property and re-render the chart
-          barChart.setOptions({ groupBars: isGrouped });
-          barChart.update();
         });
         
         document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
