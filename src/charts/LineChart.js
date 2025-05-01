@@ -111,11 +111,11 @@ export default class LineChart extends Chart {
           }
         }
         
-        // Calculate if labels need rotation (if there are many or if container is small)
-        const needsRotation = tickValues.length > 4 || width < 400;
+        // Calculate if labels need rotation (always rotate if width is small)
+        const needsRotation = tickValues.length > 3 || width < 500;
         
         // Draw ticks and labels
-        tickValues.forEach(value => {
+        tickValues.forEach((value, index) => {
           const x = scale.scale(value);
           
           // Draw tick
@@ -131,7 +131,12 @@ export default class LineChart extends Chart {
           // Format label text
           let labelText;
           if (xType === 'time') {
-            labelText = value.toLocaleDateString();
+            // Use more compact date format
+            if (width < 400) {
+              labelText = value.toLocaleDateString(undefined, {month: 'short'});
+            } else {
+              labelText = value.toLocaleDateString();
+            }
           } else {
             labelText = value.toFixed(1);
           }
@@ -143,20 +148,25 @@ export default class LineChart extends Chart {
           if (needsRotation) {
             // For rotated labels, position them further below
             label.setAttribute('x', x);
-            label.setAttribute('y', height + 16); // Move down a bit
-            label.setAttribute('transform', `rotate(-45, ${x}, ${height + 16})`);
+            label.setAttribute('y', height + 18); // Increased space for rotated labels
+            label.setAttribute('transform', `rotate(-45, ${x}, ${height + 18})`);
             label.setAttribute('text-anchor', 'end');
           } else {
             label.setAttribute('x', x);
-            label.setAttribute('y', height + 20);
+            label.setAttribute('y', height + 24); // Increased from 20 to 24
             label.setAttribute('text-anchor', 'middle');
           }
           
-          
-          label.setAttribute('font-size', '12px');
-          label.setAttribute('font-family', this.options.fontFamily);
-          label.setAttribute('fill', this.options.textColor);
-          axisGroup.appendChild(label);
+          // Skip labels if they would overlap
+          // Simple solution: only show every nth label if space is tight
+          if (width < 400 && index % 2 === 1) {
+            // Skip every other label on small screens
+          } else {
+            label.setAttribute('font-size', '12px');
+            label.setAttribute('font-family', this.options.fontFamily);
+            label.setAttribute('fill', this.options.textColor);
+            axisGroup.appendChild(label);
+          }
           
           // Draw grid line if needed
           if (this.options.grid) {

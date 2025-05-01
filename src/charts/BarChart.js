@@ -188,12 +188,12 @@ export default class BarChart extends Chart {
             if (needsRotation) {
               // For rotated labels, position them further below
               label.setAttribute('x', x);
-              label.setAttribute('y', height + 16); // Move down a bit
-              label.setAttribute('transform', `rotate(-45, ${x}, ${height + 16})`);
+              label.setAttribute('y', height + 20); // Increased from 16 to 20
+              label.setAttribute('transform', `rotate(-45, ${x}, ${height + 20})`);
               label.setAttribute('text-anchor', 'end');
             } else {
               label.setAttribute('x', x);
-              label.setAttribute('y', height + 20);
+              label.setAttribute('y', height + 25); // Increased from 20 to 25
               label.setAttribute('text-anchor', 'middle');
             }
             

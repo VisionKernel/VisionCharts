@@ -22,34 +22,34 @@ export default class Chart {
 
     // Merge options with defaults
     
-this.options = Object.assign({
-  // Default options
-  width: null,
-  height: null,
-  // Increase bottom margin significantly to accommodate rotated labels
-  margins: { top: 20, right: 20, bottom: 60, left: 40 },
-  title: '',
-  xAxisName: '',
-  yAxisName: '',
-  isLogarithmic: false,
-  isPanelView: false,
-  showRecessionLines: false,
-  recessions: [],
-  showZeroLine: false,
-  
-  // Keep other options
-  responsive: true,
-  colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-  lineWidth: 2,
-  studies: [],
-  theme: 'light',
-  fontFamily: 'sans-serif',
-  textColor: '#333',
-  animation: {
-    duration: 300,
-    easing: 'ease'
-  }
-}, this.config.options);
+    this.options = Object.assign({
+      // Default options
+      width: null,
+      height: null,
+      // Increase top margin to 50px and bottom margin to 70px
+      margins: { top: 50, right: 20, bottom: 70, left: 40 },
+      title: '',
+      xAxisName: '',
+      yAxisName: '',
+      isLogarithmic: false,
+      isPanelView: false,
+      showRecessionLines: false,
+      recessions: [],
+      showZeroLine: false,
+      
+      // Keep other options
+      responsive: true,
+      colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
+      lineWidth: 2,
+      studies: [],
+      theme: 'light',
+      fontFamily: 'sans-serif',
+      textColor: '#333',
+      animation: {
+        duration: 300,
+        easing: 'ease'
+      }
+    }, this.config.options);
 
     // Initialize state
     this.state = {
@@ -460,9 +460,8 @@ this.options = Object.assign({
     svg.setAttribute('height', this.state.dimensions.height);
     svg.setAttribute('class', 'visioncharts-svg');
     
-    // Add viewport - This is the key fix to ensure all elements are visible 
-    // Including extra space below for axis labels
-    svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 30}`);
+    // Add viewport - Increase extra space for axis labels to 40px
+    svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 40}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     
     // Create chart group with transform for margins
@@ -672,98 +671,136 @@ this.options = Object.assign({
  * Render chart legend - centered under title
  * @private
  */
-renderLegend() {
-  console.log('Chart.renderLegend called');
-  
-  if (!this.state.svg) return;
-  
-  // Only render legend if we have multiple datasets
-  if (this.state.datasets.length <= 1) return;
-  
-  // Create legend group
-  const legendGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  legendGroup.setAttribute('class', 'visioncharts-legend');
-  
-  // Calculate legend position - explicitly below title
-  const titleHeight = 40; // Standard height for title across all charts
-  const legendY = titleHeight; // Position immediately below title
-  
-  // Create legend items
-  const itemElements = [];
-  const itemSpacing = 40; // Increased spacing between items
-  let totalWidth = 0;
-  
-  // First pass - create all items and calculate total width
-  this.state.datasets.forEach(dataset => {
-    // Create item group
-    const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  renderLegend() {
+    console.log('Chart.renderLegend called');
     
-    // Create symbol based on dataset type
-    if (dataset.type === 'line' || dataset.type === 'area') {
-      // Line symbol
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', 0);
-      line.setAttribute('y1', 10);
-      line.setAttribute('x2', 20);
-      line.setAttribute('y2', 10);
-      line.setAttribute('stroke', dataset.color);
-      line.setAttribute('stroke-width', 2);
-      itemGroup.appendChild(line);
-    } else {
-      // Rectangle symbol for bar or other types
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.setAttribute('x', 0);
-      rect.setAttribute('y', 5);
-      rect.setAttribute('width', 20);
-      rect.setAttribute('height', 10);
-      rect.setAttribute('fill', dataset.color);
-      itemGroup.appendChild(rect);
-    }
+    if (!this.state.svg) return;
     
-    // Create label
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.textContent = dataset.name || 'Dataset';
-    label.setAttribute('x', 25);
-    label.setAttribute('y', 10);
-    label.setAttribute('dominant-baseline', 'middle');
-    label.setAttribute('font-size', '16px');
-    label.setAttribute('font-family', this.options.fontFamily || 'sans-serif');
-    label.setAttribute('fill', this.options.textColor || '#333');
-    itemGroup.appendChild(label);
+    // Only render legend if we have multiple datasets
+    if (this.state.datasets.length <= 1) return;
     
-    // Calculate width conservatively
-    const labelWidth = dataset.name ? dataset.name.length * 7 : 70; // 7px per character
-    const itemWidth = 30 + labelWidth; // symbol + text + padding
+    // Create legend group
+    const legendGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    legendGroup.setAttribute('class', 'visioncharts-legend');
     
-    itemElements.push({
-      element: itemGroup,
-      width: itemWidth
+    // Calculate legend position - explicitly below title with increased spacing
+    const titleHeight = 40; // Standard height for title across all charts
+    const legendY = titleHeight + 15; // Increased space between title and legend
+    
+    // Create legend items
+    const itemElements = [];
+    const itemSpacing = 40; // Spacing between items
+    const rowHeight = 25; // Height of each row for wrapping
+    let totalWidth = 0;
+    
+    // First pass - create all items and calculate total width
+    this.state.datasets.forEach(dataset => {
+      // Create item group
+      const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      
+      // Create symbol based on dataset type
+      if (dataset.type === 'line' || dataset.type === 'area') {
+        // Line symbol
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', 0);
+        line.setAttribute('y1', 10);
+        line.setAttribute('x2', 20);
+        line.setAttribute('y2', 10);
+        line.setAttribute('stroke', dataset.color);
+        line.setAttribute('stroke-width', 2);
+        itemGroup.appendChild(line);
+      } else {
+        // Rectangle symbol for bar or other types
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', 0);
+        rect.setAttribute('y', 5);
+        rect.setAttribute('width', 20);
+        rect.setAttribute('height', 10);
+        rect.setAttribute('fill', dataset.color);
+        itemGroup.appendChild(rect);
+      }
+      
+      // Create label
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = dataset.name || 'Dataset';
+      label.setAttribute('x', 25);
+      label.setAttribute('y', 10);
+      label.setAttribute('dominant-baseline', 'middle');
+      label.setAttribute('font-size', '14px'); // Reduced font size slightly
+      label.setAttribute('font-family', this.options.fontFamily || 'sans-serif');
+      label.setAttribute('fill', this.options.textColor || '#333');
+      itemGroup.appendChild(label);
+      
+      // Calculate width more accurately
+      // Add a bit more space for each character
+      const labelWidth = dataset.name ? dataset.name.length * 8 : 70;
+      const itemWidth = 30 + labelWidth; // symbol + text + padding
+      
+      itemElements.push({
+        element: itemGroup,
+        width: itemWidth
+      });
+      
+      totalWidth += itemWidth + itemSpacing;
     });
     
-    totalWidth += itemWidth + itemSpacing;
-  });
-  
-  // Account for last spacing
-  totalWidth -= itemSpacing;
-  
-  // Calculate starting X position to center the legend
-  const svgWidth = this.state.dimensions.width;
-  const startX = Math.max(0, (svgWidth - totalWidth) / 2);
-  
-  // Second pass - position items horizontally
-  let currentX = startX;
-  itemElements.forEach(item => {
-    item.element.setAttribute('transform', `translate(${currentX}, 0)`);
-    legendGroup.appendChild(item.element);
-    currentX += item.width + itemSpacing;
-  });
-  
-  // Position the legend below the title
-  legendGroup.setAttribute('transform', `translate(0, ${legendY})`);
-  
-  // Add to SVG
-  this.state.svg.appendChild(legendGroup);
-}
+    // Account for last spacing
+    totalWidth -= itemSpacing;
+    
+    // Calculate if we need to wrap legends to multiple rows
+    const svgWidth = this.state.dimensions.width;
+    const maxWidthPerRow = svgWidth * 0.9; // Use 90% of available width
+    const needsWrapping = totalWidth > maxWidthPerRow;
+    
+    if (needsWrapping) {
+      // Wrap to multiple rows
+      let currentX = 0;
+      let currentY = 0;
+      let rowWidth = 0;
+      
+      itemElements.forEach(item => {
+        // Check if adding this item would exceed max width
+        if (rowWidth + item.width > maxWidthPerRow && rowWidth > 0) {
+          // Start new row
+          currentY += rowHeight;
+          currentX = 0;
+          rowWidth = 0;
+        }
+        
+        // Position item
+        item.element.setAttribute('transform', `translate(${currentX}, ${currentY})`);
+        legendGroup.appendChild(item.element);
+        
+        // Update for next item
+        currentX += item.width + itemSpacing;
+        rowWidth += item.width + itemSpacing;
+      });
+      
+      // Adjust legend Y to center it vertically if multiple rows
+      const totalHeight = currentY + rowHeight;
+      const centerY = legendY - totalHeight / 2 + rowHeight / 2;
+      
+      // Position the legend below the title, centered
+      legendGroup.setAttribute('transform', `translate(${(svgWidth - maxWidthPerRow) / 2}, ${legendY})`);
+    } else {
+      // Single row - center horizontally
+      const startX = Math.max(0, (svgWidth - totalWidth) / 2);
+      
+      // Position items horizontally
+      let currentX = 0;
+      itemElements.forEach(item => {
+        item.element.setAttribute('transform', `translate(${currentX}, 0)`);
+        legendGroup.appendChild(item.element);
+        currentX += item.width + itemSpacing;
+      });
+      
+      // Position the legend below the title, centered
+      legendGroup.setAttribute('transform', `translate(${startX}, ${legendY})`);
+    }
+    
+    // Add to SVG
+    this.state.svg.appendChild(legendGroup);
+  }
 
   /**
    * Render chart title
@@ -778,7 +815,7 @@ renderLegend() {
       const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       title.textContent = this.options.title;
       title.setAttribute('x', this.state.dimensions.width / 2);
-      title.setAttribute('y', 15);
+      title.setAttribute('y', 25); // Increased from 15 to 25
       title.setAttribute('text-anchor', 'middle');
       title.setAttribute('font-size', '16px');
       title.setAttribute('font-weight', 'bold');
@@ -806,12 +843,12 @@ renderLegend() {
     const { width, height, innerWidth, innerHeight } = this.state.dimensions;
     const { left, top, right, bottom } = this.options.margins;
     
-    // X-axis name
+    // X-axis name - position it lower
     if (xAxisName) {
       const xAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       xAxisNameElement.textContent = xAxisName;
       xAxisNameElement.setAttribute('x', left + innerWidth / 2);
-      xAxisNameElement.setAttribute('y', height - 5);
+      xAxisNameElement.setAttribute('y', height + 5); // Position it below the chart
       xAxisNameElement.setAttribute('text-anchor', 'middle');
       xAxisNameElement.setAttribute('font-size', '14px');
       xAxisNameElement.setAttribute('font-family', this.options.fontFamily);
@@ -821,14 +858,14 @@ renderLegend() {
       this.state.svg.appendChild(xAxisNameElement);
     }
     
-    // Y-axis name
+    // Y-axis name - position it further left
     if (yAxisName) {
       const yAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       yAxisNameElement.textContent = yAxisName;
-      yAxisNameElement.setAttribute('x', 15);
+      yAxisNameElement.setAttribute('x', 10); // Move further left from 15
       yAxisNameElement.setAttribute('y', top + innerHeight / 2);
       yAxisNameElement.setAttribute('text-anchor', 'middle');
-      yAxisNameElement.setAttribute('transform', `rotate(-90, 15, ${top + innerHeight / 2})`);
+      yAxisNameElement.setAttribute('transform', `rotate(-90, 10, ${top + innerHeight / 2})`);
       yAxisNameElement.setAttribute('font-size', '14px');
       yAxisNameElement.setAttribute('font-family', this.options.fontFamily);
       yAxisNameElement.setAttribute('fill', this.options.textColor);
