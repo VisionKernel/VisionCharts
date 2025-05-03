@@ -25,14 +25,9 @@
     }
     
     .chart-container {
-      /* Add aspect ratio (modern browsers) */
       aspect-ratio: 2/1;
-      
-      /* Fallback for browsers that don't support aspect-ratio */
       position: relative;
       width: 100%;
-      
-      /* Keep other styles */
       margin-bottom: 40px;
       border: 1px solid #eee;
       border-radius: 8px;
@@ -43,12 +38,11 @@
       box-sizing: border-box;
     }
     
-    /* Fallback for older browsers that don't support aspect-ratio */
     @supports not (aspect-ratio: 2/1) {
       .chart-container::before {
         content: "";
         display: block;
-        padding-top: 50%; /* 50% = 1:2 aspect ratio */
+        padding-top: 50%;
       }
       
       .chart-container > * {
@@ -61,7 +55,6 @@
       }
     }
 
-    /* Make sure chart sections take up full height */
     .chart-section {
       height: 100%;
     } 
@@ -73,10 +66,34 @@
       flex-wrap: wrap;
     }
     
+    .control-panel {
+      border: 1px solid #eee;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      background-color: #f9f9f9;
+    }
+    
+    .control-panel h3 {
+      margin-top: 0;
+      color: #1468a8;
+      font-size: 16px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 8px;
+    }
+    
     .control-group {
       display: flex;
       flex-direction: column;
       gap: 5px;
+      margin-bottom: 10px;
+    }
+    
+    .control-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 15px;
     }
     
     label {
@@ -108,6 +125,13 @@
       border: 1px solid #ddd;
       border-radius: 4px;
       min-width: 120px;
+    }
+    
+    input[type="color"] {
+      padding: 2px;
+      width: 40px;
+      min-width: 40px;
+      height: 30px;
     }
     
     .tabs {
@@ -169,9 +193,63 @@
       font-size: 14px;
     }
     
-    /* Hide debug info by default */
     .debug-info {
       display: none;
+    }
+    
+    .dataset-manager {
+      margin-bottom: 15px;
+    }
+    
+    .dataset-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding: 10px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .dataset-item label {
+      margin-right: 5px;
+    }
+    
+    .dataset-actions {
+      margin-left: auto;
+    }
+    
+    .btn-sm {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    
+    .accordion {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    
+    .accordion-header {
+      padding: 10px 15px;
+      background-color: #f5f5f5;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .accordion-content {
+      padding: 15px;
+      border-top: 1px solid #ddd;
+      display: none;
+    }
+    
+    .accordion-content.active {
+      display: block;
     }
   </style>
 </head>
@@ -193,97 +271,396 @@
     <!-- Line Chart Section -->
     <section id="line-section" class="chart-section">
       <h2>Line Chart</h2>
-      <div class="controls">
-        <div class="control-group">
-          <label for="line-curve">Curve Type</label>
-          <select id="line-curve">
-            <option value="linear">Linear</option>
-            <option value="step">Step</option>
-            <option value="cardinal">Cardinal</option>
-            <option value="monotone" selected>Monotone</option>
-          </select>
+      
+      <div class="control-panel">
+        <h3>Basic Settings</h3>
+        <div class="control-row">
+          <div class="control-group">
+            <label for="line-x-name">X Axis Name</label>
+            <input type="text" id="line-x-name" value="Date" placeholder="X Axis Name">
+          </div>
+          <div class="control-group">
+            <label for="line-y-name">Y Axis Name</label>
+            <input type="text" id="line-y-name" value="Price ($)" placeholder="Y Axis Name">
+          </div>
+          <div class="control-group">
+            <label>Scale Type</label>
+            <button id="line-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+          </div>
+          <div class="control-group">
+            <label>Visualization</label>
+            <div style="display: flex; gap: 10px;">
+              <button id="line-toggle-zero" class="toggle-button">Toggle Zero Line</button>
+              <button id="line-toggle-recession" class="toggle-button">Toggle Recessions</button>
+              <button id="line-toggle-panel" class="toggle-button">Toggle Panel View</button>
+            </div>
+          </div>
         </div>
-        <div class="control-group">
-          <label for="line-x-name">X Axis Name</label>
-          <input type="text" id="line-x-name" value="Date" placeholder="X Axis Name">
+        
+        <h3>Line Settings</h3>
+        <div class="control-row">
+          <div class="control-group">
+            <label for="line-curve">Curve Type</label>
+            <select id="line-curve">
+              <option value="linear">Linear</option>
+              <option value="step">Step</option>
+              <option value="cardinal">Cardinal</option>
+              <option value="monotone" selected>Monotone</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="line-point-size">Point Size</label>
+            <input type="range" id="line-point-size" min="0" max="6" step="1" value="3">
+          </div>
         </div>
-        <div class="control-group">
-          <label for="line-y-name">Y Axis Name</label>
-          <input type="text" id="line-y-name" value="Price ($)" placeholder="Y Axis Name">
+        
+        <h3>Dataset Manager</h3>
+        <div class="dataset-manager" id="line-datasets">
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Dataset 1" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#1468a8">
+            </div>
+            <div class="control-group">
+              <label>Width</label>
+              <input type="range" min="1" max="5" value="2" step="0.5">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Dataset 2" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#34A853">
+            </div>
+            <div class="control-group">
+              <label>Width</label>
+              <input type="range" min="1" max="5" value="2" step="0.5">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <button>Add Dataset</button>
         </div>
-        <div class="control-group">
-          <button id="line-toggle-log" class="toggle-button">Toggle Logarithmic</button>
-        </div>
-        <div class="control-group">
-          <button id="line-toggle-area" class="toggle-button">Toggle Area</button>
+        
+        <div class="accordion">
+          <div class="accordion-header">
+            Technical Indicators / Studies
+            <span>+</span>
+          </div>
+          <div class="accordion-content">
+            <div class="control-row">
+              <div class="control-group">
+                <label for="line-study-type">Study Type</label>
+                <select id="line-study-type">
+                  <option value="sma">Simple Moving Average (SMA)</option>
+                  <option value="ema">Exponential Moving Average (EMA)</option>
+                  <option value="bollinger">Bollinger Bands</option>
+                  <option value="rsi">Relative Strength Index (RSI)</option>
+                  <option value="macd">MACD</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="line-study-period">Period</label>
+                <input type="number" id="line-study-period" value="14" min="1" max="200">
+              </div>
+              <div class="control-group">
+                <label for="line-study-dataset">Apply To</label>
+                <select id="line-study-dataset">
+                  <option value="dataset-1">Dataset 1</option>
+                  <option value="dataset-2">Dataset 2</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="line-study-color">Color</label>
+                <input type="color" id="line-study-color" value="#FBBC05">
+              </div>
+              <div class="control-group">
+                <label>&nbsp;</label>
+                <button>Add Study</button>
+              </div>
+            </div>
+            <div>
+              <strong>Active Studies:</strong>
+              <div>No studies added</div>
+            </div>
+          </div>
         </div>
       </div>
+      
       <div id="line-chart" class="chart-container"></div>
     </section>
     
     <!-- Area Chart Section -->
     <section id="area-section" class="chart-section" style="display: none;">
       <h2>Area Chart</h2>
-      <div class="controls">
-        <div class="control-group">
-          <label for="area-curve">Curve Type</label>
-          <select id="area-curve">
-            <option value="linear">Linear</option>
-            <option value="step">Step</option>
-            <option value="cardinal">Cardinal</option>
-            <option value="monotone" selected>Monotone</option>
-          </select>
+      
+      <div class="control-panel">
+        <h3>Basic Settings</h3>
+        <div class="control-row">
+          <div class="control-group">
+            <label for="area-x-name">X Axis Name</label>
+            <input type="text" id="area-x-name" value="Date" placeholder="X Axis Name">
+          </div>
+          <div class="control-group">
+            <label for="area-y-name">Y Axis Name</label>
+            <input type="text" id="area-y-name" value="Value" placeholder="Y Axis Name">
+          </div>
+          <div class="control-group">
+            <label>Scale Type</label>
+            <button id="area-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+          </div>
+          <div class="control-group">
+            <label>Visualization</label>
+            <div style="display: flex; gap: 10px;">
+              <button id="area-toggle-zero" class="toggle-button">Toggle Zero Line</button>
+              <button id="area-toggle-recession" class="toggle-button">Toggle Recessions</button>
+              <button id="area-toggle-panel" class="toggle-button">Toggle Panel View</button>
+            </div>
+          </div>
         </div>
-        <div class="control-group">
-          <label for="area-x-name">X Axis Name</label>
-          <input type="text" id="area-x-name" value="Date" placeholder="X Axis Name">
+        
+        <h3>Area Settings</h3>
+        <div class="control-row">
+          <div class="control-group">
+            <label for="area-curve">Curve Type</label>
+            <select id="area-curve">
+              <option value="linear">Linear</option>
+              <option value="step">Step</option>
+              <option value="cardinal">Cardinal</option>
+              <option value="monotone" selected>Monotone</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="area-opacity">Area Opacity</label>
+            <input type="range" id="area-opacity" min="0.1" max="1" step="0.1" value="0.2">
+          </div>
         </div>
-        <div class="control-group">
-          <label for="area-y-name">Y Axis Name</label>
-          <input type="text" id="area-y-name" value="Value" placeholder="Y Axis Name">
+        
+        <h3>Dataset Manager</h3>
+        <div class="dataset-manager" id="area-datasets">
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Dataset 1" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#1468a8">
+            </div>
+            <div class="control-group">
+              <label>Width</label>
+              <input type="range" min="1" max="5" value="2" step="0.5">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Dataset 2" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#34A853">
+            </div>
+            <div class="control-group">
+              <label>Width</label>
+              <input type="range" min="1" max="5" value="2" step="0.5">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <button>Add Dataset</button>
         </div>
-        <div class="control-group">
-          <button id="area-toggle-stacked" class="toggle-button">Toggle Stacked</button>
-        </div>
-        <div class="control-group">
-          <button id="area-toggle-log" class="toggle-button">Toggle Logarithmic</button>
-        </div>
-        <div class="control-group">
-          <button id="area-toggle-zero" class="toggle-button">Toggle Zero Line</button>
-        </div>
-        <div class="control-group">
-          <button id="area-toggle-recession" class="toggle-button">Toggle Recessions</button>
+        
+        <div class="accordion">
+          <div class="accordion-header">
+            Technical Indicators / Studies
+            <span>+</span>
+          </div>
+          <div class="accordion-content">
+            <div class="control-row">
+              <div class="control-group">
+                <label for="area-study-type">Study Type</label>
+                <select id="area-study-type">
+                  <option value="sma">Simple Moving Average (SMA)</option>
+                  <option value="ema">Exponential Moving Average (EMA)</option>
+                  <option value="bollinger">Bollinger Bands</option>
+                  <option value="rsi">Relative Strength Index (RSI)</option>
+                  <option value="macd">MACD</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="area-study-period">Period</label>
+                <input type="number" id="area-study-period" value="14" min="1" max="200">
+              </div>
+              <div class="control-group">
+                <label for="area-study-dataset">Apply To</label>
+                <select id="area-study-dataset">
+                  <option value="dataset-1">Dataset 1</option>
+                  <option value="dataset-2">Dataset 2</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="area-study-color">Color</label>
+                <input type="color" id="area-study-color" value="#FBBC05">
+              </div>
+              <div class="control-group">
+                <label>&nbsp;</label>
+                <button>Add Study</button>
+              </div>
+            </div>
+            <div>
+              <strong>Active Studies:</strong>
+              <div>No studies added</div>
+            </div>
+          </div>
         </div>
       </div>
+      
       <div id="area-chart" class="chart-container"></div>
     </section>
     
     <!-- Bar Chart Section -->
     <section id="bar-section" class="chart-section" style="display: none;">
       <h2>Bar Chart with Time Series Data</h2>
-      <div class="controls">
-        <div class="control-group">
-          <label for="bar-width">Bar Width</label>
-          <input type="range" id="bar-width" min="0.1" max="1" step="0.1" value="0.7">
+      
+      <div class="control-panel">
+        <h3>Basic Settings</h3>
+        <div class="control-row">
+          <div class="control-group">
+            <label for="bar-x-name">X Axis Name</label>
+            <input type="text" id="bar-x-name" value="Date" placeholder="X Axis Name">
+          </div>
+          <div class="control-group">
+            <label for="bar-y-name">Y Axis Name</label>
+            <input type="text" id="bar-y-name" value="Value" placeholder="Y Axis Name">
+          </div>
+          <div class="control-group">
+            <label>Scale Type</label>
+            <button id="bar-toggle-log" class="toggle-button">Toggle Logarithmic</button>
+          </div>
+          <div class="control-group">
+            <label>Visualization</label>
+            <div style="display: flex; gap: 10px;">
+              <button id="bar-toggle-zero" class="toggle-button active">Toggle Zero Line</button>
+              <button id="bar-toggle-recession" class="toggle-button">Toggle Recessions</button>
+              <button id="bar-toggle-panel" class="toggle-button">Toggle Panel View</button>
+            </div>
+          </div>
         </div>
-        <div class="control-group">
-          <label for="bar-x-name">X Axis Name</label>
-          <input type="text" id="bar-x-name" value="Date" placeholder="X Axis Name">
+        
+        <h3>Bar Settings</h3>
+        <div class="control-row">
+          <div class="control-group">
+            <label for="bar-width">Bar Width</label>
+            <input type="range" id="bar-width" min="0.1" max="1" step="0.1" value="0.7">
+          </div>
         </div>
-        <div class="control-group">
-          <label for="bar-y-name">Y Axis Name</label>
-          <input type="text" id="bar-y-name" value="Value" placeholder="Y Axis Name">
+        
+        <h3>Dataset Manager</h3>
+        <div class="dataset-manager" id="bar-datasets">
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Australia" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#1468a8">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Brazil" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#34A853">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <div class="dataset-item">
+            <div class="control-group">
+              <label>Name</label>
+              <input type="text" value="Canada" placeholder="Dataset Name">
+            </div>
+            <div class="control-group">
+              <label>Color</label>
+              <input type="color" value="#EA4335">
+            </div>
+            <div class="dataset-actions">
+              <button class="btn-sm">Hide</button>
+            </div>
+          </div>
+          <button>Add Dataset</button>
         </div>
-        <div class="control-group">
-          <button id="bar-toggle-log" class="toggle-button">Toggle Logarithmic</button>
-        </div>
-        <div class="control-group">
-          <button id="bar-toggle-zero" class="toggle-button active">Toggle Zero Line</button>
-        </div>
-        <div class="control-group">
-          <button id="bar-toggle-values" class="toggle-button">Toggle Values</button>
+        
+        <div class="accordion">
+          <div class="accordion-header">
+            Technical Indicators / Studies
+            <span>+</span>
+          </div>
+          <div class="accordion-content">
+            <div class="control-row">
+              <div class="control-group">
+                <label for="bar-study-type">Study Type</label>
+                <select id="bar-study-type">
+                  <option value="sma">Simple Moving Average (SMA)</option>
+                  <option value="ema">Exponential Moving Average (EMA)</option>
+                  <option value="bollinger">Bollinger Bands</option>
+                  <option value="rsi">Relative Strength Index (RSI)</option>
+                  <option value="macd">MACD</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="bar-study-period">Period</label>
+                <input type="number" id="bar-study-period" value="14" min="1" max="200">
+              </div>
+              <div class="control-group">
+                <label for="bar-study-dataset">Apply To</label>
+                <select id="bar-study-dataset">
+                  <option value="dataset-1">Australia</option>
+                  <option value="dataset-2">Brazil</option>
+                  <option value="dataset-3">Canada</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="bar-study-color">Color</label>
+                <input type="color" id="bar-study-color" value="#FBBC05">
+              </div>
+              <div class="control-group">
+                <label>&nbsp;</label>
+                <button>Add Study</button>
+              </div>
+            </div>
+            <div>
+              <strong>Active Studies:</strong>
+              <div>No studies added</div>
+            </div>
+          </div>
         </div>
       </div>
+      
       <div id="bar-chart" class="chart-container"></div>
     </section>
   </main>
@@ -410,319 +787,207 @@
     
     // Initialize Line Chart
     function initLineChart() {
-  log('Initializing Line Chart');
-  
-  try {
-    // Generate data if we don't have it yet
-    const data = [
-      {
-        id: 'australia',
-        name: 'Australia',
-        color: '#1468a8', 
-        width: 2,
-        data: generateTimeSeriesData(60, 100, 0.02)
-      },
-      {
-        id: 'brazil',
-        name: 'Brazil',
-        color: '#34A853',
-        width: 2,
-        data: generateTimeSeriesData(60, 80, 0.02)
-      },
-      {
-        id: 'canada',
-        name: 'Canada',
-        color: '#EA4335',
-        width: 2,
-        data: generateTimeSeriesData(60, 120, 0.02)
+      log('Initializing Line Chart');
+      
+      try {
+        // Generate data if we don't have it yet
+        const data = [
+          {
+            id: 'australia',
+            name: 'Australia',
+            color: '#1468a8', 
+            width: 2,
+            data: generateTimeSeriesData(60, 100, 0.02)
+          },
+          {
+            id: 'brazil',
+            name: 'Brazil',
+            color: '#34A853',
+            width: 2,
+            data: generateTimeSeriesData(60, 80, 0.02)
+          },
+          {
+            id: 'canada',
+            name: 'Canada',
+            color: '#EA4335',
+            width: 2,
+            data: generateTimeSeriesData(60, 120, 0.02)
+          }
+        ];
+        
+        // Create the line chart
+        lineChart = new LineChart({
+          container: '#line-chart',
+          data: data,
+          options: {
+            title: 'Economic Indicators Comparison',
+            xField: 'date',
+            yField: 'price',
+            xType: 'time',
+            yType: 'number',
+            xAxisName: 'Date',
+            yAxisName: 'Value (USD)',
+            curve: 'monotone',
+            showPoints: true,
+            area: false,
+            showZeroLine: false,
+            recessions: recessions
+          }
+        });
+        
+        // Render the chart
+        lineChart.render();
+        log('Line chart rendered successfully');
+      } catch (error) {
+        log('Error initializing line chart:', error);
+        handleError('line-chart', error);
       }
-    ];
-    
-    // Create the line chart
-    lineChart = new LineChart({
-      container: '#line-chart',
-      data: data,
-      options: {
-        title: 'Economic Indicators Comparison',
-        xField: 'date',
-        yField: 'price',
-        xType: 'time',
-        yType: 'number',
-        xAxisName: 'Date',
-        yAxisName: 'Value (USD)',
-        curve: 'monotone',
-        showPoints: false,
-        area: false,
-        showZeroLine: false,
-        recessions: recessions
-      }
-    });
-    
-    // Render the chart
-    lineChart.render();
-    log('Line chart rendered successfully');
-    
-    // Set up event listeners for controls - unchanged
-    document.getElementById('line-curve').addEventListener('change', (e) => {
-      lineChart.setOptions({ curve: e.target.value });
-      lineChart.update();
-    });
-    
-    document.getElementById('line-x-name').addEventListener('change', (e) => {
-      lineChart.setXAxisName(e.target.value);
-    });
-    
-    document.getElementById('line-y-name').addEventListener('change', (e) => {
-      lineChart.setYAxisName(e.target.value);
-    });
-    
-    document.getElementById('line-toggle-log').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      lineChart.toggleLogarithmic(e.target.classList.contains('active'));
-    });
-    
-    document.getElementById('line-toggle-area').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      lineChart.setOptions({ area: e.target.classList.contains('active') });
-      lineChart.update();
-    });
-  } catch (error) {
-    log('Error initializing line chart:', error);
-    handleError('line-chart', error);
-  }
-}
+    }
     
     // Initialize Area Chart
     function initAreaChart() {
-  log('Initializing Area Chart');
-  
-  try {
-    // Generate data if we don't have it yet
-    const data = [
-      {
-        id: 'australia',
-        name: 'Australia',
-        color: '#1468a8', 
-        width: 2,
-        data: generateTimeSeriesData(60, 100, 0.02)
-      },
-      {
-        id: 'brazil',
-        name: 'Brazil',
-        color: '#34A853',
-        width: 2,
-        data: generateTimeSeriesData(60, 80, 0.02)
-      },
-      {
-        id: 'canada',
-        name: 'Canada',
-        color: '#EA4335',
-        width: 2,
-        data: generateTimeSeriesData(60, 120, 0.02)
-      }
-    ];
-    
-    // Create the area chart
-    areaChart = new AreaChart({
-      container: '#area-chart',
-      data: data,
-      options: {
-        title: 'Economic Indicators Comparison',
-        xField: 'date',
-        yField: 'price',
-        xType: 'time',
-        yType: 'number',
-        xAxisName: 'Date',
-        yAxisName: 'Value (USD)',
-        curve: 'monotone',
-        showPoints: false,
-        area: true,
-        stacked: false,
-        gradient: true,
-        areaOpacity: 0.2,
-        recessions: recessions,
-        showZeroLine: false,
-        showRecessionLines: false,
-        isLogarithmic: false
-      }
-    });
-    
-    // Render the chart
-    areaChart.render();
-    log('Area chart rendered successfully');
-    
-    // Set up event listeners for controls - unchanged
-    document.getElementById('area-curve').addEventListener('change', (e) => {
-      areaChart.setOptions({ curve: e.target.value });
-      areaChart.update();
-    });
-    
-    document.getElementById('area-x-name').addEventListener('change', (e) => {
-      areaChart.setXAxisName(e.target.value);
-    });
-    
-    document.getElementById('area-y-name').addEventListener('change', (e) => {
-      areaChart.setYAxisName(e.target.value);
-    });
-    
-    document.getElementById('area-toggle-stacked').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isStacked = e.target.classList.contains('active');
-      log(`Area stacked toggled: ${isStacked}`);
+      log('Initializing Area Chart');
       
-      // Update the stacked property and re-render the chart
-      areaChart.setOptions({ stacked: isStacked });
-      areaChart.update();
-    });
-    
-    document.getElementById('area-toggle-log').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isLogarithmic = e.target.classList.contains('active');
-      log(`Area logarithmic toggled: ${isLogarithmic}`);
-      areaChart.toggleLogarithmic(isLogarithmic);
-    });
-    
-    document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showZeroLine = e.target.classList.contains('active');
-      log(`Area zero line toggled: ${showZeroLine}`);
-      areaChart.toggleZeroLine(showZeroLine);
-    });
-    
-    document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showRecessionLines = e.target.classList.contains('active');
-      log(`Area recession lines toggled: ${showRecessionLines}`);
-      areaChart.toggleRecessionLines(showRecessionLines);
-    });
-  } catch (error) {
-    log('Error initializing area chart:', error);
-    handleError('area-chart', error);
-  }
-}
+      try {
+        // Generate data if we don't have it yet
+        const data = [
+          {
+            id: 'australia',
+            name: 'Australia',
+            color: '#1468a8', 
+            width: 2,
+            data: generateTimeSeriesData(60, 100, 0.02)
+          },
+          {
+            id: 'brazil',
+            name: 'Brazil',
+            color: '#34A853',
+            width: 2,
+            data: generateTimeSeriesData(60, 80, 0.02)
+          },
+          {
+            id: 'canada',
+            name: 'Canada',
+            color: '#EA4335',
+            width: 2,
+            data: generateTimeSeriesData(60, 120, 0.02)
+          }
+        ];
+        
+        // Create the area chart
+        areaChart = new AreaChart({
+          container: '#area-chart',
+          data: data,
+          options: {
+            title: 'Economic Indicators Comparison',
+            xField: 'date',
+            yField: 'price',
+            xType: 'time',
+            yType: 'number',
+            xAxisName: 'Date',
+            yAxisName: 'Value (USD)',
+            curve: 'monotone',
+            showPoints: false,
+            area: true,
+            stacked: false,
+            gradient: true,
+            areaOpacity: 0.2,
+            recessions: recessions,
+            showZeroLine: false,
+            showRecessionLines: false,
+            isLogarithmic: false
+          }
+        });
+        
+        // Render the chart
+        areaChart.render();
+        log('Area chart rendered successfully');
+      } catch (error) {
+        log('Error initializing area chart:', error);
+        handleError('area-chart', error);
+      }
+    }
     
     // Initialize Bar Chart with time series data
     async function initBarChart() {
-  log('Initializing Bar Chart with Time Series Data');
-  
-  try {
-    // Load the time series data
-    const timeSeriesData = await loadTimeSeriesData();
-    
-    // Transform data for display - add formatted date as category
-    const transformedData = timeSeriesData.map(item => ({
-      x: item.x, // Keep original timestamp
-      y: item.y, // Keep original value
-      category: formatDate(item.x) // Add formatted date
-    }));
-    
-    // Create three datasets with the same x values but different proportions
-    const data = [
-      {
-        id: 'australia',
-        name: 'Australia',
-        color: '#1468a8',
-        data: transformedData.map(item => ({
-          x: item.x,
-          y: item.y * 0.3, // 30% of total
-          category: item.category
-        }))
-      },
-      {
-        id: 'brazil',
-        name: 'Brazil',
-        color: '#34A853',
-        data: transformedData.map(item => ({
-          x: item.x,
-          y: item.y * 0.4, // 40% of total
-          category: item.category
-        }))
-      },
-      {
-        id: 'canada',
-        name: 'Canada',
-        color: '#EA4335',
-        data: transformedData.map(item => ({
-          x: item.x,
-          y: item.y * 0.3, // 30% of total
-          category: item.category
-        }))
-      }
-    ];
-    
-    // Create the bar chart
-    barChart = new BarChart({
-      container: '#bar-chart',
-      data: data,
-      options: {
-        title: 'GDP Comparison',
-        xField: 'category', // Use the formatted date as the category
-        yField: 'y',
-        xType: 'category', // Use category type for x-axis
-        yType: 'number',
-        xAxisName: 'Date',
-        yAxisName: 'Value (USD)',
-        barWidth: 0.7,
-        barSpacing: 0.2,
-        showValues: false,
-        valuePosition: 'top',
-        showZeroLine: true,
-        isLogarithmic: false,
-        dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-        skipLabels: 3 // Only show every 3rd label for readability
-      }
-    });
-    
-    // Render the chart
-    barChart.render();
-    log('Bar chart rendered successfully');
-    
-    // Set up event listeners for controls - unchanged
-    document.getElementById('bar-width').addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      log(`Bar width changed to: ${value}`);
+      log('Initializing Bar Chart with Time Series Data');
       
-      // Update bar width using setOptions
-      barChart.setOptions({ barWidth: value });
-      barChart.update();
-    });
-    
-    document.getElementById('bar-x-name').addEventListener('change', (e) => {
-      barChart.setXAxisName(e.target.value);
-    });
-    
-    document.getElementById('bar-y-name').addEventListener('change', (e) => {
-      barChart.setYAxisName(e.target.value);
-    });
-    
-    document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isLogarithmic = e.target.classList.contains('active');
-      log(`Bar logarithmic toggled: ${isLogarithmic}`);
-      barChart.toggleLogarithmic(isLogarithmic);
-    });
-    
-    document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showZeroLine = e.target.classList.contains('active');
-      log(`Bar zero line toggled: ${showZeroLine}`);
-      barChart.toggleZeroLine(showZeroLine);
-    });
-    
-    document.getElementById('bar-toggle-values').addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showValues = e.target.classList.contains('active');
-      log(`Bar values toggled: ${showValues}`);
-      
-      // Update the showValues property and re-render the chart
-      barChart.setOptions({ showValues: showValues });
-      barChart.update();
-    });
-  } catch (error) {
-    log('Error initializing bar chart:', error);
-    handleError('bar-chart', error);
-  }
-}
+      try {
+        // Load the time series data
+        const timeSeriesData = await loadTimeSeriesData();
+        
+        // Transform data for display - add formatted date as category
+        const transformedData = timeSeriesData.map(item => ({
+          x: item.x, // Keep original timestamp
+          y: item.y, // Keep original value
+          category: formatDate(item.x) // Add formatted date
+        }));
+        
+        // Create three datasets with the same x values but different proportions
+        const data = [
+          {
+            id: 'australia',
+            name: 'Australia',
+            color: '#1468a8',
+            data: transformedData.map(item => ({
+              x: item.x,
+              y: item.y * 0.3, // 30% of total
+              category: item.category
+            }))
+          },
+          {
+            id: 'brazil',
+            name: 'Brazil',
+            color: '#34A853',
+            data: transformedData.map(item => ({
+              x: item.x,
+              y: item.y * 0.4, // 40% of total
+              category: item.category
+            }))
+          },
+          {
+            id: 'canada',
+            name: 'Canada',
+            color: '#EA4335',
+            data: transformedData.map(item => ({
+              x: item.x,
+              y: item.y * 0.3, // 30% of total
+              category: item.category
+            }))
+          }
+        ];
+        
+        // Create the bar chart
+        barChart = new BarChart({
+          container: '#bar-chart',
+          data: data,
+          options: {
+            title: 'GDP Comparison',
+            xField: 'category', // Use the formatted date as the category
+            yField: 'y',
+            xType: 'category', // Use category type for x-axis
+            yType: 'number',
+            xAxisName: 'Date',
+            yAxisName: 'Value (USD)',
+            barWidth: 0.7,
+            barSpacing: 0.2,
+            showValues: false,
+            valuePosition: 'top',
+            showZeroLine: true,
+            isLogarithmic: false,
+            dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
+            skipLabels: 3 // Only show every 3rd label for readability
+          }
+        });
+        
+        // Render the chart
+        barChart.render();
+        log('Bar chart rendered successfully');
+      } catch (error) {
+        log('Error initializing bar chart:', error);
+        handleError('bar-chart', error);
+      }
+    }
     
     // Tab functionality
     function setupTabs() {
@@ -759,12 +1024,36 @@
       });
     }
     
+    // Handle accordion toggling
+    function setupAccordions() {
+      const accordionHeaders = document.querySelectorAll('.accordion-header');
+      
+      accordionHeaders.forEach(header => {
+        header.addEventListener('click', function() {
+          const content = this.nextElementSibling;
+          const isActive = content.classList.contains('active');
+          
+          // Toggle active class
+          if (isActive) {
+            content.classList.remove('active');
+            this.querySelector('span').textContent = '+';
+          } else {
+            content.classList.add('active');
+            this.querySelector('span').textContent = '-';
+          }
+        });
+      });
+    }
+    
     // Wait for DOM to be fully loaded
     document.addEventListener('DOMContentLoaded', function() {
       log('DOM fully loaded');
       
       // Set up tab switching
       setupTabs();
+      
+      // Set up accordions
+      setupAccordions();
       
       // Initialize line chart by default (since it's the active tab)
       initLineChart();
