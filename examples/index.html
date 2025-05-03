@@ -308,10 +308,6 @@
               <option value="monotone" selected>Monotone</option>
             </select>
           </div>
-          <div class="control-group">
-            <label for="line-point-size">Point Size</label>
-            <input type="range" id="line-point-size" min="0" max="6" step="1" value="3">
-          </div>
         </div>
         
         <h3>Dataset Manager</h3>
@@ -440,10 +436,6 @@
               <option value="cardinal">Cardinal</option>
               <option value="monotone" selected>Monotone</option>
             </select>
-          </div>
-          <div class="control-group">
-            <label for="area-opacity">Area Opacity</label>
-            <input type="range" id="area-opacity" min="0.1" max="1" step="0.1" value="0.2">
           </div>
         </div>
         
@@ -735,45 +727,6 @@
       }).format(date);
     }
     
-    // Data generation functions
-    function generateTimeSeriesData(days = 30, startPrice = 150, volatility = 0.02) {
-      const data = [];
-      let price = startPrice;
-      const today = new Date();
-      
-      for (let i = 0; i < days; i++) {
-        const date = new Date();
-        date.setDate(today.getDate() - (days - i));
-        
-        // Random price movement
-        const change = (Math.random() - 0.5) * volatility * price;
-        price += change;
-        
-        data.push({
-          date: date,
-          price: Math.max(0.1, price)
-        });
-      }
-      
-      return data;
-    }
-    
-    function generateMultipleDatasets() {
-      const companies = [
-        { id: 'company-1', name: 'Company A', color: '#1468a8', startPrice: 100 },
-        { id: 'company-2', name: 'Company B', color: '#34A853', startPrice: 80 },
-        { id: 'company-3', name: 'Company C', color: '#FBBC05', startPrice: 120 }
-      ];
-      
-      return companies.map(company => ({
-        id: company.id,
-        name: company.name,
-        color: company.color,
-        width: 2,
-        data: generateTimeSeriesData(60, company.startPrice, 0.02)
-      }));
-    }
-    
     // Chart instances
     let lineChart = null;
     let areaChart = null;
@@ -786,32 +739,27 @@
     ];
     
     // Initialize Line Chart
-    function initLineChart() {
+    async function initLineChart() {
       log('Initializing Line Chart');
       
       try {
-        // Generate data if we don't have it yet
+        // Load the time series data
+        const timeSeriesData = await loadTimeSeriesData();
+        
+        // Format data for the line chart
+        const formattedData = timeSeriesData.map(item => ({
+          date: new Date(item.x),
+          price: item.y
+        }));
+        
+        // Create a single dataset
         const data = [
           {
-            id: 'australia',
-            name: 'Australia',
+            id: 'timeseries',
+            name: 'Time Series Data',
             color: '#1468a8', 
             width: 2,
-            data: generateTimeSeriesData(60, 100, 0.02)
-          },
-          {
-            id: 'brazil',
-            name: 'Brazil',
-            color: '#34A853',
-            width: 2,
-            data: generateTimeSeriesData(60, 80, 0.02)
-          },
-          {
-            id: 'canada',
-            name: 'Canada',
-            color: '#EA4335',
-            width: 2,
-            data: generateTimeSeriesData(60, 120, 0.02)
+            data: formattedData
           }
         ];
         
@@ -824,7 +772,7 @@
           container: '#line-chart',
           data: data,
           options: {
-            title: 'Economic Indicators Comparison',
+            title: 'Time Series Data',
             xField: 'date',
             yField: 'price',
             xType: 'time',
@@ -878,35 +826,44 @@
         const showZeroLine = e.target.classList.contains('active');
         lineChart.toggleZeroLine(showZeroLine);
       });
+      
+      // Toggle recession lines
+      document.getElementById('line-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showRecessionLines = e.target.classList.contains('active');
+        lineChart.toggleRecessionLines(showRecessionLines);
+      });
+      
+      // Toggle panel view
+      document.getElementById('line-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isPanelView = e.target.classList.contains('active');
+        lineChart.togglePanelView(isPanelView);
+      });
     }
     
     // Initialize Area Chart
-    function initAreaChart() {
+    async function initAreaChart() {
       log('Initializing Area Chart');
       
       try {
-        // Generate data if we don't have it yet
+        // Load the time series data
+        const timeSeriesData = await loadTimeSeriesData();
+        
+        // Format data for the area chart
+        const formattedData = timeSeriesData.map(item => ({
+          date: new Date(item.x),
+          price: item.y
+        }));
+        
+        // Create a single dataset
         const data = [
           {
-            id: 'australia',
-            name: 'Australia',
+            id: 'timeseries',
+            name: 'Time Series Data',
             color: '#1468a8', 
             width: 2,
-            data: generateTimeSeriesData(60, 100, 0.02)
-          },
-          {
-            id: 'brazil',
-            name: 'Brazil',
-            color: '#34A853',
-            width: 2,
-            data: generateTimeSeriesData(60, 80, 0.02)
-          },
-          {
-            id: 'canada',
-            name: 'Canada',
-            color: '#EA4335',
-            width: 2,
-            data: generateTimeSeriesData(60, 120, 0.02)
+            data: formattedData
           }
         ];
         
@@ -919,7 +876,7 @@
           container: '#area-chart',
           data: data,
           options: {
-            title: 'Economic Indicators Comparison',
+            title: 'Time Series Data',
             xField: 'date',
             yField: 'price',
             xType: 'time',
@@ -978,6 +935,20 @@
         const showZeroLine = e.target.classList.contains('active');
         areaChart.toggleZeroLine(showZeroLine);
       });
+      
+      // Toggle recession lines
+      document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showRecessionLines = e.target.classList.contains('active');
+        areaChart.toggleRecessionLines(showRecessionLines);
+      });
+      
+      // Toggle panel view
+      document.getElementById('area-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isPanelView = e.target.classList.contains('active');
+        areaChart.togglePanelView(isPanelView);
+      });
     }
     
     // Initialize Bar Chart with time series data
@@ -995,37 +966,13 @@
           category: formatDate(item.x) // Add formatted date
         }));
         
-        // Create three datasets with the same x values but different proportions
+        // Create a single dataset
         const data = [
           {
-            id: 'australia',
-            name: 'Australia',
+            id: 'timeseries',
+            name: 'Time Series Data',
             color: '#1468a8',
-            data: transformedData.map(item => ({
-              x: item.x,
-              y: item.y * 0.3, // 30% of total
-              category: item.category
-            }))
-          },
-          {
-            id: 'brazil',
-            name: 'Brazil',
-            color: '#34A853',
-            data: transformedData.map(item => ({
-              x: item.x,
-              y: item.y * 0.4, // 40% of total
-              category: item.category
-            }))
-          },
-          {
-            id: 'canada',
-            name: 'Canada',
-            color: '#EA4335',
-            data: transformedData.map(item => ({
-              x: item.x,
-              y: item.y * 0.3, // 30% of total
-              category: item.category
-            }))
+            data: transformedData
           }
         ];
         
@@ -1038,7 +985,7 @@
           container: '#bar-chart',
           data: data,
           options: {
-            title: 'GDP Comparison',
+            title: 'Time Series Data',
             xField: 'category', // Use the formatted date as the category
             yField: 'y',
             xType: 'category', // Use category type for x-axis
@@ -1094,6 +1041,20 @@
         e.target.classList.toggle('active');
         const showZeroLine = e.target.classList.contains('active');
         barChart.toggleZeroLine(showZeroLine);
+      });
+      
+      // Toggle recession lines
+      document.getElementById('bar-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showRecessionLines = e.target.classList.contains('active');
+        barChart.toggleRecessionLines(showRecessionLines);
+      });
+      
+      // Toggle panel view
+      document.getElementById('bar-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isPanelView = e.target.classList.contains('active');
+        barChart.togglePanelView(isPanelView);
       });
     }
     
