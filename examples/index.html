@@ -864,6 +864,20 @@
       document.getElementById('line-y-name').addEventListener('change', (e) => {
         lineChart.setYAxisName(e.target.value);
       });
+      
+      // Toggle logarithmic scale
+      document.getElementById('line-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isLogarithmic = e.target.classList.contains('active');
+        lineChart.toggleLogarithmic(isLogarithmic);
+      });
+      
+      // Toggle zero line
+      document.getElementById('line-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showZeroLine = e.target.classList.contains('active');
+        lineChart.toggleZeroLine(showZeroLine);
+      });
     }
     
     // Initialize Area Chart
@@ -949,6 +963,20 @@
       // Y axis name
       document.getElementById('area-y-name').addEventListener('change', (e) => {
         areaChart.setYAxisName(e.target.value);
+      });
+      
+      // Toggle logarithmic scale
+      document.getElementById('area-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isLogarithmic = e.target.classList.contains('active');
+        areaChart.toggleLogarithmic(isLogarithmic);
+      });
+      
+      // Toggle zero line
+      document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showZeroLine = e.target.classList.contains('active');
+        areaChart.toggleZeroLine(showZeroLine);
       });
     }
     
@@ -1052,6 +1080,20 @@
       // Y axis name
       document.getElementById('bar-y-name').addEventListener('change', (e) => {
         barChart.setYAxisName(e.target.value);
+      });
+      
+      // Toggle logarithmic scale
+      document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isLogarithmic = e.target.classList.contains('active');
+        barChart.toggleLogarithmic(isLogarithmic);
+      });
+      
+      // Toggle zero line
+      document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showZeroLine = e.target.classList.contains('active');
+        barChart.toggleZeroLine(showZeroLine);
       });
     }
     
