@@ -815,6 +815,10 @@
           }
         ];
         
+        // Get initial values from inputs
+        const xAxisName = document.getElementById('line-x-name').value;
+        const yAxisName = document.getElementById('line-y-name').value;
+        
         // Create the line chart
         lineChart = new LineChart({
           container: '#line-chart',
@@ -825,8 +829,8 @@
             yField: 'price',
             xType: 'time',
             yType: 'number',
-            xAxisName: 'Date',
-            yAxisName: 'Value (USD)',
+            xAxisName: xAxisName,
+            yAxisName: yAxisName,
             curve: 'monotone',
             showPoints: true,
             area: false,
@@ -838,10 +842,28 @@
         // Render the chart
         lineChart.render();
         log('Line chart rendered successfully');
+        
+        // Setup event listeners for controls
+        setupLineChartControls();
       } catch (error) {
         log('Error initializing line chart:', error);
         handleError('line-chart', error);
       }
+    }
+    
+    // Add event listeners for Line Chart Controls
+    function setupLineChartControls() {
+      if (!lineChart) return;
+      
+      // X axis name
+      document.getElementById('line-x-name').addEventListener('change', (e) => {
+        lineChart.setXAxisName(e.target.value);
+      });
+      
+      // Y axis name
+      document.getElementById('line-y-name').addEventListener('change', (e) => {
+        lineChart.setYAxisName(e.target.value);
+      });
     }
     
     // Initialize Area Chart
@@ -874,6 +896,10 @@
           }
         ];
         
+        // Get initial values from inputs
+        const xAxisName = document.getElementById('area-x-name').value;
+        const yAxisName = document.getElementById('area-y-name').value;
+        
         // Create the area chart
         areaChart = new AreaChart({
           container: '#area-chart',
@@ -884,8 +910,8 @@
             yField: 'price',
             xType: 'time',
             yType: 'number',
-            xAxisName: 'Date',
-            yAxisName: 'Value (USD)',
+            xAxisName: xAxisName,
+            yAxisName: yAxisName,
             curve: 'monotone',
             showPoints: false,
             area: true,
@@ -902,10 +928,28 @@
         // Render the chart
         areaChart.render();
         log('Area chart rendered successfully');
+        
+        // Setup event listeners for controls
+        setupAreaChartControls();
       } catch (error) {
         log('Error initializing area chart:', error);
         handleError('area-chart', error);
       }
+    }
+    
+    // Add event listeners for Area Chart Controls
+    function setupAreaChartControls() {
+      if (!areaChart) return;
+      
+      // X axis name
+      document.getElementById('area-x-name').addEventListener('change', (e) => {
+        areaChart.setXAxisName(e.target.value);
+      });
+      
+      // Y axis name
+      document.getElementById('area-y-name').addEventListener('change', (e) => {
+        areaChart.setYAxisName(e.target.value);
+      });
     }
     
     // Initialize Bar Chart with time series data
@@ -957,6 +1001,10 @@
           }
         ];
         
+        // Get initial values from inputs
+        const xAxisName = document.getElementById('bar-x-name').value;
+        const yAxisName = document.getElementById('bar-y-name').value;
+        
         // Create the bar chart
         barChart = new BarChart({
           container: '#bar-chart',
@@ -967,8 +1015,8 @@
             yField: 'y',
             xType: 'category', // Use category type for x-axis
             yType: 'number',
-            xAxisName: 'Date',
-            yAxisName: 'Value (USD)',
+            xAxisName: xAxisName,
+            yAxisName: yAxisName,
             barWidth: 0.7,
             barSpacing: 0.2,
             showValues: false,
@@ -983,10 +1031,28 @@
         // Render the chart
         barChart.render();
         log('Bar chart rendered successfully');
+        
+        // Setup event listeners for controls
+        setupBarChartControls();
       } catch (error) {
         log('Error initializing bar chart:', error);
         handleError('bar-chart', error);
       }
+    }
+    
+    // Add event listeners for Bar Chart Controls
+    function setupBarChartControls() {
+      if (!barChart) return;
+      
+      // X axis name
+      document.getElementById('bar-x-name').addEventListener('change', (e) => {
+        barChart.setXAxisName(e.target.value);
+      });
+      
+      // Y axis name
+      document.getElementById('bar-y-name').addEventListener('change', (e) => {
+        barChart.setYAxisName(e.target.value);
+      });
     }
     
     // Tab functionality
