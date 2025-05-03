@@ -27,7 +27,7 @@ export default class Chart {
       width: null,
       height: null,
       // Increase top margin to 50px and bottom margin to 70px
-      margins: { top: 50, right: 20, bottom: 70, left: 40 },
+      margins: { top: 50, right: 20, bottom: 70, left: 60 },
       title: '',
       xAxisName: '',
       yAxisName: '',
@@ -685,7 +685,7 @@ export default class Chart {
     
     // Calculate legend position - explicitly below title with increased spacing
     const titleHeight = 40; // Standard height for title across all charts
-    const legendY = titleHeight + 15; // Increased space between title and legend
+    const legendY = titleHeight + 5; // Increased space between title and legend
     
     // Create legend items
     const itemElements = [];
@@ -1343,6 +1343,299 @@ export default class Chart {
       img.src = svgUrl;
     });
   }
+
+  /**
+ * Initialize hover functionality
+ * @private
+ */
+initHoverFeatures() {
+  // Skip if no SVG or chart present
+  if (!this.state.svg || !this.state.chart) return;
+  
+  // Create crosshair component
+  this.state.components.crosshair = new Crosshair({
+    showX: true,
+    showY: false, // Only show vertical line
+    stroke: '#666',
+    strokeWidth: 1,
+    strokeDasharray: '4,4',
+    snapToData: true
+  });
+  
+  // Create tooltip component
+  this.state.components.tooltip = new Tooltip({
+    followCursor: true,
+    offset: { x: 15, y: 10 },
+    background: '#fff',
+    border: '#ccc',
+    borderRadius: 4,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    formatter: this.formatTooltip.bind(this)
+  });
+  
+  // Render components
+  this.state.components.crosshair.render(this.state.chart, 
+    this.state.dimensions.innerWidth, 
+    this.state.dimensions.innerHeight);
+  
+  this.state.components.tooltip.render(this.state.chart);
+  
+  // Hide by default
+  this.state.components.crosshair.hide();
+  this.state.components.tooltip.hide();
+  
+  // Create hover points for each dataset
+  this.createHoverPoints();
+  
+  // Bind mouse events
+  this.bindHoverEvents();
+}
+
+/**
+ * Create hover points for each dataset
+ * @private
+ */
+createHoverPoints() {
+  // Create a group for hover points
+  this.state.components.hoverPointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  this.state.components.hoverPointsGroup.setAttribute('class', 'visioncharts-hover-points');
+  this.state.components.hoverPointsGroup.style.display = 'none';
+  this.state.chart.appendChild(this.state.components.hoverPointsGroup);
+  
+  // Create hover points for each dataset
+  this.state.components.hoverPoints = this.state.datasets.map(dataset => {
+    const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    point.setAttribute('r', 4); // Slightly larger than normal points
+    point.setAttribute('fill', '#fff');
+    point.setAttribute('stroke', dataset.color);
+    point.setAttribute('stroke-width', 2);
+    point.setAttribute('class', `visioncharts-hover-point-${dataset.id}`);
+    point.style.display = 'none';
+    
+    this.state.components.hoverPointsGroup.appendChild(point);
+    
+    return {
+      element: point,
+      dataset: dataset
+    };
+  });
+}
+
+/**
+ * Bind hover events
+ * @private
+ */
+bindHoverEvents() {
+  // Only bind if chart is rendered
+  if (!this.state.chart) return;
+  
+  const chartRect = this.state.chart.getBoundingClientRect();
+  
+  // Mouse move handler
+  const mouseMoveHandler = (e) => {
+    // Get mouse position relative to chart
+    const rect = this.state.chart.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check if within chart bounds
+    if (x < 0 || x > this.state.dimensions.innerWidth || 
+        y < 0 || y > this.state.dimensions.innerHeight) {
+      this.hideHoverElements();
+      return;
+    }
+    
+    // Show crosshair
+    this.state.components.crosshair.update(x, 0);
+    this.state.components.crosshair.show();
+    
+    // Update hover points
+    this.updateHoverPoints(x);
+    
+    // Show tooltip with closest data
+    const closestData = this.findClosestData(x);
+    if (closestData) {
+      this.state.components.tooltip.show(closestData, x, y, {
+        width: this.state.dimensions.innerWidth,
+        height: this.state.dimensions.innerHeight
+      });
+    }
+  };
+  
+  // Mouse leave handler
+  const mouseLeaveHandler = () => {
+    this.hideHoverElements();
+  };
+  
+  // Add event listeners
+  this.state.chart.addEventListener('mousemove', mouseMoveHandler);
+  this.state.chart.addEventListener('mouseleave', mouseLeaveHandler);
+  
+  // Store handlers for cleanup
+  this.state.eventHandlers = this.state.eventHandlers || {};
+  this.state.eventHandlers.hover = {
+    move: mouseMoveHandler,
+    leave: mouseLeaveHandler
+  };
+}
+
+/**
+ * Hide hover elements
+ * @private
+ */
+hideHoverElements() {
+  if (this.state.components.crosshair) {
+    this.state.components.crosshair.hide();
+  }
+  
+  if (this.state.components.tooltip) {
+    this.state.components.tooltip.hide();
+  }
+  
+  if (this.state.components.hoverPointsGroup) {
+    this.state.components.hoverPointsGroup.style.display = 'none';
+  }
+}
+
+/**
+ * Update hover points
+ * @private
+ * @param {number} mouseX - Mouse X position
+ */
+updateHoverPoints(mouseX) {
+  // Skip if no hover points
+  if (!this.state.components.hoverPoints) return;
+  
+  // Show hover points group
+  if (this.state.components.hoverPointsGroup) {
+    this.state.components.hoverPointsGroup.style.display = 'block';
+  }
+  
+  // Convert mouse position to domain value
+  const xValue = this.state.scales.x.invert(mouseX);
+  
+  // Find closest data points for each dataset
+  this.state.components.hoverPoints.forEach(hoverPoint => {
+    const dataset = hoverPoint.dataset;
+    const { xField, yField } = this.options;
+    
+    // Find closest data point
+    let closestPoint = null;
+    let minDistance = Infinity;
+    
+    dataset.data.forEach(point => {
+      if (point[xField] === undefined || point[yField] === undefined) return;
+      
+      const xVal = point[xField] instanceof Date ? 
+                  point[xField].getTime() : point[xField];
+      const xPos = this.state.scales.x.scale(point[xField]);
+      
+      const distance = Math.abs(mouseX - xPos);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestPoint = point;
+      }
+    });
+    
+    // Update hover point position
+    if (closestPoint && minDistance < 50) { // Only show if reasonably close
+      const x = this.state.scales.x.scale(closestPoint[xField]);
+      const y = this.state.scales.y.scale(closestPoint[yField]);
+      
+      hoverPoint.element.setAttribute('cx', x);
+      hoverPoint.element.setAttribute('cy', y);
+      hoverPoint.element.style.display = 'block';
+      
+      // Store data for tooltip
+      hoverPoint.data = closestPoint;
+    } else {
+      // Hide if no close point
+      hoverPoint.element.style.display = 'none';
+      hoverPoint.data = null;
+    }
+  });
+}
+
+/**
+ * Find closest data to mouse position
+ * @private
+ * @param {number} mouseX - Mouse X position
+ * @returns {Object} Closest data points
+ */
+findClosestData(mouseX) {
+  // Skip if no hover points
+  if (!this.state.components.hoverPoints) return null;
+  
+  // Get visible hover points with data
+  const visiblePoints = this.state.components.hoverPoints
+    .filter(hp => hp.element.style.display !== 'none' && hp.data)
+    .map(hp => ({
+      dataset: hp.dataset,
+      data: hp.data
+    }));
+  
+  if (!visiblePoints.length) return null;
+  
+  // Find x value (date or number)
+  const xValue = visiblePoints[0].data[this.options.xField];
+  
+  // Format x value
+  let xText;
+  if (xValue instanceof Date) {
+    xText = xValue.toLocaleDateString();
+  } else {
+    xText = String(xValue);
+  }
+  
+  // Return data for tooltip
+  return {
+    x: xText,
+    points: visiblePoints
+  };
+}
+
+/**
+ * Format tooltip content
+ * @private
+ * @param {Object} data - Tooltip data
+ * @returns {string} Formatted tooltip content
+ */
+formatTooltip(data) {
+  if (!data || !data.points || !data.points.length) return '';
+  
+  const { yField } = this.options;
+  const lines = [];
+  
+  // Add header (X value)
+  lines.push(`<tspan font-weight="bold">${data.x}</tspan>`);
+  
+  // Add data points
+  data.points.forEach(point => {
+    const value = point.data[yField];
+    let formattedValue;
+    
+    // Format value based on type
+    if (this.options.yType === 'currency') {
+      formattedValue = '$' + value.toFixed(2);
+    } else if (this.options.yType === 'percent') {
+      formattedValue = (value * 100).toFixed(2) + '%';
+    } else {
+      formattedValue = value.toFixed(2);
+    }
+    
+    // Create line with color indicator
+    const line = `<tspan x="10" dy="18">
+      <tspan fill="${point.dataset.color}">●</tspan> 
+      <tspan font-weight="bold">${point.dataset.name}:</tspan> 
+      ${formattedValue}
+    </tspan>`;
+    
+    lines.push(line);
+  });
+  
+  return lines;
+}
   
   /**
    * Get chart configuration for saving
@@ -1393,25 +1686,43 @@ export default class Chart {
   }
 
   /**
-   * Destroy the chart and clean up
-   * @public
-   */
-  destroy() {
-    console.log('destroy called');
-    
-    // Remove event listeners
-    window.removeEventListener('resize', this.resizeHandler);
-    
-    // Remove SVG
-    if (this.state.svg && this.state.container) {
-      if (this.state.container.contains(this.state.svg)) {
-        this.state.container.removeChild(this.state.svg);
-      }
+ * Destroy the chart and clean up
+ * @public
+ */
+destroy() {
+  console.log('destroy called');
+  
+  // Remove event listeners
+  window.removeEventListener('resize', this.resizeHandler);
+  
+  // Remove hover event listeners
+  if (this.state.eventHandlers && this.state.eventHandlers.hover) {
+    if (this.state.chart) {
+      this.state.chart.removeEventListener('mousemove', this.state.eventHandlers.hover.move);
+      this.state.chart.removeEventListener('mouseleave', this.state.eventHandlers.hover.leave);
     }
-    
-    // Reset state
-    this.state.rendered = false;
-    this.state.svg = null;
-    this.state.chart = null;
   }
+  
+  // Destroy components
+  if (this.state.components.crosshair) {
+    this.state.components.crosshair.destroy();
+  }
+  
+  if (this.state.components.tooltip) {
+    this.state.components.tooltip.destroy();
+  }
+  
+  // Remove SVG
+  if (this.state.svg && this.state.container) {
+    if (this.state.container.contains(this.state.svg)) {
+      this.state.container.removeChild(this.state.svg);
+    }
+  }
+  
+  // Reset state
+  this.state.rendered = false;
+  this.state.svg = null;
+  this.state.chart = null;
+ }
 }
+

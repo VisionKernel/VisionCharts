@@ -1,3 +1,5 @@
+import Crosshair from '../components/Crosshair.js';
+import Tooltip from '../components/Tooltip.js';
 import LineChart from './LineChart.js';
 
 /**

@@ -1,4 +1,6 @@
 import Chart from '../core/Chart.js';
+import Crosshair from '../components/Crosshair.js';
+import Tooltip from '../components/Tooltip.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 
 /**
