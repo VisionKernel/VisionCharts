@@ -840,6 +840,17 @@
         const isPanelView = e.target.classList.contains('active');
         lineChart.togglePanelView(isPanelView);
       });
+      
+      // Curve type
+      document.getElementById('line-curve').addEventListener('change', (e) => {
+        if (!lineChart) return;
+        
+        // Update the curve option
+        lineChart.options.curve = e.target.value;
+        
+        // Update the chart
+        lineChart.update();
+      });
     }
     
     // Initialize Area Chart
@@ -948,6 +959,17 @@
         e.target.classList.toggle('active');
         const isPanelView = e.target.classList.contains('active');
         areaChart.togglePanelView(isPanelView);
+      });
+      
+      // Curve type
+      document.getElementById('area-curve').addEventListener('change', (e) => {
+        if (!areaChart) return;
+        
+        // Update the curve option
+        areaChart.options.curve = e.target.value;
+        
+        // Update the chart
+        areaChart.update();
       });
     }
     
