@@ -293,6 +293,7 @@
               <button id="line-toggle-zero" class="toggle-button">Toggle Zero Line</button>
               <button id="line-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="line-toggle-panel" class="toggle-button">Toggle Panel View</button>
+              <button id="line-toggle-legend" class="toggle-button active">Toggle Legend</button>
             </div>
           </div>
         </div>
@@ -312,42 +313,9 @@
         
         <h3>Dataset Manager</h3>
         <div class="dataset-manager" id="line-datasets">
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Dataset 1" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#1468a8">
-            </div>
-            <div class="control-group">
-              <label>Width</label>
-              <input type="range" min="1" max="5" value="2" step="0.5">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Dataset 2" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#34A853">
-            </div>
-            <div class="control-group">
-              <label>Width</label>
-              <input type="range" min="1" max="5" value="2" step="0.5">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <button>Add Dataset</button>
+          <!-- Dataset items will be added here dynamically -->
         </div>
+        <button id="line-add-dataset">Add Dataset</button>
         
         <div class="accordion">
           <div class="accordion-header">
@@ -374,7 +342,6 @@
                 <label for="line-study-dataset">Apply To</label>
                 <select id="line-study-dataset">
                   <option value="dataset-1">Dataset 1</option>
-                  <option value="dataset-2">Dataset 2</option>
                 </select>
               </div>
               <div class="control-group">
@@ -422,6 +389,7 @@
               <button id="area-toggle-zero" class="toggle-button">Toggle Zero Line</button>
               <button id="area-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="area-toggle-panel" class="toggle-button">Toggle Panel View</button>
+              <button id="area-toggle-legend" class="toggle-button active">Toggle Legend</button>
             </div>
           </div>
         </div>
@@ -441,42 +409,9 @@
         
         <h3>Dataset Manager</h3>
         <div class="dataset-manager" id="area-datasets">
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Dataset 1" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#1468a8">
-            </div>
-            <div class="control-group">
-              <label>Width</label>
-              <input type="range" min="1" max="5" value="2" step="0.5">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Dataset 2" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#34A853">
-            </div>
-            <div class="control-group">
-              <label>Width</label>
-              <input type="range" min="1" max="5" value="2" step="0.5">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <button>Add Dataset</button>
+          <!-- Dataset items will be added here dynamically -->
         </div>
+        <button id="area-add-dataset">Add Dataset</button>
         
         <div class="accordion">
           <div class="accordion-header">
@@ -503,7 +438,6 @@
                 <label for="area-study-dataset">Apply To</label>
                 <select id="area-study-dataset">
                   <option value="dataset-1">Dataset 1</option>
-                  <option value="dataset-2">Dataset 2</option>
                 </select>
               </div>
               <div class="control-group">
@@ -551,6 +485,7 @@
               <button id="bar-toggle-zero" class="toggle-button active">Toggle Zero Line</button>
               <button id="bar-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="bar-toggle-panel" class="toggle-button">Toggle Panel View</button>
+              <button id="bar-toggle-legend" class="toggle-button active">Toggle Legend</button>
             </div>
           </div>
         </div>
@@ -565,47 +500,9 @@
         
         <h3>Dataset Manager</h3>
         <div class="dataset-manager" id="bar-datasets">
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Australia" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#1468a8">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Brazil" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#34A853">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <div class="dataset-item">
-            <div class="control-group">
-              <label>Name</label>
-              <input type="text" value="Canada" placeholder="Dataset Name">
-            </div>
-            <div class="control-group">
-              <label>Color</label>
-              <input type="color" value="#EA4335">
-            </div>
-            <div class="dataset-actions">
-              <button class="btn-sm">Hide</button>
-            </div>
-          </div>
-          <button>Add Dataset</button>
+          <!-- Dataset items will be added here dynamically -->
         </div>
+        <button id="bar-add-dataset">Add Dataset</button>
         
         <div class="accordion">
           <div class="accordion-header">
@@ -631,9 +528,7 @@
               <div class="control-group">
                 <label for="bar-study-dataset">Apply To</label>
                 <select id="bar-study-dataset">
-                  <option value="dataset-1">Australia</option>
-                  <option value="dataset-2">Brazil</option>
-                  <option value="dataset-3">Canada</option>
+                  <option value="dataset-1">Dataset 1</option>
                 </select>
               </div>
               <div class="control-group">
@@ -738,6 +633,331 @@
       { start: new Date('2020-02-01'), end: new Date('2020-04-30') }
     ];
     
+    // Helper function to create a dataset item in the dataset manager
+    function createDatasetItem(container, dataset, index, chartType) {
+      // Create dataset item container
+      const item = document.createElement('div');
+      item.className = 'dataset-item';
+      item.dataset.id = dataset.id;
+      
+      // Create name input
+      const nameGroup = document.createElement('div');
+      nameGroup.className = 'control-group';
+      
+      const nameLabel = document.createElement('label');
+      nameLabel.textContent = 'Name';
+      
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = dataset.name;
+      nameInput.placeholder = 'Dataset Name';
+      
+      nameInput.addEventListener('change', (e) => {
+        // Update dataset name in the chart
+        if (chartType === 'line' && lineChart) {
+          const datasets = lineChart.config.data;
+          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            datasets[datasetIndex].name = e.target.value;
+            lineChart.update();
+          }
+        } else if (chartType === 'area' && areaChart) {
+          const datasets = areaChart.config.data;
+          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            datasets[datasetIndex].name = e.target.value;
+            areaChart.update();
+          }
+        } else if (chartType === 'bar' && barChart) {
+          const datasets = barChart.config.data;
+          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            datasets[datasetIndex].name = e.target.value;
+            barChart.update();
+          }
+        }
+      });
+      
+      nameGroup.appendChild(nameLabel);
+      nameGroup.appendChild(nameInput);
+      
+      // Create color input
+      const colorGroup = document.createElement('div');
+      colorGroup.className = 'control-group';
+      
+      const colorLabel = document.createElement('label');
+      colorLabel.textContent = 'Color';
+      
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.value = dataset.color || '#1468a8';
+      
+      colorInput.addEventListener('change', (e) => {
+        // Update dataset color in the chart
+        if (chartType === 'line' && lineChart) {
+          const datasets = lineChart.config.data;
+          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            datasets[datasetIndex].color = e.target.value;
+            lineChart.update();
+          }
+        } else if (chartType === 'area' && areaChart) {
+          const datasets = areaChart.config.data;
+          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            datasets[datasetIndex].color = e.target.value;
+            areaChart.update();
+          }
+        } else if (chartType === 'bar' && barChart) {
+          const datasets = barChart.config.data;
+          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            datasets[datasetIndex].color = e.target.value;
+            barChart.update();
+          }
+        }
+      });
+      
+      colorGroup.appendChild(colorLabel);
+      colorGroup.appendChild(colorInput);
+      
+      // Create width input for line/area charts
+      if (chartType === 'line' || chartType === 'area') {
+        const widthGroup = document.createElement('div');
+        widthGroup.className = 'control-group';
+        
+        const widthLabel = document.createElement('label');
+        widthLabel.textContent = 'Width';
+        
+        const widthInput = document.createElement('input');
+        widthInput.type = 'range';
+        widthInput.min = '1';
+        widthInput.max = '5';
+        widthInput.step = '0.5';
+        widthInput.value = dataset.width || '2';
+        
+        widthInput.addEventListener('change', (e) => {
+          // Update dataset width in the chart
+          if (chartType === 'line' && lineChart) {
+            const datasets = lineChart.config.data;
+            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+            if (datasetIndex >= 0) {
+              datasets[datasetIndex].width = parseFloat(e.target.value);
+              lineChart.update();
+            }
+          } else if (chartType === 'area' && areaChart) {
+            const datasets = areaChart.config.data;
+            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+            if (datasetIndex >= 0) {
+              datasets[datasetIndex].width = parseFloat(e.target.value);
+              areaChart.update();
+            }
+          }
+        });
+        
+        widthGroup.appendChild(widthLabel);
+        widthGroup.appendChild(widthInput);
+        
+        item.appendChild(widthGroup);
+      }
+      
+      // Create actions
+      const actionsGroup = document.createElement('div');
+      actionsGroup.className = 'dataset-actions';
+      
+      const hideButton = document.createElement('button');
+      hideButton.className = 'btn-sm';
+      hideButton.textContent = 'Hide';
+      hideButton.dataset.visible = 'true';
+      
+      hideButton.addEventListener('click', (e) => {
+        const isVisible = e.target.dataset.visible === 'true';
+        
+        // Toggle visibility
+        const newVisibility = !isVisible;
+        e.target.dataset.visible = newVisibility ? 'true' : 'false';
+        e.target.textContent = newVisibility ? 'Hide' : 'Show';
+        
+        if (chartType === 'line' && lineChart) {
+          // For line chart, we'll just keep the data but not render it
+          // This is a simplified approach - a real implementation would handle this better
+          const datasetIndex = lineChart.config.data.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            // Store original data and use empty data for hiding
+            if (newVisibility) {
+              // Show dataset again with original data
+              if (lineChart.config.data[datasetIndex]._originalData) {
+                lineChart.config.data[datasetIndex].data = lineChart.config.data[datasetIndex]._originalData;
+                delete lineChart.config.data[datasetIndex]._originalData;
+              }
+            } else {
+              // Hide dataset by storing original data and setting empty data
+              lineChart.config.data[datasetIndex]._originalData = lineChart.config.data[datasetIndex].data;
+              lineChart.config.data[datasetIndex].data = [];
+            }
+            lineChart.update();
+          }
+        } else if (chartType === 'area' && areaChart) {
+          // Similar approach for area chart
+          const datasetIndex = areaChart.config.data.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            if (newVisibility) {
+              if (areaChart.config.data[datasetIndex]._originalData) {
+                areaChart.config.data[datasetIndex].data = areaChart.config.data[datasetIndex]._originalData;
+                delete areaChart.config.data[datasetIndex]._originalData;
+              }
+            } else {
+              areaChart.config.data[datasetIndex]._originalData = areaChart.config.data[datasetIndex].data;
+              areaChart.config.data[datasetIndex].data = [];
+            }
+            areaChart.update();
+          }
+        } else if (chartType === 'bar' && barChart) {
+          // Similar approach for bar chart
+          const datasetIndex = barChart.config.data.findIndex(d => d.id === dataset.id);
+          if (datasetIndex >= 0) {
+            if (newVisibility) {
+              if (barChart.config.data[datasetIndex]._originalData) {
+                barChart.config.data[datasetIndex].data = barChart.config.data[datasetIndex]._originalData;
+                delete barChart.config.data[datasetIndex]._originalData;
+              }
+            } else {
+              barChart.config.data[datasetIndex]._originalData = barChart.config.data[datasetIndex].data;
+              barChart.config.data[datasetIndex].data = [];
+            }
+            barChart.update();
+          }
+        }
+      });
+      
+      // Create remove button for additional datasets (don't allow removing the first one)
+      if (index > 0) {
+        const removeButton = document.createElement('button');
+        removeButton.className = 'btn-sm';
+        removeButton.textContent = 'Remove';
+        removeButton.style.marginLeft = '5px';
+        
+        removeButton.addEventListener('click', () => {
+          // Remove the dataset from the chart
+          if (chartType === 'line' && lineChart) {
+            const datasets = lineChart.config.data;
+            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+            if (datasetIndex >= 0) {
+              datasets.splice(datasetIndex, 1);
+              lineChart.update();
+              // Also remove from UI
+              container.removeChild(item);
+            }
+          } else if (chartType === 'area' && areaChart) {
+            const datasets = areaChart.config.data;
+            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+            if (datasetIndex >= 0) {
+              datasets.splice(datasetIndex, 1);
+              areaChart.update();
+              // Also remove from UI
+              container.removeChild(item);
+            }
+          } else if (chartType === 'bar' && barChart) {
+            const datasets = barChart.config.data;
+            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+            if (datasetIndex >= 0) {
+              datasets.splice(datasetIndex, 1);
+              barChart.update();
+              // Also remove from UI
+              container.removeChild(item);
+            }
+          }
+        });
+        
+        actionsGroup.appendChild(removeButton);
+      }
+      
+      actionsGroup.appendChild(hideButton);
+      
+      // Put it all together
+      item.appendChild(nameGroup);
+      item.appendChild(colorGroup);
+      item.appendChild(actionsGroup);
+      
+      // Add to container
+      container.appendChild(item);
+    }
+    
+    // Function to update dataset manager UI based on chart data
+    function updateDatasetManager(chartType) {
+      // Get the target chart and container
+      let chart, container;
+      
+      if (chartType === 'line') {
+        chart = lineChart;
+        container = document.getElementById('line-datasets');
+      } else if (chartType === 'area') {
+        chart = areaChart;
+        container = document.getElementById('area-datasets');
+      } else if (chartType === 'bar') {
+        chart = barChart;
+        container = document.getElementById('bar-datasets');
+      }
+      
+      if (!chart || !container) return;
+      
+      // Clear existing items
+      container.innerHTML = '';
+      
+      // Add items for each dataset
+      chart.config.data.forEach((dataset, index) => {
+        createDatasetItem(container, dataset, index, chartType);
+      });
+      
+      // Update study dataset select option
+      const studyDatasetSelect = document.getElementById(`${chartType}-study-dataset`);
+      if (studyDatasetSelect) {
+        studyDatasetSelect.innerHTML = '';
+        chart.config.data.forEach(dataset => {
+          const option = document.createElement('option');
+          option.value = dataset.id;
+          option.textContent = dataset.name;
+          studyDatasetSelect.appendChild(option);
+        });
+      }
+    }
+    
+    // Function to generate a randomized dataset based on a source dataset
+    function createRandomizedDataset(sourceDataset, index) {
+      // Create a new array to avoid modifying original data
+      const newData = sourceDataset.data.map(point => {
+        // Clone the point to avoid modifying original
+        const newPoint = {...point};
+        
+        // Add random variation (±10% of original value)
+        const randomFactor = 0.9 + Math.random() * 0.2; // Between 0.9 and 1.1
+        newPoint.price = point.price * randomFactor;
+        
+        return newPoint;
+      });
+      
+      // Define colors for datasets
+      const colors = [
+        '#1468a8', // Blue - already used by first dataset
+        '#34A853', // Green
+        '#FBBC05', // Yellow
+        '#EA4335', // Red
+        '#9C27B0', // Purple
+        '#00ACC1', // Cyan
+        '#FF9800', // Orange
+        '#607D8B'  // Blue Grey
+      ];
+      
+      // Return the new dataset
+      return {
+        id: `dataset-${index + 1}`,
+        name: `Dataset ${index + 1}`,
+        color: colors[index % colors.length],
+        width: 2,
+        data: newData
+      };
+    }
+    
     // Initialize Line Chart
     async function initLineChart() {
       log('Initializing Line Chart');
@@ -755,7 +975,7 @@
         // Create a single dataset
         const data = [
           {
-            id: 'timeseries',
+            id: 'dataset-1',
             name: 'Time Series Data',
             color: '#1468a8', 
             width: 2,
@@ -783,13 +1003,25 @@
             showPoints: true,
             area: false,
             showZeroLine: false,
+            showLegend: true, // Enable legend by default
             recessions: recessions
           }
         });
         
         // Render the chart
         lineChart.render();
+        const lineItems = lineChart.config.data.map(dataset => ({
+          label: dataset.name,
+          color: dataset.color,
+          type: 'line',
+          id: dataset.id,
+          visible: true
+        }));
+        const lineLegend = lineChart.renderLegend();
         log('Line chart rendered successfully');
+        
+        // Update dataset manager UI
+        updateDatasetManager('line');
         
         // Setup event listeners for controls
         setupLineChartControls();
@@ -841,6 +1073,24 @@
         lineChart.togglePanelView(isPanelView);
       });
       
+      // Toggle legend
+      document.getElementById('line-toggle-legend').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showLegend = e.target.classList.contains('active');
+        
+        // Find and toggle the legend element directly
+        if (lineChart && lineChart.state.svg) {
+          const legend = lineChart.state.svg.querySelector('.visioncharts-legend');
+          if (legend) {
+            // If legend exists, toggle its visibility
+            legend.style.display = showLegend ? 'block' : 'none';
+          } else if (showLegend) {
+            // If legend doesn't exist and we want to show it, re-render
+            lineChart.renderLegend();
+          }
+        }
+      });
+      
       // Curve type
       document.getElementById('line-curve').addEventListener('change', (e) => {
         if (!lineChart) return;
@@ -850,6 +1100,24 @@
         
         // Update the chart
         lineChart.update();
+      });
+      
+      // Add dataset button
+      document.getElementById('line-add-dataset').addEventListener('click', () => {
+        if (!lineChart || !lineChart.config.data.length) return;
+        
+        // Get the source dataset (the first one)
+        const sourceDataset = lineChart.config.data[0];
+        
+        // Create a new randomized dataset
+        const newDataset = createRandomizedDataset(sourceDataset, lineChart.config.data.length);
+        
+        // Add to chart
+        lineChart.config.data.push(newDataset);
+        lineChart.update();
+        
+        // Update UI
+        updateDatasetManager('line');
       });
     }
     
@@ -870,7 +1138,7 @@
         // Create a single dataset
         const data = [
           {
-            id: 'timeseries',
+            id: 'dataset-1',
             name: 'Time Series Data',
             color: '#1468a8', 
             width: 2,
@@ -903,13 +1171,27 @@
             recessions: recessions,
             showZeroLine: false,
             showRecessionLines: false,
+            showLegend: true, // Enable legend by default
             isLogarithmic: false
           }
         });
         
         // Render the chart
         areaChart.render();
+        const areaItems = areaChart.config.data.map(dataset => ({
+          label: dataset.name,
+          color: dataset.color,
+          type: 'area',
+          id: dataset.id,
+          visible: true
+        }));
+
+        // Manually render legend
+        const areaLegend = areaChart.renderLegend();
         log('Area chart rendered successfully');
+        
+        // Update dataset manager UI
+        updateDatasetManager('area');
         
         // Setup event listeners for controls
         setupAreaChartControls();
@@ -961,6 +1243,24 @@
         areaChart.togglePanelView(isPanelView);
       });
       
+      // Toggle legend
+      document.getElementById('area-toggle-legend').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showLegend = e.target.classList.contains('active');
+        
+        // Find and toggle the legend element directly
+        if (areaChart && areaChart.state.svg) {
+          const legend = areaChart.state.svg.querySelector('.visioncharts-legend');
+          if (legend) {
+            // If legend exists, toggle its visibility
+            legend.style.display = showLegend ? 'block' : 'none';
+          } else if (showLegend) {
+            // If legend doesn't exist and we want to show it, re-render
+            areaChart.renderLegend();
+          }
+        }
+      });
+      
       // Curve type
       document.getElementById('area-curve').addEventListener('change', (e) => {
         if (!areaChart) return;
@@ -970,6 +1270,24 @@
         
         // Update the chart
         areaChart.update();
+      });
+      
+      // Add dataset button
+      document.getElementById('area-add-dataset').addEventListener('click', () => {
+        if (!areaChart || !areaChart.config.data.length) return;
+        
+        // Get the source dataset (the first one)
+        const sourceDataset = areaChart.config.data[0];
+        
+        // Create a new randomized dataset
+        const newDataset = createRandomizedDataset(sourceDataset, areaChart.config.data.length);
+        
+        // Add to chart
+        areaChart.config.data.push(newDataset);
+        areaChart.update();
+        
+        // Update UI
+        updateDatasetManager('area');
       });
     }
     
@@ -991,7 +1309,7 @@
         // Create a single dataset
         const data = [
           {
-            id: 'timeseries',
+            id: 'dataset-1',
             name: 'Time Series Data',
             color: '#1468a8',
             data: transformedData
@@ -1019,6 +1337,7 @@
             showValues: false,
             valuePosition: 'top',
             showZeroLine: true,
+            showLegend: true, // Enable legend by default
             isLogarithmic: false,
             dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
             skipLabels: 3 // Only show every 3rd label for readability
@@ -1027,7 +1346,20 @@
         
         // Render the chart
         barChart.render();
+        const barItems = barChart.config.data.map(dataset => ({
+          label: dataset.name,
+          color: dataset.color,
+          type: 'bar',
+          id: dataset.id,
+          visible: true
+        }));
+
+        // Manually render legend
+        const barLegend = barChart.renderLegend();
         log('Bar chart rendered successfully');
+        
+        // Update dataset manager UI
+        updateDatasetManager('bar');
         
         // Setup event listeners for controls
         setupBarChartControls();
@@ -1077,6 +1409,42 @@
         e.target.classList.toggle('active');
         const isPanelView = e.target.classList.contains('active');
         barChart.togglePanelView(isPanelView);
+      });
+      
+      // Toggle legend
+      document.getElementById('bar-toggle-legend').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showLegend = e.target.classList.contains('active');
+        
+        // Find and toggle the legend element directly
+        if (barChart && barChart.state.svg) {
+          const legend = barChart.state.svg.querySelector('.visioncharts-legend');
+          if (legend) {
+            // If legend exists, toggle its visibility
+            legend.style.display = showLegend ? 'block' : 'none';
+          } else if (showLegend) {
+            // If legend doesn't exist and we want to show it, re-render
+            barChart.renderLegend();
+          }
+        }
+      });
+      
+      // Add dataset button
+      document.getElementById('bar-add-dataset').addEventListener('click', () => {
+        if (!barChart || !barChart.config.data.length) return;
+        
+        // Get the source dataset (the first one)
+        const sourceDataset = barChart.config.data[0];
+        
+        // Create a new randomized dataset
+        const newDataset = createRandomizedDataset(sourceDataset, barChart.config.data.length);
+        
+        // Add to chart
+        barChart.config.data.push(newDataset);
+        barChart.update();
+        
+        // Update UI
+        updateDatasetManager('bar');
       });
     }
     
