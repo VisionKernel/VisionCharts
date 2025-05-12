@@ -768,135 +768,130 @@ export default class LineChart extends Chart {
  * Render panels for multi-panel view
  * @private
  */
-renderPanels() {
-  console.log('LineChart.renderPanels called');
-  
-  if (!this.state.chart) {
-    console.error('Cannot render panels: chart element is null');
-    return;
-  }
-  
-  try {
-    const { innerWidth, innerHeight } = this.state.dimensions;
+  renderPanels() {
+    console.log('LineChart.renderPanels called');
     
-    // Determine number of panels (one per dataset)
-    const panelCount = this.state.datasets.length;
-    if (panelCount === 0) {
-      console.log('No datasets for panels');
+    if (!this.state.chart) {
+      console.error('Cannot render panels: chart element is null');
       return;
     }
     
-    console.log('Rendering', panelCount, 'panels');
-    
-    // Calculate panel dimensions - add top margin for first panel
-    const panelHeight = innerHeight / panelCount;
-    const panelMargin = index === 0 ? 30 : 20;  // Extra margin for first panel
-    const effectivePanelHeight = panelHeight - panelMargin;
-
-    // Create panel group with proper positioning
-    const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-    // Add top margin of 10px for the first panel
-    const yPos = index * panelHeight + (index === 0 ? 10 : 0);
-    panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
-    
-    // Create panel for each dataset
-    this.state.datasets.forEach((dataset, index) => {
-      // Create panel group
-      const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-      panelGroup.setAttribute('transform', `translate(0, ${index * panelHeight})`);
+    try {
+      const { innerWidth, innerHeight } = this.state.dimensions;
       
-      // Create panel background
-      const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      panelBg.setAttribute('x', 0);
-      panelBg.setAttribute('y', 0);
-      panelBg.setAttribute('width', innerWidth);
-      panelBg.setAttribute('height', effectivePanelHeight);
-      panelBg.setAttribute('fill', '#f9f9f9');
-      panelBg.setAttribute('stroke', '#eee');
-      panelGroup.appendChild(panelBg);
-      
-      // Create local scales for this panel
-      // Important: Create new scale instances instead of shallow copying
-      let xScale;
-      const { xField, xType, isLogarithmic } = this.options;
-
-      // Extract X values from this dataset only
-      const xValues = dataset.data.map(d => d[xField]);
-
-      // Calculate domain based on dataset values
-      let xMin, xMax;
-      if (xType === 'time') {
-        // For time type, handle date objects
-        const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
-        xMin = new Date(Math.min(...dates.map(d => d.getTime())));
-        xMax = new Date(Math.max(...dates.map(d => d.getTime())));
-      } else {
-        xMin = Math.min(...xValues);
-        xMax = Math.max(...xValues);
-      }
-
-      // Create appropriate scale type
-      if (xType === 'time') {
-        xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
-      } else if (isLogarithmic) {
-        xScale = new LogScale([Math.max(0.01, xMin), xMax], [0, innerWidth]);
-      } else {
-        xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
+      // Determine number of panels (one per dataset)
+      const panelCount = this.state.datasets.length;
+      if (panelCount === 0) {
+        console.log('No datasets for panels');
+        return;
       }
       
-      // Create Y scale for this panel
-      let yScale;
-      if (this.options.isLogarithmic) {
-        yScale = new LogScale([0.1, 1], [0, 1]);
-      } else {
-        yScale = new LinearScale([0, 1], [0, 1]);
-      }
+      console.log('Rendering', panelCount, 'panels');
       
-      // Update Y scale range to panel height
-      yScale.setRange([effectivePanelHeight, 0]);
-      
-      // Calculate Y domain for this dataset
-      const yValues = dataset.data.map(d => d[this.options.yField]);
-      if (yValues.length) {
-        const yMin = Math.min(...yValues);
-        const yMax = Math.max(...yValues);
-        const yPadding = (yMax - yMin) * 0.1;
+      // Create panel for each dataset - FIXED: removed code outside of loop that used 'index'
+      this.state.datasets.forEach((dataset, index) => {
+        // Calculate panel dimensions - FIXED: moved inside the loop where 'index' is defined
+        const panelHeight = innerHeight / panelCount;
+        const panelMargin = index === 0 ? 30 : 20;  // Extra margin for first panel
+        const effectivePanelHeight = panelHeight - panelMargin;
         
-        // Set domain based on scale type
-        if (this.options.isLogarithmic) {
-          yScale.setDomain([Math.max(yMin, 0.01), yMax + yPadding]);
+        // Create panel group - FIXED: now inside the loop where 'index' is defined
+        const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
+        // Add top margin of 10px for the first panel
+        const yPos = index * panelHeight + (index === 0 ? 10 : 0);
+        panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
+        
+        // Create panel background
+        const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        panelBg.setAttribute('x', 0);
+        panelBg.setAttribute('y', 0);
+        panelBg.setAttribute('width', innerWidth);
+        panelBg.setAttribute('height', effectivePanelHeight);
+        panelBg.setAttribute('fill', '#f9f9f9');
+        panelBg.setAttribute('stroke', '#eee');
+        panelGroup.appendChild(panelBg);
+        
+        // Create local scales for this panel
+        // Important: Create new scale instances instead of shallow copying
+        let xScale;
+        const { xField, xType, isLogarithmic } = this.options;
+  
+        // Extract X values from this dataset only
+        const xValues = dataset.data.map(d => d[xField]);
+  
+        // Calculate domain based on dataset values
+        let xMin, xMax;
+        if (xType === 'time') {
+          // For time type, handle date objects
+          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+          xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+          xMax = new Date(Math.max(...dates.map(d => d.getTime())));
         } else {
-          yScale.setDomain([yMin - yPadding, yMax + yPadding]);
+          xMin = Math.min(...xValues);
+          xMax = Math.max(...xValues);
         }
-      }
+  
+        // Create appropriate scale type
+        if (xType === 'time') {
+          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
+        } else if (isLogarithmic) {
+          xScale = new LogScale([Math.max(0.01, xMin), xMax], [0, innerWidth]);
+        } else {
+          xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
+        }
+        
+        // Create Y scale for this panel
+        let yScale;
+        if (this.options.isLogarithmic) {
+          yScale = new LogScale([0.1, 1], [0, 1]);
+        } else {
+          yScale = new LinearScale([0, 1], [0, 1]);
+        }
+        
+        // Update Y scale range to panel height
+        yScale.setRange([effectivePanelHeight, 0]);
+        
+        // Calculate Y domain for this dataset
+        const yValues = dataset.data.map(d => d[this.options.yField]);
+        if (yValues.length) {
+          const yMin = Math.min(...yValues);
+          const yMax = Math.max(...yValues);
+          const yPadding = (yMax - yMin) * 0.1;
+          
+          // Set domain based on scale type
+          if (this.options.isLogarithmic) {
+            yScale.setDomain([Math.max(yMin, 0.01), yMax + yPadding]);
+          } else {
+            yScale.setDomain([yMin - yPadding, yMax + yPadding]);
+          }
+        }
+        
+        // Render panel axes
+        this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
+        
+        // Render panel data
+        this.renderPanelData(panelGroup, dataset, xScale, yScale);
+        
+        // Render panel label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = dataset.name;
+        label.setAttribute('x', 5);
+        label.setAttribute('y', 15);
+        label.setAttribute('font-size', '12px');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', dataset.color);
+        panelGroup.appendChild(label);
+        
+        // Add panel to chart
+        this.state.chart.appendChild(panelGroup);
+      });
       
-      // Render panel axes
-      this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
-      
-      // Render panel data
-      this.renderPanelData(panelGroup, dataset, xScale, yScale);
-      
-      // Render panel label
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = dataset.name;
-      label.setAttribute('x', 5);
-      label.setAttribute('y', 15);
-      label.setAttribute('font-size', '12px');
-      label.setAttribute('font-weight', 'bold');
-      label.setAttribute('fill', dataset.color);
-      panelGroup.appendChild(label);
-      
-      // Add panel to chart
-      this.state.chart.appendChild(panelGroup);
-    });
-    
-    console.log('Panels rendered successfully');
-  } catch (error) {
-    console.error('Error rendering panels:', error);
+      console.log('Panels rendered successfully');
+    } catch (error) {
+      console.error('Error rendering panels:', error);
+    }
   }
-}
   
   /**
  * Render axes for a panel
