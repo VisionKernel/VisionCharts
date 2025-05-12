@@ -1,6 +1,7 @@
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import LineChart from './LineChart.js';
+import { LinearScale, LogScale } from '../core/Scale.js';
 
 /**
  * AreaChart class for rendering area charts
@@ -439,6 +440,275 @@ export default class AreaChart extends LineChart {
     // Set ranges based on dimensions
     this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
     this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+  }
+  
+  /**
+   * Render panels for multi-panel view
+   * @private
+   */
+  renderPanels() {
+    console.log('AreaChart.renderPanels called');
+    
+    if (!this.state.chart) {
+      console.error('Cannot render panels: chart element is null');
+      return;
+    }
+    
+    try {
+      const { innerWidth, innerHeight } = this.state.dimensions;
+      
+      // Determine number of panels (one per dataset)
+      const panelCount = this.state.datasets.length;
+      if (panelCount === 0) {
+        console.log('No datasets for panels');
+        return;
+      }
+      
+      console.log('Rendering', panelCount, 'panels');
+      
+      // Calculate panel dimensions
+      const panelHeight = innerHeight / panelCount;
+      const panelMargin = 20;
+      const effectivePanelHeight = panelHeight - panelMargin;
+      
+      // Create panel for each dataset
+      this.state.datasets.forEach((dataset, index) => {
+        // Create panel group
+        const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
+        panelGroup.setAttribute('transform', `translate(0, ${index * panelHeight})`);
+        
+        // Create panel background
+        const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        panelBg.setAttribute('x', 0);
+        panelBg.setAttribute('y', 0);
+        panelBg.setAttribute('width', innerWidth);
+        panelBg.setAttribute('height', effectivePanelHeight);
+        panelBg.setAttribute('fill', '#f9f9f9');
+        panelBg.setAttribute('stroke', '#eee');
+        panelGroup.appendChild(panelBg);
+        
+        // Create local scales for this panel
+        const xScale = { ...this.state.scales.x };
+        const yScale = this.options.isLogarithmic ? 
+          new LogScale([0.1, 1], [0, 1]) :
+          new LinearScale([0, 1], [0, 1]);
+        
+        // Update Y scale range to panel height
+        yScale.setRange([effectivePanelHeight, 0]);
+        
+        // Calculate Y domain for this dataset
+        const yValues = dataset.data.map(d => d[this.options.yField]);
+        if (yValues.length) {
+          const yMin = Math.min(...yValues);
+          const yMax = Math.max(...yValues);
+          const yPadding = (yMax - yMin) * 0.1;
+          
+          // Set domain based on scale type
+          if (this.options.isLogarithmic) {
+            yScale.setDomain([Math.max(yMin, 0.01), yMax + yPadding]);
+          } else {
+            yScale.setDomain([yMin - yPadding, yMax + yPadding]);
+          }
+        }
+        
+        // Render panel axes
+        this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
+        
+        // Render panel data with area
+        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight);
+        
+        // Render panel label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = dataset.name;
+        label.setAttribute('x', 5);
+        label.setAttribute('y', 15);
+        label.setAttribute('font-size', '12px');
+        label.setAttribute('font-weight', 'bold');
+        label.setAttribute('fill', dataset.color);
+        panelGroup.appendChild(label);
+        
+        // Add panel to chart
+        this.state.chart.appendChild(panelGroup);
+      });
+      
+      console.log('Panels rendered successfully');
+    } catch (error) {
+      console.error('Error rendering panels:', error);
+    }
+  }
+  
+  /**
+   * Render axes for a panel
+   * @private
+   */
+  renderPanelAxes(panel, xScale, yScale, width, height) {
+    // X-axis (simplified, only draw line)
+    const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    xAxis.setAttribute('x1', 0);
+    xAxis.setAttribute('y1', height);
+    xAxis.setAttribute('x2', width);
+    xAxis.setAttribute('y2', height);
+    xAxis.setAttribute('stroke', '#ccc');
+    xAxis.setAttribute('stroke-width', 1);
+    panel.appendChild(xAxis);
+    
+    // Y-axis (simplified, only show a few ticks)
+    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    yAxis.setAttribute('x1', 0);
+    yAxis.setAttribute('y1', 0);
+    yAxis.setAttribute('x2', 0);
+    yAxis.setAttribute('y2', height);
+    yAxis.setAttribute('stroke', '#ccc');
+    yAxis.setAttribute('stroke-width', 1);
+    panel.appendChild(yAxis);
+    
+    // Y-axis ticks (only show min and max)
+    const domain = yScale.domain;
+    const tickValues = [domain[0], (domain[0] + domain[1]) / 2, domain[1]];
+    
+    tickValues.forEach(value => {
+      const y = yScale.scale(value);
+      
+      // Skip if out of range
+      if (y < 0 || y > height) return;
+      
+      // Format label text
+      let labelText;
+      if (this.options.yType === 'percent') {
+        labelText = (value * 100).toFixed(0) + '%';
+      } else if (this.options.yType === 'currency') {
+        labelText = '$' + value.toFixed(2);
+      } else {
+        labelText = value.toFixed(this.options.isLogarithmic ? 0 : 1);
+      }
+      
+      // Draw label
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = labelText;
+      label.setAttribute('x', 5);
+      label.setAttribute('y', y);
+      label.setAttribute('font-size', '10px');
+      label.setAttribute('dominant-baseline', 'middle');
+      label.setAttribute('fill', '#666');
+      panel.appendChild(label);
+    });
+  }
+  
+  /**
+   * Render data for a panel with area support
+   * @private
+   */
+  renderPanelData(panel, dataset, xScale, yScale, panelHeight) {
+    const { xField, yField, curve, showPoints, pointRadius, area, gradient, areaOpacity } = this.options;
+    
+    if (!dataset.data || !dataset.data.length) return;
+    
+    // Map data points to coordinates using panel-specific scales
+    const points = dataset.data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
+    
+    // Render area if enabled
+    if (area) {
+      // Generate area path
+      const baselineY = panelHeight;
+      let areaPathD;
+      
+      switch (curve) {
+        case 'step':
+          areaPathD = this.generateStepPath(points);
+          break;
+        case 'cardinal':
+          areaPathD = this.generateCardinalPath(points);
+          break;
+        case 'monotone':
+          areaPathD = this.generateMonotonePath(points);
+          break;
+        case 'linear':
+        default:
+          areaPathD = this.generateLinearPath(points);
+          break;
+      }
+      
+      if (areaPathD) {
+        // Complete area path
+        const [firstPoint] = points;
+        const [firstX] = firstPoint;
+        const [lastPoint] = [...points].reverse();
+        const [lastX] = lastPoint;
+        
+        const areaPath = `${areaPathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
+        
+        const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        areaElement.setAttribute('d', areaPath);
+        
+        // Apply fill (either gradient or color)
+        if (gradient) {
+          const gradientId = `area-gradient-panel-${dataset.id}`;
+          areaElement.setAttribute('fill', `url(#${gradientId})`);
+        } else {
+          areaElement.setAttribute('fill', dataset.color);
+          areaElement.setAttribute('fill-opacity', areaOpacity);
+        }
+        
+        areaElement.setAttribute('stroke', 'none');
+        areaElement.setAttribute('class', 'visioncharts-panel-area');
+        
+        panel.appendChild(areaElement);
+      }
+    }
+    
+    // Generate line path based on curve type
+    let pathD;
+    switch (curve) {
+      case 'step':
+        pathD = this.generateStepPath(points);
+        break;
+      case 'cardinal':
+        pathD = this.generateCardinalPath(points);
+        break;
+      case 'monotone':
+        pathD = this.generateMonotonePath(points);
+        break;
+      case 'linear':
+      default:
+        pathD = this.generateLinearPath(points);
+        break;
+    }
+    
+    // Render line
+    const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    lineElement.setAttribute('d', pathD);
+    lineElement.setAttribute('stroke', dataset.color);
+    lineElement.setAttribute('stroke-width', dataset.width);
+    lineElement.setAttribute('fill', 'none');
+    lineElement.setAttribute('class', 'visioncharts-panel-line');
+    panel.appendChild(lineElement);
+    
+    // Render points if enabled
+    if (showPoints) {
+      dataset.data.forEach(d => {
+        if (d[xField] === undefined || d[yField] === undefined) return;
+        
+        const x = xScale.scale(d[xField]);
+        const y = yScale.scale(d[yField]);
+        
+        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        point.setAttribute('cx', x);
+        point.setAttribute('cy', y);
+        point.setAttribute('r', pointRadius);
+        point.setAttribute('fill', '#fff');
+        point.setAttribute('stroke', dataset.color);
+        point.setAttribute('stroke-width', dataset.width / 2);
+        point.setAttribute('class', 'visioncharts-panel-point');
+        
+        panel.appendChild(point);
+      });
+    }
   }
   
   /**

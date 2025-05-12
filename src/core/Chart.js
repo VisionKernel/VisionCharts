@@ -1180,26 +1180,43 @@ export default class Chart {
   }
   
   /**
-   * Add a dataset
-   * @public
-   * @param {Object} dataset - Dataset configuration
-   * @returns {Chart} This chart instance
-   */
-  addDataset(dataset) {
-    console.log('addDataset called');
-    
-    // Get current datasets
-    const datasets = Array.isArray(this.config.data) ? this.config.data : [];
-    
-    // Add new dataset
-    datasets.push(dataset);
-    
-    // Update config
-    this.config.data = datasets;
-    
-    // Update chart
-    return this.update();
-  }
+     * Add a dataset
+     * @public
+     * @param {Object} dataset - Dataset configuration
+     * @returns {Chart} This chart instance
+     */
+    addDataset(dataset) {
+      console.log('addDataset called');
+      
+      // Get current datasets
+      const datasets = Array.isArray(this.config.data) ? this.config.data : [];
+      
+      // Add new dataset
+      datasets.push(dataset);
+      
+      // Update config
+      this.config.data = datasets;
+      
+      // If in panel view, clear chart and re-render
+      if (this.options.isPanelView && this.state.rendered) {
+        // First update processed datasets
+        this.processDatasets();
+        this.updateScales();
+        
+        // Clear existing chart content
+        if (this.state.chart) {
+          this.state.chart.innerHTML = '';
+        }
+        
+        // Re-render panels
+        this.renderPanels();
+        
+        return this;
+      }
+      
+      // Otherwise, normal update
+      return this.update();
+    }
   
   /**
    * Remove a dataset
