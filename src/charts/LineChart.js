@@ -799,7 +799,7 @@ export default class LineChart extends Chart {
         const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
         // Add top margin of 10px for the first panel
-        const yPos = index * panelHeight + (index === 0 ? 10 : 0);
+        const yPos = index * panelHeight + (index === 0 ? 20 : 0);
         panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
         
         // Create panel background

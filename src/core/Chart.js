@@ -483,11 +483,11 @@ export default class Chart {
   }
 
   /**
-   * Render the chart
+   * Modified render method to enforce strict panel mode
    * @public
    */
   render() {
-    console.log('render called');
+    console.log('render called with isPanelView =', this.options.isPanelView);
     
     // Clear the container
     if (!this.state.container) {
@@ -507,11 +507,13 @@ export default class Chart {
     
     console.log('About to render chart content');
     
-    // Render panels if in panel view mode
+    // Strict panel mode enforcement
     if (this.options.isPanelView) {
+      console.log('STRICTLY rendering only panel content');
+      // Render ONLY panels - no other chart components
       this.renderPanels();
     } else {
-      // Render components in single view mode
+      // Standard view mode
       this.renderAxes();
       this.renderData();
       
@@ -529,6 +531,7 @@ export default class Chart {
     // Common components for both modes
     this.renderLegend();
     this.renderTitle();
+    this.renderAxisNames();
     
     // Update state
     this.state.rendered = true;
@@ -880,7 +883,7 @@ export default class Chart {
    * @public
    */
   update() {
-    console.log('update called');
+    console.log('update called with isPanelView =', this.options.isPanelView);
     
     if (!this.state.rendered) {
       console.log('Chart not rendered yet, calling render instead');
@@ -898,7 +901,29 @@ export default class Chart {
     // Update scales
     this.updateScales();
     
-    // Update components - these operations are now safe as the chart has been rendered
+    // Handle panel view mode specially
+    if (this.options.isPanelView) {
+      // Clear existing chart content - important for panel mode
+      if (this.state.chart) {
+        this.state.chart.innerHTML = '';
+      }
+      
+      // Only render panels in panel mode - no regular chart elements
+      this.renderPanels();
+      
+      // Update common elements
+      // We already have the legend and title from the initial render,
+      // but we'll update them in case dataset names changed
+      const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
+      if (oldLegend) {
+        oldLegend.parentNode.removeChild(oldLegend);
+      }
+      this.renderLegend();
+      
+      return this;
+    }
+    
+    // Standard view mode updates
     this.updateAxes();
     this.updateData();
     
@@ -1043,16 +1068,26 @@ export default class Chart {
   }
   
   /**
-   * Toggle panel view
+   * Panel toggle that enforces strict panel mode
    * @public
    * @param {boolean} isPanelView - Whether to use panel view
-   * @returns {Chart} This chart instance
    */
   togglePanelView(isPanelView) {
-    console.log('togglePanelView called:', isPanelView);
+    console.log('togglePanelView called with value:', isPanelView);
     
-    this.options.isPanelView = isPanelView;
-    return this.render(); // Full re-render needed for panel view change
+    // Update option
+    this.options.isPanelView = Boolean(isPanelView);
+    
+    // Force complete re-rendering
+    if (this.state.svg && this.state.container) {
+      // Remove existing SVG completely
+      this.state.container.removeChild(this.state.svg);
+      this.state.svg = null;
+      this.state.chart = null;
+    }
+    
+    // Re-render from scratch to enforce the correct mode
+    return this.render();
   }
   
   /**
@@ -1180,43 +1215,52 @@ export default class Chart {
   }
   
   /**
-     * Add a dataset
-     * @public
-     * @param {Object} dataset - Dataset configuration
-     * @returns {Chart} This chart instance
-     */
-    addDataset(dataset) {
-      console.log('addDataset called');
+   * Add a dataset
+   * @public
+   * @param {Object} dataset - Dataset configuration
+   * @returns {Chart} This chart instance
+   */
+  addDataset(dataset) {
+    console.log('addDataset called with panel mode =', this.options.isPanelView);
+    
+    // Get current datasets
+    const datasets = Array.isArray(this.config.data) ? this.config.data : [];
+    
+    // Add new dataset
+    datasets.push(dataset);
+    
+    // Update config
+    this.config.data = datasets;
+    
+    // First update processed datasets
+    this.processDatasets();
+    
+    // If in panel view, we need a complete redraw
+    if (this.options.isPanelView && this.state.rendered) {
+      console.log('Redrawing in strict panel view mode');
       
-      // Get current datasets
-      const datasets = Array.isArray(this.config.data) ? this.config.data : [];
-      
-      // Add new dataset
-      datasets.push(dataset);
-      
-      // Update config
-      this.config.data = datasets;
-      
-      // If in panel view, clear chart and re-render
-      if (this.options.isPanelView && this.state.rendered) {
-        // First update processed datasets
-        this.processDatasets();
-        this.updateScales();
-        
-        // Clear existing chart content
-        if (this.state.chart) {
-          this.state.chart.innerHTML = '';
-        }
-        
-        // Re-render panels
-        this.renderPanels();
-        
-        return this;
+      // Clear existing chart content completely
+      if (this.state.chart) {
+        this.state.chart.innerHTML = '';
       }
       
-      // Otherwise, normal update
-      return this.update();
+      // Update scales after adding the new dataset
+      this.updateScales();
+      
+      // ONLY render panels - nothing else related to regular chart
+      this.renderPanels();
+      
+      // Render common elements
+      this.renderLegend();
+      this.renderTitle();
+      this.renderAxisNames();
+      
+      return this;
     }
+    
+    // Otherwise, normal update
+    return this.update();
+  }
   
   /**
    * Remove a dataset
