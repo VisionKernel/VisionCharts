@@ -466,17 +466,19 @@ export default class AreaChart extends LineChart {
       
       console.log('Rendering', panelCount, 'panels');
       
-      // Calculate panel dimensions
-      const panelHeight = innerHeight / panelCount;
-      const panelMargin = 20;
-      const effectivePanelHeight = panelHeight - panelMargin;
-      
       // Create panel for each dataset
       this.state.datasets.forEach((dataset, index) => {
+        // Calculate panel dimensions
+        const panelHeight = innerHeight / panelCount;
+        const panelMargin = index === 0 ? 30 : 20;  // Extra margin for first panel
+        const effectivePanelHeight = panelHeight - panelMargin;
+        
         // Create panel group
         const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-        panelGroup.setAttribute('transform', `translate(0, ${index * panelHeight})`);
+        // Add top margin of 10px for the first panel
+        const yPos = index * panelHeight + (index === 0 ? 20 : 0);
+        panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
         
         // Create panel background
         const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -489,10 +491,41 @@ export default class AreaChart extends LineChart {
         panelGroup.appendChild(panelBg);
         
         // Create local scales for this panel
-        const xScale = { ...this.state.scales.x };
-        const yScale = this.options.isLogarithmic ? 
-          new LogScale([0.1, 1], [0, 1]) :
-          new LinearScale([0, 1], [0, 1]);
+        // Important: Create new scale instances instead of shallow copying
+        let xScale;
+        const { xField, xType, isLogarithmic } = this.options;
+  
+        // Extract X values from this dataset only
+        const xValues = dataset.data.map(d => d[xField]);
+  
+        // Calculate domain based on dataset values
+        let xMin, xMax;
+        if (xType === 'time') {
+          // For time type, handle date objects
+          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+          xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+          xMax = new Date(Math.max(...dates.map(d => d.getTime())));
+        } else {
+          xMin = Math.min(...xValues);
+          xMax = Math.max(...xValues);
+        }
+  
+        // Create appropriate scale type
+        if (xType === 'time') {
+          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
+        } else if (isLogarithmic) {
+          xScale = new LogScale([Math.max(0.01, xMin), xMax], [0, innerWidth]);
+        } else {
+          xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
+        }
+        
+        // Create Y scale for this panel
+        let yScale;
+        if (this.options.isLogarithmic) {
+          yScale = new LogScale([0.1, 1], [0, 1]);
+        } else {
+          yScale = new LinearScale([0, 1], [0, 1]);
+        }
         
         // Update Y scale range to panel height
         yScale.setRange([effectivePanelHeight, 0]);
@@ -543,7 +576,9 @@ export default class AreaChart extends LineChart {
    * @private
    */
   renderPanelAxes(panel, xScale, yScale, width, height) {
-    // X-axis (simplified, only draw line)
+    const { xType, dateFormat, xField } = this.options;
+    
+    // X-axis (draw line and labels)
     const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     xAxis.setAttribute('x1', 0);
     xAxis.setAttribute('y1', height);
@@ -553,7 +588,84 @@ export default class AreaChart extends LineChart {
     xAxis.setAttribute('stroke-width', 1);
     panel.appendChild(xAxis);
     
-    // Y-axis (simplified, only show a few ticks)
+    // Generate X ticks and labels for time axis
+    if (xType === 'time') {
+      // Generate 5 evenly spaced tick points
+      const tickCount = 5;
+      const xDomain = xScale.domain;
+      const start = xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0]);
+      const end = xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1]);
+      const timeRange = end.getTime() - start.getTime();
+      const timeStep = timeRange / (tickCount - 1);
+      
+      // Draw ticks and labels
+      for (let i = 0; i < tickCount; i++) {
+        const tickTime = start.getTime() + (i * timeStep);
+        const tickDate = new Date(tickTime);
+        const x = xScale.scale(tickDate);
+        
+        // Don't draw if out of bounds
+        if (x < 0 || x > width) continue;
+        
+        // Draw tick
+        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('y1', height);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y2', height + 4);
+        tick.setAttribute('stroke', '#ccc');
+        tick.setAttribute('stroke-width', 1);
+        panel.appendChild(tick);
+        
+        // Format date for label
+        const labelText = tickDate.toLocaleDateString(undefined, 
+          {year: 'numeric', month: 'short'});
+        
+        // Add label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = labelText;
+        label.setAttribute('x', x);
+        label.setAttribute('y', height + 16);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10px');
+        label.setAttribute('fill', '#666');
+        panel.appendChild(label);
+      }
+    } else {
+      // For numeric axes, do similar tick generation
+      const tickCount = 5;
+      const xDomain = xScale.domain;
+      const start = xDomain[0];
+      const end = xDomain[1];
+      const step = (end - start) / (tickCount - 1);
+      
+      for (let i = 0; i < tickCount; i++) {
+        const tickValue = start + (i * step);
+        const x = xScale.scale(tickValue);
+        
+        // Draw tick
+        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('y1', height);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y2', height + 4);
+        tick.setAttribute('stroke', '#ccc');
+        tick.setAttribute('stroke-width', 1);
+        panel.appendChild(tick);
+        
+        // Add label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = tickValue.toFixed(1);
+        label.setAttribute('x', x);
+        label.setAttribute('y', height + 16);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10px');
+        label.setAttribute('fill', '#666');
+        panel.appendChild(label);
+      }
+    }
+    
+    // Y-axis (draw line and ticks)
     const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     yAxis.setAttribute('x1', 0);
     yAxis.setAttribute('y1', 0);
@@ -563,15 +675,29 @@ export default class AreaChart extends LineChart {
     yAxis.setAttribute('stroke-width', 1);
     panel.appendChild(yAxis);
     
-    // Y-axis ticks (only show min and max)
-    const domain = yScale.domain;
-    const tickValues = [domain[0], (domain[0] + domain[1]) / 2, domain[1]];
+    // Y-axis ticks (only show 3 evenly-spaced ticks)
+    const yDomain = yScale.domain;
+    const tickValues = [
+      yDomain[0], 
+      yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
+      yDomain[1]
+    ];
     
     tickValues.forEach(value => {
       const y = yScale.scale(value);
       
       // Skip if out of range
       if (y < 0 || y > height) return;
+      
+      // Draw tick
+      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      tick.setAttribute('x1', 0);
+      tick.setAttribute('y1', y);
+      tick.setAttribute('x2', -4);  // Make tick go left instead of right
+      tick.setAttribute('y2', y);
+      tick.setAttribute('stroke', '#ccc');
+      tick.setAttribute('stroke-width', 1);
+      panel.appendChild(tick);
       
       // Format label text
       let labelText;
@@ -583,20 +709,21 @@ export default class AreaChart extends LineChart {
         labelText = value.toFixed(this.options.isLogarithmic ? 0 : 1);
       }
       
-      // Draw label
+      // Draw label - POSITION CHANGED TO LEFT SIDE
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.textContent = labelText;
-      label.setAttribute('x', 5);
+      label.setAttribute('x', -8);  // Position to the left
       label.setAttribute('y', y);
-      label.setAttribute('font-size', '10px');
+      label.setAttribute('text-anchor', 'end');  // Right-align text
       label.setAttribute('dominant-baseline', 'middle');
+      label.setAttribute('font-size', '10px');
       label.setAttribute('fill', '#666');
       panel.appendChild(label);
     });
   }
   
   /**
-   * Render data for a panel with area support
+   * Render panel data with area support
    * @private
    */
   renderPanelData(panel, dataset, xScale, yScale, panelHeight) {
