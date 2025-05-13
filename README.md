@@ -2,7 +2,7 @@
 
 A modern, high-performance JavaScript charting library optimized for financial and economic data visualization. Built specifically to replace multiple charting libraries in the VisionKernel platform.
 
-![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ## Overview

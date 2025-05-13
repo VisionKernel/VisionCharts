@@ -1,7 +1,7 @@
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import LineChart from './LineChart.js';
-import { LinearScale, LogScale } from '../core/Scale.js';
+import { LinearScale, LogScale, TimeScale } from '../core/Scale.js';
 
 /**
  * AreaChart class for rendering area charts
