@@ -18,7 +18,7 @@ export default class Legend {
       symbolSize: 12,
       fontSize: 12,
       fontFamily: 'sans-serif',
-      interactive: true,  // Allow toggling series visibility
+      interactive: true,
       wrapText: true,
       maxWidth: null,
       padding: { top: 5, right: 10, bottom: 5, left: 10 }
