@@ -1,0 +1,124 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'package.json'
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Type of version bump (patch, minor, major)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Needed for version calculation
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          registry-url: 'https://registry.npmjs.org/'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Build package
+        run: npm run build
+      
+      - name: Determine version bump
+        id: version
+        run: |
+          LAST_VERSION=$(npm view visioncharts version || echo "0.0.0")
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          
+          # Check if current version is different from last published version
+          if [ "$LAST_VERSION" != "$CURRENT_VERSION" ]; then
+            echo "Version change detected in package.json: $LAST_VERSION -> $CURRENT_VERSION"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          else
+            # Use input from workflow_dispatch or default to patch
+            BUMP_TYPE="${{ github.event.inputs.bump_type || 'patch' }}"
+            npm version $BUMP_TYPE --no-git-tag-version
+            NEW_VERSION=$(node -p "require('./package.json').version")
+            echo "Auto-bumped version: $CURRENT_VERSION -> $NEW_VERSION"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Save the current version for use in later steps
+          echo "current_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      
+      - name: Publish to npm
+        if: steps.version.outputs.version_changed == 'true'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      
+      - name: Generate simple changelog
+        id: changelog
+        if: steps.version.outputs.version_changed == 'true'
+        run: |
+          # Get the last tag or the initial commit if no tags exist
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          
+          # Generate changelog
+          echo "## Changes in this release" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log ${LAST_TAG}..HEAD --pretty=format:"* %s (%h)" --no-merges >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          # Save the changelog to GitHub outputs
+          CHANGELOG=$(cat CHANGELOG.md)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Commit version bump
+        if: steps.version.outputs.version_changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json
+          git commit -m "Bump version to ${{ steps.version.outputs.current_version }} [skip ci]"
+          git tag v${{ steps.version.outputs.current_version }}
+          git push
+          git push --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create GitHub Release
+        if: steps.version.outputs.version_changed == 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.current_version }}
+          release_name: VisionCharts v${{ steps.version.outputs.current_version }}
+          body: |
+            # VisionCharts v${{ steps.version.outputs.current_version }}
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ## Installation
+            ```bash
+            npm install visioncharts@${{ steps.version.outputs.current_version }}
+            ```
+          draft: false
+          prerelease: false
