@@ -10,46 +10,74 @@ export default class Chart {
    * @param {Object} config.options - Chart options
    */
   constructor(config) {
-    console.log('Chart constructor called');
-    
-    // Store the configuration
-    this.config = Object.assign({
-      // Default configuration
-      container: null,
-      data: [],
-      options: {}
-    }, config);
+  console.log('Chart constructor called');
+  
+  // Store the configuration
+  this.config = Object.assign({
+    // Default configuration
+    container: null,
+    data: [],
+    options: {}
+  }, config);
 
-    // Merge options with defaults
+  // Import themes
+  let lightTheme, darkTheme;
+  try {
+    lightTheme = require('../themes/light.js').default;
+    darkTheme = require('../themes/dark.js').default;
+  } catch (e) {
+    console.warn('Chart themes could not be loaded:', e);
+    lightTheme = {};
+    darkTheme = {};
+  }
+
+  // Determine if dark mode is active
+  const isDarkMode = (
+    this.config.options.theme === 'dark' || 
+    (this.config.options.theme === 'auto' && darkTheme.isDarkMode?.())
+  );
+  
+  // Select active theme
+  const activeTheme = isDarkMode ? darkTheme : lightTheme;
+  
+  // Merge options with defaults and theme
+  this.options = Object.assign({
+    // Default options
+    width: null,
+    height: null,
+    margins: { top: 50, right: 20, bottom: 70, left: 60 },
+    title: '',
+    xAxisName: '',
+    yAxisName: '',
+    isLogarithmic: false,
+    isPanelView: false,
+    showRecessionLines: false,
+    recessions: [],
+    showZeroLine: false,
     
-    this.options = Object.assign({
-      // Default options
-      width: null,
-      height: null,
-      // Increase top margin to 50px and bottom margin to 70px
-      margins: { top: 50, right: 20, bottom: 70, left: 60 },
-      title: '',
-      xAxisName: '',
-      yAxisName: '',
-      isLogarithmic: false,
-      isPanelView: false,
-      showRecessionLines: false,
-      recessions: [],
-      showZeroLine: false,
-      
-      // Keep other options
-      responsive: true,
-      colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-      lineWidth: 2,
-      studies: [],
-      theme: 'light',
-      fontFamily: 'sans-serif',
-      textColor: '#333',
-      animation: {
-        duration: 300,
-        easing: 'ease'
-      }
-    }, this.config.options);
+    // Theme application
+    theme: 'auto', // 'light', 'dark', or 'auto'
+    
+    // Apply theme colors if available
+    colors: activeTheme.palette || ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
+    backgroundColor: activeTheme.colors?.background || '#ffffff',
+    textColor: activeTheme.colors?.text || '#333',
+    axisColor: activeTheme.colors?.axis || '#666',
+    gridColor: activeTheme.colors?.grid || '#eee',
+    fontFamily: 'sans-serif',
+    
+    // Keep other options
+    responsive: true,
+    lineWidth: 2,
+    studies: [],
+    animation: {
+      duration: 300,
+      easing: 'ease'
+    }
+  }, this.config.options);
+
+  // Store active theme for use in rendering
+  this.theme = activeTheme;
 
     // Initialize state
     this.state = {
@@ -447,40 +475,43 @@ export default class Chart {
    * @private
    */
   createSvg() {
-    console.log('createSvg called');
-    
-    if (!this.state.container) {
-      console.error('Cannot create SVG: container is null');
-      return;
+      console.log('createSvg called');
+      
+      if (!this.state.container) {
+        console.error('Cannot create SVG: container is null');
+        return;
+      }
+      
+      // Create SVG element
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', this.state.dimensions.width);
+      svg.setAttribute('height', this.state.dimensions.height);
+      svg.setAttribute('class', 'visioncharts-svg');
+      
+      // Apply background color from theme
+      svg.style.background = this.options.backgroundColor;
+      
+      // Add viewport
+      svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 40}`);
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      
+      // Create chart group with transform for margins
+      const chart = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      chart.setAttribute('transform', `translate(${this.options.margins.left},${this.options.margins.top})`);
+      chart.setAttribute('class', 'visioncharts-chart');
+      
+      // Add chart group to SVG
+      svg.appendChild(chart);
+      
+      // Add SVG to container
+      this.state.container.appendChild(svg);
+      
+      // Update state
+      this.state.svg = svg;
+      this.state.chart = chart;
+      
+      console.log('SVG created and added to DOM, chart reference stored');
     }
-    
-    // Create SVG element
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', this.state.dimensions.width);
-    svg.setAttribute('height', this.state.dimensions.height);
-    svg.setAttribute('class', 'visioncharts-svg');
-    
-    // Add viewport - Increase extra space for axis labels to 40px
-    svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 40}`);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    
-    // Create chart group with transform for margins
-    const chart = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    chart.setAttribute('transform', `translate(${this.options.margins.left},${this.options.margins.top})`);
-    chart.setAttribute('class', 'visioncharts-chart');
-    
-    // Add chart group to SVG
-    svg.appendChild(chart);
-    
-    // Add SVG to container
-    this.state.container.appendChild(svg);
-    
-    // Update state
-    this.state.svg = svg;
-    this.state.chart = chart;
-    
-    console.log('SVG created and added to DOM, chart reference stored');
-  }
 
   /**
    * Modified render method to enforce strict panel mode
