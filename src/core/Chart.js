@@ -535,6 +535,8 @@ export default class Chart {
     
     // Update state
     this.state.rendered = true;
+
+    this.initHoverFeatures();
     
     console.log('Chart rendering completed, rendered=true');
     
