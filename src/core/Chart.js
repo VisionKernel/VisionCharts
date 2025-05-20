@@ -1,3 +1,6 @@
+import Crosshair from '../components/Crosshair.js';
+import Tooltip from '../components/Tooltip.js';
+
 /**
  * Base Chart class that handles common chart functionality
  */
@@ -1523,8 +1526,6 @@ bindHoverEvents() {
   // Only bind if chart is rendered
   if (!this.state.chart) return;
   
-  const chartRect = this.state.chart.getBoundingClientRect();
-  
   // Mouse move handler
   const mouseMoveHandler = (e) => {
     // Get mouse position relative to chart
@@ -1539,11 +1540,11 @@ bindHoverEvents() {
       return;
     }
     
-    // Show crosshair
-    this.state.components.crosshair.update(x, 0);
+    // Always show crosshair regardless of data points
+    this.state.components.crosshair.update(x, y);
     this.state.components.crosshair.show();
     
-    // Update hover points
+    // Update hover points - find closest point even if not directly hovering
     this.updateHoverPoints(x);
     
     // Show tooltip with closest data
@@ -1608,43 +1609,88 @@ updateHoverPoints(mouseX) {
   // Convert mouse position to domain value
   const xValue = this.state.scales.x.invert(mouseX);
   
-  // Find closest data points for each dataset
+  // Find closest data points for each dataset - with linear interpolation
   this.state.components.hoverPoints.forEach(hoverPoint => {
     const dataset = hoverPoint.dataset;
     const { xField, yField } = this.options;
     
-    // Find closest data point
-    let closestPoint = null;
-    let minDistance = Infinity;
+    // Find nearest data points on either side of the mouse
+    let leftPoint = null;
+    let rightPoint = null;
+    let exactMatch = null;
     
     dataset.data.forEach(point => {
       if (point[xField] === undefined || point[yField] === undefined) return;
       
-      const xVal = point[xField] instanceof Date ? 
-                  point[xField].getTime() : point[xField];
-      const xPos = this.state.scales.x.scale(point[xField]);
+      const pointX = point[xField] instanceof Date ? 
+                     point[xField].getTime() : point[xField];
+      const mouseXValue = xValue instanceof Date ? 
+                         xValue.getTime() : xValue;
       
-      const distance = Math.abs(mouseX - xPos);
+      // Check for exact match
+      if (pointX === mouseXValue) {
+        exactMatch = point;
+        return;
+      }
       
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestPoint = point;
+      // Check for left point (largest x less than mouseX)
+      if (pointX < mouseXValue && (!leftPoint || pointX > (leftPoint[xField] instanceof Date ? 
+          leftPoint[xField].getTime() : leftPoint[xField]))) {
+        leftPoint = point;
+      }
+      
+      // Check for right point (smallest x greater than mouseX)
+      if (pointX > mouseXValue && (!rightPoint || pointX < (rightPoint[xField] instanceof Date ? 
+          rightPoint[xField].getTime() : rightPoint[xField]))) {
+        rightPoint = point;
       }
     });
     
-    // Update hover point position
-    if (closestPoint && minDistance < 50) { // Only show if reasonably close
-      const x = this.state.scales.x.scale(closestPoint[xField]);
-      const y = this.state.scales.y.scale(closestPoint[yField]);
+    // Determine what point to use
+    let displayPoint = null;
+    
+    if (exactMatch) {
+      // Exact match
+      displayPoint = exactMatch;
+    } else if (leftPoint && rightPoint) {
+      // Linear interpolation between points
+      const leftX = leftPoint[xField] instanceof Date ? 
+                   leftPoint[xField].getTime() : leftPoint[xField];
+      const rightX = rightPoint[xField] instanceof Date ? 
+                    rightPoint[xField].getTime() : rightPoint[xField];
+      const mouseXValue = xValue instanceof Date ? 
+                         xValue.getTime() : xValue;
+      
+      const ratio = (mouseXValue - leftX) / (rightX - leftX);
+      const interpolatedY = leftPoint[yField] + ratio * (rightPoint[yField] - leftPoint[yField]);
+      
+      // Create an interpolated point
+      displayPoint = {
+        [xField]: xValue instanceof Date ? new Date(mouseXValue) : mouseXValue,
+        [yField]: interpolatedY,
+        interpolated: true
+      };
+    } else if (leftPoint) {
+      // Just use left point
+      displayPoint = leftPoint;
+    } else if (rightPoint) {
+      // Just use right point
+      displayPoint = rightPoint;
+    }
+    
+    // Update hover point position if a point was found
+    if (displayPoint) {
+      const x = this.state.scales.x.scale(displayPoint[xField]);
+      const y = this.state.scales.y.scale(displayPoint[yField]);
       
       hoverPoint.element.setAttribute('cx', x);
       hoverPoint.element.setAttribute('cy', y);
       hoverPoint.element.style.display = 'block';
       
       // Store data for tooltip
-      hoverPoint.data = closestPoint;
+      hoverPoint.data = displayPoint;
     } else {
-      // Hide if no close point
+      // Hide if no point
       hoverPoint.element.style.display = 'none';
       hoverPoint.data = null;
     }
@@ -1658,35 +1704,98 @@ updateHoverPoints(mouseX) {
  * @returns {Object} Closest data points
  */
 findClosestData(mouseX) {
-  // Skip if no hover points
-  if (!this.state.components.hoverPoints) return null;
+  if (!this.state.datasets.length) return null;
   
-  // Get visible hover points with data
-  const visiblePoints = this.state.components.hoverPoints
-    .filter(hp => hp.element.style.display !== 'none' && hp.data)
-    .map(hp => ({
-      dataset: hp.dataset,
-      data: hp.data
-    }));
+  const { xField, yField } = this.options;
   
-  if (!visiblePoints.length) return null;
+  // To correctly identify bars, use the unique X values across all datasets
+  let uniqueXValues = [];
+  this.state.datasets.forEach(dataset => {
+    dataset.data.forEach(d => {
+      if (d[xField] !== undefined && !uniqueXValues.includes(d[xField])) {
+        uniqueXValues.push(d[xField]);
+      }
+    });
+  });
   
-  // Find x value (date or number)
-  const xValue = visiblePoints[0].data[this.options.xField];
-  
-  // Format x value
-  let xText;
-  if (xValue instanceof Date) {
-    xText = xValue.toLocaleDateString();
+  // Sort the unique values 
+  if (this.options.xType === 'time') {
+    uniqueXValues.sort((a, b) => {
+      const dateA = a instanceof Date ? a : new Date(a);
+      const dateB = b instanceof Date ? b : new Date(b);
+      return dateA - dateB;
+    });
+  } else if (this.options.xType === 'number') {
+    uniqueXValues.sort((a, b) => a - b);
   } else {
-    xText = String(xValue);
+    uniqueXValues.sort();
   }
   
-  // Return data for tooltip
+  // Calculate bar width
+  const totalBarWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
+  
+  // Find which bar group the mouse is over
+  let closestXValue = null;
+  let closestDistance = Infinity;
+  
+  uniqueXValues.forEach((xValue) => {
+    // Calculate center position of this bar group
+    let barX;
+    if (this.options.xType === 'category') {
+      // For category, calculate based on index
+      const index = uniqueXValues.indexOf(xValue);
+      barX = (index + 0.5) * totalBarWidth;
+    } else {
+      // For numerical or time scale
+      barX = this.state.scales.x.scale(xValue);
+    }
+    
+    const distance = Math.abs(mouseX - barX);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestXValue = xValue;
+    }
+  });
+  
+  // Only show tooltip if close enough to a bar group
+  if (closestDistance > totalBarWidth / 2) return null;
+  
+  // Format x value for display
+  let xText;
+  if (this.options.xType === 'time') {
+    const date = closestXValue instanceof Date ? 
+                 closestXValue : new Date(closestXValue);
+    xText = date.toLocaleDateString();
+  } else {
+    xText = String(closestXValue);
+  }
+  
+  // Collect data points from all datasets for this x value
+  const points = [];
+  this.state.datasets.forEach(dataset => {
+    const point = dataset.data.find(d => d[xField] === closestXValue);
+    if (point) {
+      points.push({
+        dataset,
+        data: point
+      });
+    }
+  });
+  
   return {
     x: xText,
-    points: visiblePoints
+    points
   };
+}
+
+// Add a helper method to format X values
+formatXValue(value) {
+  if (value instanceof Date) {
+    return value.toLocaleDateString();
+  } else if (this.options.xType === 'time' && typeof value === 'number') {
+    return new Date(value).toLocaleDateString();
+  }
+  return String(value);
 }
 
 /**
@@ -1701,10 +1810,10 @@ formatTooltip(data) {
   const { yField } = this.options;
   const lines = [];
   
-  // Add header (X value)
-  lines.push(`<tspan font-weight="bold">${data.x}</tspan>`);
+  // Add header (X value) - plain text, not HTML
+  lines.push(data.x);
   
-  // Add data points
+  // Add data points - plain text, not HTML
   data.points.forEach(point => {
     const value = point.data[yField];
     let formattedValue;
@@ -1718,17 +1827,12 @@ formatTooltip(data) {
       formattedValue = value.toFixed(2);
     }
     
-    // Create line with color indicator
-    const line = `<tspan x="10" dy="18">
-      <tspan fill="${point.dataset.color}">●</tspan> 
-      <tspan font-weight="bold">${point.dataset.name}:</tspan> 
-      ${formattedValue}
-    </tspan>`;
-    
+    // Create line without HTML tags
+    const line = `${point.dataset.name}: ${formattedValue}`;
     lines.push(line);
   });
   
-  return lines;
+  return lines; // Return array of plain text lines
 }
   
   /**
