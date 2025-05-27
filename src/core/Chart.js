@@ -1528,34 +1528,36 @@ bindHoverEvents() {
   
   // Mouse move handler
   const mouseMoveHandler = (e) => {
-    // Get mouse position relative to chart
-    const rect = this.state.chart.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Check if within chart bounds
-    if (x < 0 || x > this.state.dimensions.innerWidth || 
-        y < 0 || y > this.state.dimensions.innerHeight) {
-      this.hideHoverElements();
-      return;
-    }
-    
-    // Always show crosshair regardless of data points
-    this.state.components.crosshair.update(x, y);
+  // Get mouse position relative to chart
+  const rect = this.state.chart.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  // Check if within chart bounds
+  if (x < 0 || x > this.state.dimensions.innerWidth || 
+      y < 0 || y > this.state.dimensions.innerHeight) {
+    this.hideHoverElements();
+    return;
+  }
+  
+  // Show crosshair - ALWAYS show for line and area charts
+  if (this.options.chartType === 'line' || this.options.chartType === 'area') {
+    this.state.components.crosshair.update(x, 0);
     this.state.components.crosshair.show();
-    
-    // Update hover points - find closest point even if not directly hovering
-    this.updateHoverPoints(x);
-    
-    // Show tooltip with closest data
-    const closestData = this.findClosestData(x);
-    if (closestData) {
-      this.state.components.tooltip.show(closestData, x, y, {
-        width: this.state.dimensions.innerWidth,
-        height: this.state.dimensions.innerHeight
-      });
-    }
-  };
+  }
+  
+  // Update hover points
+  this.updateHoverPoints(x);
+  
+  // Show tooltip with closest data
+  const closestData = this.findClosestData(x);
+  if (closestData) {
+    this.state.components.tooltip.show(closestData, x, y, {
+      width: this.state.dimensions.innerWidth,
+      height: this.state.dimensions.innerHeight
+    });
+  }
+};
   
   // Mouse leave handler
   const mouseLeaveHandler = () => {
@@ -1609,88 +1611,54 @@ updateHoverPoints(mouseX) {
   // Convert mouse position to domain value
   const xValue = this.state.scales.x.invert(mouseX);
   
-  // Find closest data points for each dataset - with linear interpolation
+  // For LineChart: CHANGE THIS - Always show crosshair regardless of point proximity
+  if (this.options.chartType === 'line' || this.options.chartType === 'area') {
+    // Always show the crosshair for line and area charts
+    if (this.state.components.crosshair) {
+      this.state.components.crosshair.show();
+    }
+  }
+  
+  // Find closest data points for each dataset
   this.state.components.hoverPoints.forEach(hoverPoint => {
     const dataset = hoverPoint.dataset;
     const { xField, yField } = this.options;
     
-    // Find nearest data points on either side of the mouse
-    let leftPoint = null;
-    let rightPoint = null;
-    let exactMatch = null;
+    // Find closest data point
+    let closestPoint = null;
+    let minDistance = Infinity;
     
     dataset.data.forEach(point => {
       if (point[xField] === undefined || point[yField] === undefined) return;
       
-      const pointX = point[xField] instanceof Date ? 
-                     point[xField].getTime() : point[xField];
-      const mouseXValue = xValue instanceof Date ? 
-                         xValue.getTime() : xValue;
+      const xVal = point[xField] instanceof Date ? 
+                  point[xField].getTime() : point[xField];
+      const xPos = this.state.scales.x.scale(point[xField]);
       
-      // Check for exact match
-      if (pointX === mouseXValue) {
-        exactMatch = point;
-        return;
-      }
+      const distance = Math.abs(mouseX - xPos);
       
-      // Check for left point (largest x less than mouseX)
-      if (pointX < mouseXValue && (!leftPoint || pointX > (leftPoint[xField] instanceof Date ? 
-          leftPoint[xField].getTime() : leftPoint[xField]))) {
-        leftPoint = point;
-      }
-      
-      // Check for right point (smallest x greater than mouseX)
-      if (pointX > mouseXValue && (!rightPoint || pointX < (rightPoint[xField] instanceof Date ? 
-          rightPoint[xField].getTime() : rightPoint[xField]))) {
-        rightPoint = point;
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestPoint = point;
       }
     });
     
-    // Determine what point to use
-    let displayPoint = null;
+    // Modified threshold for LineChart vs. Area/Bar Charts
+    const proximityThreshold = (this.options.chartType === 'line') ? 50 : 50;
     
-    if (exactMatch) {
-      // Exact match
-      displayPoint = exactMatch;
-    } else if (leftPoint && rightPoint) {
-      // Linear interpolation between points
-      const leftX = leftPoint[xField] instanceof Date ? 
-                   leftPoint[xField].getTime() : leftPoint[xField];
-      const rightX = rightPoint[xField] instanceof Date ? 
-                    rightPoint[xField].getTime() : rightPoint[xField];
-      const mouseXValue = xValue instanceof Date ? 
-                         xValue.getTime() : xValue;
-      
-      const ratio = (mouseXValue - leftX) / (rightX - leftX);
-      const interpolatedY = leftPoint[yField] + ratio * (rightPoint[yField] - leftPoint[yField]);
-      
-      // Create an interpolated point
-      displayPoint = {
-        [xField]: xValue instanceof Date ? new Date(mouseXValue) : mouseXValue,
-        [yField]: interpolatedY,
-        interpolated: true
-      };
-    } else if (leftPoint) {
-      // Just use left point
-      displayPoint = leftPoint;
-    } else if (rightPoint) {
-      // Just use right point
-      displayPoint = rightPoint;
-    }
-    
-    // Update hover point position if a point was found
-    if (displayPoint) {
-      const x = this.state.scales.x.scale(displayPoint[xField]);
-      const y = this.state.scales.y.scale(displayPoint[yField]);
+    // Update hover point position
+    if (closestPoint && minDistance < proximityThreshold) {
+      const x = this.state.scales.x.scale(closestPoint[xField]);
+      const y = this.state.scales.y.scale(closestPoint[yField]);
       
       hoverPoint.element.setAttribute('cx', x);
       hoverPoint.element.setAttribute('cy', y);
       hoverPoint.element.style.display = 'block';
       
       // Store data for tooltip
-      hoverPoint.data = displayPoint;
+      hoverPoint.data = closestPoint;
     } else {
-      // Hide if no point
+      // Hide if no close point
       hoverPoint.element.style.display = 'none';
       hoverPoint.data = null;
     }

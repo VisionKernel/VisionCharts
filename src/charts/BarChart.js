@@ -654,11 +654,35 @@ export default class BarChart extends Chart {
    * @public
    */
   render() {
-    console.log('BarChart.render called');
+  // Call parent render method
+  super.render();
+  
+  // Ensure hover elements are on top
+  if (this.state.chart) {
+    // Find crosshair
+    const crosshair = this.state.chart.querySelector('.visioncharts-crosshair');
+    if (crosshair && crosshair.parentNode) {
+      // Move to end (top of z-order)
+      crosshair.parentNode.appendChild(crosshair);
+    }
     
-    // Use the parent Chart class's render method
-    return super.render();
+    // Find tooltip
+    const tooltip = this.state.chart.querySelector('.visioncharts-tooltip');
+    if (tooltip && tooltip.parentNode) {
+      // Move to end (top of z-order)
+      tooltip.parentNode.appendChild(tooltip);
+    }
+    
+    // Find hover points
+    const hoverPoints = this.state.chart.querySelector('.visioncharts-hover-points');
+    if (hoverPoints && hoverPoints.parentNode) {
+      // Move to end (top of z-order)
+      hoverPoints.parentNode.appendChild(hoverPoints);
+    }
   }
+  
+  return this;
+}
   
   /**
    * Render axes
