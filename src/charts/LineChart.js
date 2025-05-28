@@ -4,7 +4,7 @@ import Tooltip from '../components/Tooltip.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 
 /**
- * LineChart class for rendering line charts
+ * LineChart class for rendering line charts with optional per-dataset area fills
  */
 export default class LineChart extends Chart {
   /**
@@ -26,6 +26,9 @@ export default class LineChart extends Chart {
         yField: 'y',
         xType: 'number', // 'number', 'time'
         yType: 'number',
+        // Remove global area options - now per-dataset
+        areaOpacity: 0.2, // Default opacity for areas
+        gradient: false, // Whether to use gradients for area fills
         ...config.options
       }
     });
@@ -656,6 +659,55 @@ export default class LineChart extends Chart {
   }
   
   /**
+   * Create gradient definitions for area fills
+   * @private
+   */
+  createGradients() {
+    // Create defs element if it doesn't exist
+    let defs = this.state.svg.querySelector('defs');
+    if (!defs) {
+      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      this.state.svg.insertBefore(defs, this.state.svg.firstChild);
+    }
+    
+    // Create gradient for each dataset that has area enabled
+    this.state.datasets.forEach(dataset => {
+      if (!dataset.area) return; // Skip if area is not enabled for this dataset
+      
+      const gradientId = `area-gradient-${dataset.id}`;
+      
+      // Check if gradient already exists
+      if (defs.querySelector(`#${gradientId}`)) return;
+      
+      // Create linear gradient
+      const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+      gradient.setAttribute('id', gradientId);
+      gradient.setAttribute('x1', '0');
+      gradient.setAttribute('y1', '0');
+      gradient.setAttribute('x2', '0');
+      gradient.setAttribute('y2', '1');
+      
+      // Create stops
+      const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+      stop1.setAttribute('offset', '0%');
+      stop1.setAttribute('stop-color', dataset.color);
+      stop1.setAttribute('stop-opacity', '0.8');
+      
+      const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+      stop2.setAttribute('offset', '100%');
+      stop2.setAttribute('stop-color', dataset.color);
+      stop2.setAttribute('stop-opacity', '0.1');
+      
+      // Add stops to gradient
+      gradient.appendChild(stop1);
+      gradient.appendChild(stop2);
+      
+      // Add gradient to defs
+      defs.appendChild(gradient);
+    });
+  }
+  
+  /**
    * Render chart data
    * @private
    */
@@ -673,7 +725,8 @@ export default class LineChart extends Chart {
         yField,
         showPoints,
         pointRadius,
-        area
+        areaOpacity,
+        gradient
       } = this.options;
       
       // Create data group
@@ -689,6 +742,11 @@ export default class LineChart extends Chart {
       
       console.log('Rendering', this.state.datasets.length, 'datasets');
       
+      // Create gradient definitions if needed
+      if (gradient) {
+        this.createGradients();
+      }
+      
       // Render each dataset
       this.state.datasets.forEach((dataset, index) => {
         if (!dataset.data || !dataset.data.length) {
@@ -696,19 +754,28 @@ export default class LineChart extends Chart {
           return;
         }
         
-        console.log('Rendering dataset', index, 'with', dataset.data.length, 'points');
+        console.log('Rendering dataset', index, 'with', dataset.data.length, 'points', 
+                   'area enabled:', Boolean(dataset.area));
         
         // Create dataset group
         const datasetGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         datasetGroup.setAttribute('class', `visioncharts-dataset-${dataset.id}`);
         
-        // Render area if enabled
-        if (area) {
+        // Render area if enabled for this dataset
+        if (dataset.area) {
           const areaPath = this.generateAreaPath(dataset.data);
           const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
           areaElement.setAttribute('d', areaPath);
-          areaElement.setAttribute('fill', dataset.color);
-          areaElement.setAttribute('fill-opacity', 0.2);
+          
+          // Apply fill (either gradient or color)
+          if (gradient) {
+            const gradientId = `area-gradient-${dataset.id}`;
+            areaElement.setAttribute('fill', `url(#${gradientId})`);
+          } else {
+            areaElement.setAttribute('fill', dataset.color);
+            areaElement.setAttribute('fill-opacity', dataset.areaOpacity || areaOpacity);
+          }
+          
           areaElement.setAttribute('stroke', 'none');
           areaElement.setAttribute('class', 'visioncharts-area');
           
@@ -765,9 +832,9 @@ export default class LineChart extends Chart {
   }
   
   /**
- * Render panels for multi-panel view
- * @private
- */
+   * Render panels for multi-panel view
+   * @private
+   */
   renderPanels() {
     console.log('LineChart.renderPanels called');
     
@@ -788,14 +855,14 @@ export default class LineChart extends Chart {
       
       console.log('Rendering', panelCount, 'panels');
       
-      // Create panel for each dataset - FIXED: removed code outside of loop that used 'index'
+      // Create panel for each dataset
       this.state.datasets.forEach((dataset, index) => {
-        // Calculate panel dimensions - FIXED: moved inside the loop where 'index' is defined
+        // Calculate panel dimensions
         const panelHeight = innerHeight / panelCount;
         const panelMargin = index === 0 ? 30 : 20;  // Extra margin for first panel
         const effectivePanelHeight = panelHeight - panelMargin;
         
-        // Create panel group - FIXED: now inside the loop where 'index' is defined
+        // Create panel group
         const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
         // Add top margin of 10px for the first panel
@@ -871,7 +938,7 @@ export default class LineChart extends Chart {
         this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
         
         // Render panel data
-        this.renderPanelData(panelGroup, dataset, xScale, yScale);
+        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight);
         
         // Render panel label
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -894,162 +961,162 @@ export default class LineChart extends Chart {
   }
   
   /**
- * Render axes for a panel
- * @private
- */
-renderPanelAxes(panel, xScale, yScale, width, height) {
-  const { xType, dateFormat, xField } = this.options;
-  
-  // X-axis (draw line and labels)
-  const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  xAxis.setAttribute('x1', 0);
-  xAxis.setAttribute('y1', height);
-  xAxis.setAttribute('x2', width);
-  xAxis.setAttribute('y2', height);
-  xAxis.setAttribute('stroke', '#ccc');
-  xAxis.setAttribute('stroke-width', 1);
-  panel.appendChild(xAxis);
-  
-  // Generate X ticks and labels for time axis
-  if (xType === 'time') {
-    // Generate 5 evenly spaced tick points
-    const tickCount = 5;
-    const xDomain = xScale.domain;
-    const start = xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0]);
-    const end = xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1]);
-    const timeRange = end.getTime() - start.getTime();
-    const timeStep = timeRange / (tickCount - 1);
-    
-    // Draw ticks and labels
-    for (let i = 0; i < tickCount; i++) {
-      const tickTime = start.getTime() + (i * timeStep);
-      const tickDate = new Date(tickTime);
-      const x = xScale.scale(tickDate);
-      
-      // Don't draw if out of bounds
-      if (x < 0 || x > width) continue;
-      
-      // Draw tick
-      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      tick.setAttribute('x1', x);
-      tick.setAttribute('y1', height);
-      tick.setAttribute('x2', x);
-      tick.setAttribute('y2', height + 4);
-      tick.setAttribute('stroke', '#ccc');
-      tick.setAttribute('stroke-width', 1);
-      panel.appendChild(tick);
-      
-      // Format date for label
-      const labelText = tickDate.toLocaleDateString(undefined, 
-        {year: 'numeric', month: 'short'});
-      
-      // Add label
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = labelText;
-      label.setAttribute('x', x);
-      label.setAttribute('y', height + 16);
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('font-size', '10px');
-      label.setAttribute('fill', '#666');
-      panel.appendChild(label);
-    }
-  } else {
-    // For numeric axes, do similar tick generation
-    const tickCount = 5;
-    const xDomain = xScale.domain;
-    const start = xDomain[0];
-    const end = xDomain[1];
-    const step = (end - start) / (tickCount - 1);
-    
-    for (let i = 0; i < tickCount; i++) {
-      const tickValue = start + (i * step);
-      const x = xScale.scale(tickValue);
-      
-      // Draw tick
-      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      tick.setAttribute('x1', x);
-      tick.setAttribute('y1', height);
-      tick.setAttribute('x2', x);
-      tick.setAttribute('y2', height + 4);
-      tick.setAttribute('stroke', '#ccc');
-      tick.setAttribute('stroke-width', 1);
-      panel.appendChild(tick);
-      
-      // Add label
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = tickValue.toFixed(1);
-      label.setAttribute('x', x);
-      label.setAttribute('y', height + 16);
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('font-size', '10px');
-      label.setAttribute('fill', '#666');
-      panel.appendChild(label);
-    }
-  }
-  
-  // Y-axis (draw line and ticks)
-  const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  yAxis.setAttribute('x1', 0);
-  yAxis.setAttribute('y1', 0);
-  yAxis.setAttribute('x2', 0);
-  yAxis.setAttribute('y2', height);
-  yAxis.setAttribute('stroke', '#ccc');
-  yAxis.setAttribute('stroke-width', 1);
-  panel.appendChild(yAxis);
-  
-  // Y-axis ticks (only show 3 evenly-spaced ticks)
-  const yDomain = yScale.domain;
-  const tickValues = [
-    yDomain[0], 
-    yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
-    yDomain[1]
-  ];
-  
-  tickValues.forEach(value => {
-    const y = yScale.scale(value);
-    
-    // Skip if out of range
-    if (y < 0 || y > height) return;
-    
-    // Draw tick
-    const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    tick.setAttribute('x1', 0);
-    tick.setAttribute('y1', y);
-    tick.setAttribute('x2', -4);  // Make tick go left instead of right
-    tick.setAttribute('y2', y);
-    tick.setAttribute('stroke', '#ccc');
-    tick.setAttribute('stroke-width', 1);
-    panel.appendChild(tick);
-    
-    // Format label text
-    let labelText;
-    if (this.options.yType === 'percent') {
-      labelText = (value * 100).toFixed(0) + '%';
-    } else if (this.options.yType === 'currency') {
-      labelText = '$' + value.toFixed(2);
-    } else {
-      labelText = value.toFixed(this.options.isLogarithmic ? 0 : 1);
-    }
-    
-    // Draw label - POSITION CHANGED TO LEFT SIDE
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.textContent = labelText;
-    label.setAttribute('x', -8);  // Position to the left
-    label.setAttribute('y', y);
-    label.setAttribute('text-anchor', 'end');  // Right-align text
-    label.setAttribute('dominant-baseline', 'middle');
-    label.setAttribute('font-size', '10px');
-    label.setAttribute('fill', '#666');
-    panel.appendChild(label);
-  });
-}
-  
-  /**
-   * Render data for a panel
+   * Render axes for a panel
    * @private
    */
-  renderPanelData(panel, dataset, xScale, yScale) {
-    const { xField, yField, curve, showPoints, pointRadius } = this.options;
+  renderPanelAxes(panel, xScale, yScale, width, height) {
+    const { xType, dateFormat, xField } = this.options;
+    
+    // X-axis (draw line and labels)
+    const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    xAxis.setAttribute('x1', 0);
+    xAxis.setAttribute('y1', height);
+    xAxis.setAttribute('x2', width);
+    xAxis.setAttribute('y2', height);
+    xAxis.setAttribute('stroke', '#ccc');
+    xAxis.setAttribute('stroke-width', 1);
+    panel.appendChild(xAxis);
+    
+    // Generate X ticks and labels for time axis
+    if (xType === 'time') {
+      // Generate 5 evenly spaced tick points
+      const tickCount = 5;
+      const xDomain = xScale.domain;
+      const start = xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0]);
+      const end = xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1]);
+      const timeRange = end.getTime() - start.getTime();
+      const timeStep = timeRange / (tickCount - 1);
+      
+      // Draw ticks and labels
+      for (let i = 0; i < tickCount; i++) {
+        const tickTime = start.getTime() + (i * timeStep);
+        const tickDate = new Date(tickTime);
+        const x = xScale.scale(tickDate);
+        
+        // Don't draw if out of bounds
+        if (x < 0 || x > width) continue;
+        
+        // Draw tick
+        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('y1', height);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y2', height + 4);
+        tick.setAttribute('stroke', '#ccc');
+        tick.setAttribute('stroke-width', 1);
+        panel.appendChild(tick);
+        
+        // Format date for label
+        const labelText = tickDate.toLocaleDateString(undefined, 
+          {year: 'numeric', month: 'short'});
+        
+        // Add label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = labelText;
+        label.setAttribute('x', x);
+        label.setAttribute('y', height + 16);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10px');
+        label.setAttribute('fill', '#666');
+        panel.appendChild(label);
+      }
+    } else {
+      // For numeric axes, do similar tick generation
+      const tickCount = 5;
+      const xDomain = xScale.domain;
+      const start = xDomain[0];
+      const end = xDomain[1];
+      const step = (end - start) / (tickCount - 1);
+      
+      for (let i = 0; i < tickCount; i++) {
+        const tickValue = start + (i * step);
+        const x = xScale.scale(tickValue);
+        
+        // Draw tick
+        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('y1', height);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y2', height + 4);
+        tick.setAttribute('stroke', '#ccc');
+        tick.setAttribute('stroke-width', 1);
+        panel.appendChild(tick);
+        
+        // Add label
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.textContent = tickValue.toFixed(1);
+        label.setAttribute('x', x);
+        label.setAttribute('y', height + 16);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10px');
+        label.setAttribute('fill', '#666');
+        panel.appendChild(label);
+      }
+    }
+    
+    // Y-axis (draw line and ticks)
+    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    yAxis.setAttribute('x1', 0);
+    yAxis.setAttribute('y1', 0);
+    yAxis.setAttribute('x2', 0);
+    yAxis.setAttribute('y2', height);
+    yAxis.setAttribute('stroke', '#ccc');
+    yAxis.setAttribute('stroke-width', 1);
+    panel.appendChild(yAxis);
+    
+    // Y-axis ticks (only show 3 evenly-spaced ticks)
+    const yDomain = yScale.domain;
+    const tickValues = [
+      yDomain[0], 
+      yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
+      yDomain[1]
+    ];
+    
+    tickValues.forEach(value => {
+      const y = yScale.scale(value);
+      
+      // Skip if out of range
+      if (y < 0 || y > height) return;
+      
+      // Draw tick
+      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      tick.setAttribute('x1', 0);
+      tick.setAttribute('y1', y);
+      tick.setAttribute('x2', -4);  // Make tick go left instead of right
+      tick.setAttribute('y2', y);
+      tick.setAttribute('stroke', '#ccc');
+      tick.setAttribute('stroke-width', 1);
+      panel.appendChild(tick);
+      
+      // Format label text
+      let labelText;
+      if (this.options.yType === 'percent') {
+        labelText = (value * 100).toFixed(0) + '%';
+      } else if (this.options.yType === 'currency') {
+        labelText = '$' + value.toFixed(2);
+      } else {
+        labelText = value.toFixed(this.options.isLogarithmic ? 0 : 1);
+      }
+      
+      // Draw label - POSITION CHANGED TO LEFT SIDE
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = labelText;
+      label.setAttribute('x', -8);  // Position to the left
+      label.setAttribute('y', y);
+      label.setAttribute('text-anchor', 'end');  // Right-align text
+      label.setAttribute('dominant-baseline', 'middle');
+      label.setAttribute('font-size', '10px');
+      label.setAttribute('fill', '#666');
+      panel.appendChild(label);
+    });
+  }
+  
+  /**
+   * Render data for a panel with area support
+   * @private
+   */
+  renderPanelData(panel, dataset, xScale, yScale, panelHeight) {
+    const { xField, yField, curve, showPoints, pointRadius, areaOpacity, gradient } = this.options;
     
     if (!dataset.data || !dataset.data.length) return;
     
@@ -1060,6 +1127,56 @@ renderPanelAxes(panel, xScale, yScale, width, height) {
         xScale.scale(d[xField]),
         yScale.scale(d[yField])
       ]);
+    
+    // Render area if enabled for this dataset
+    if (dataset.area) {
+      // Generate area path
+      const baselineY = panelHeight;
+      let areaPathD;
+      
+      switch (curve) {
+        case 'step':
+          areaPathD = this.generateStepPath(points);
+          break;
+        case 'cardinal':
+          areaPathD = this.generateCardinalPath(points);
+          break;
+        case 'monotone':
+          areaPathD = this.generateMonotonePath(points);
+          break;
+        case 'linear':
+        default:
+          areaPathD = this.generateLinearPath(points);
+          break;
+      }
+      
+      if (areaPathD) {
+        // Complete area path
+        const [firstPoint] = points;
+        const [firstX] = firstPoint;
+        const [lastPoint] = [...points].reverse();
+        const [lastX] = lastPoint;
+        
+        const areaPath = `${areaPathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
+        
+        const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        areaElement.setAttribute('d', areaPath);
+        
+        // Apply fill (either gradient or color)
+        if (gradient) {
+          const gradientId = `area-gradient-panel-${dataset.id}`;
+          areaElement.setAttribute('fill', `url(#${gradientId})`);
+        } else {
+          areaElement.setAttribute('fill', dataset.color);
+          areaElement.setAttribute('fill-opacity', dataset.areaOpacity || areaOpacity);
+        }
+        
+        areaElement.setAttribute('stroke', 'none');
+        areaElement.setAttribute('class', 'visioncharts-panel-area');
+        
+        panel.appendChild(areaElement);
+      }
+    }
     
     // Generate line path based on curve type
     let pathD;
@@ -1156,7 +1273,7 @@ renderPanelAxes(panel, xScale, yScale, width, height) {
         name: study.name || `${study.type.toUpperCase()}(${study.params?.period || 14})`,
         color: study.color || '#888',
         width: study.width || 1,
-        type: 'line',
+        area: false, // Studies typically don't have area enabled by default
         data: studyData
       });
       
@@ -1300,19 +1417,13 @@ renderPanelAxes(panel, xScale, yScale, width, height) {
       }
       
       // Remove existing axes if found
-      if (xAxisName) {
-        const xAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        xAxisNameElement.textContent = xAxisName;
-        xAxisNameElement.setAttribute('x', left + innerWidth / 2);
-        // Move axis name further down
-        xAxisNameElement.setAttribute('y', height - 10); 
-        xAxisNameElement.setAttribute('text-anchor', 'middle');
-        xAxisNameElement.setAttribute('font-size', '14px');
-        xAxisNameElement.setAttribute('font-family', this.options.fontFamily);
-        xAxisNameElement.setAttribute('fill', this.options.textColor);
-        xAxisNameElement.setAttribute('class', 'visioncharts-axis-name x-axis-name');
-        
-        this.state.svg.appendChild(xAxisNameElement);
+      if (xAxis) {
+        try {
+          xAxis.parentNode.removeChild(xAxis);
+          console.log('Removed X axis');
+        } catch (error) {
+          console.error('Error removing X axis:', error);
+        }
       }
       
       if (yAxis) {
@@ -1378,6 +1489,68 @@ renderPanelAxes(panel, xScale, yScale, width, height) {
       new LogScale([0.1, 1], [0, 1]) :
       new LinearScale([0, 1], [0, 1]);
     
+    return this.update();
+  }
+  
+  /**
+   * Toggle area fill for a specific dataset
+   * @public
+   * @param {string} datasetId - Dataset ID
+   * @param {boolean} showArea - Whether to show area fill
+   * @returns {LineChart} This chart instance
+   */
+  toggleDatasetArea(datasetId, showArea) {
+    console.log('LineChart.toggleDatasetArea called:', datasetId, showArea);
+    
+    // Find the dataset and update its area property
+    const dataset = this.state.datasets.find(d => d.id === datasetId);
+    if (dataset) {
+      dataset.area = Boolean(showArea);
+      
+      // Update the chart
+      return this.update();
+    } else {
+      console.warn('Dataset not found:', datasetId);
+      return this;
+    }
+  }
+  
+  /**
+   * Set area opacity for a specific dataset
+   * @public
+   * @param {string} datasetId - Dataset ID
+   * @param {number} opacity - Opacity value (0-1)
+   * @returns {LineChart} This chart instance
+   */
+  setDatasetAreaOpacity(datasetId, opacity) {
+    console.log('LineChart.setDatasetAreaOpacity called:', datasetId, opacity);
+    
+    // Find the dataset and update its area opacity
+    const dataset = this.state.datasets.find(d => d.id === datasetId);
+    if (dataset) {
+      dataset.areaOpacity = Math.max(0, Math.min(1, opacity));
+      
+      // Update the chart if area is enabled for this dataset
+      if (dataset.area) {
+        return this.update();
+      }
+    } else {
+      console.warn('Dataset not found:', datasetId);
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Toggle gradient fill globally
+   * @public
+   * @param {boolean} gradient - Whether to use gradient fills
+   * @returns {LineChart} This chart instance
+   */
+  toggleGradient(gradient) {
+    console.log('LineChart.toggleGradient called:', gradient);
+    
+    this.options.gradient = gradient;
     return this.update();
   }
 }

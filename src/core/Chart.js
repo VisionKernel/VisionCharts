@@ -278,7 +278,7 @@ export default class Chart {
   }
   
   /**
-   * Process datasets into a standardized format
+   * Process datasets into a standardized format with area support
    * @private
    */
   processDatasets() {
@@ -297,13 +297,14 @@ export default class Chart {
       if (data.length === 0) {
         this.state.datasets = [];
       } else if (data[0] && data[0].hasOwnProperty('data')) {
-        // Array of datasets
+        // Array of datasets - preserve area property per dataset
         this.state.datasets = data.map((dataset, index) => ({
           id: dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`,
           name: dataset.name || `Dataset ${index + 1}`,
           color: dataset.color || this.options.colors[index % this.options.colors.length],
           width: dataset.width || this.options.lineWidth,
-          type: dataset.type || 'line',
+          area: Boolean(dataset.area), // Per-dataset area property
+          areaOpacity: dataset.areaOpacity || this.options.areaOpacity || 0.2,
           data: Array.isArray(dataset.data) ? dataset.data : []
         }));
       } else {
@@ -313,7 +314,8 @@ export default class Chart {
           name: 'Dataset',
           color: this.options.colors[0],
           width: this.options.lineWidth,
-          type: 'line',
+          area: false, // Default to no area for single dataset
+          areaOpacity: this.options.areaOpacity || 0.2,
           data: data
         }];
       }
@@ -324,7 +326,8 @@ export default class Chart {
         name: 'Dataset',
         color: this.options.colors[0],
         width: this.options.lineWidth,
-        type: 'line',
+        area: false, // Default to no area
+        areaOpacity: this.options.areaOpacity || 0.2,
         data: data.data || []
       }];
     }
@@ -706,7 +709,7 @@ export default class Chart {
     // To be implemented by subclasses
   }
 
-  /**
+ /**
  * Render chart legend - centered under title
  * @private
  */
@@ -737,26 +740,26 @@ export default class Chart {
       // Create item group
       const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       
-      // Create symbol based on dataset type
-      if (dataset.type === 'line' || dataset.type === 'area') {
-        // Line symbol
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', 0);
-        line.setAttribute('y1', 10);
-        line.setAttribute('x2', 20);
-        line.setAttribute('y2', 10);
-        line.setAttribute('stroke', dataset.color);
-        line.setAttribute('stroke-width', 2);
-        itemGroup.appendChild(line);
-      } else {
-        // Rectangle symbol for bar or other types
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', 0);
-        rect.setAttribute('y', 5);
-        rect.setAttribute('width', 20);
-        rect.setAttribute('height', 10);
-        rect.setAttribute('fill', dataset.color);
-        itemGroup.appendChild(rect);
+      // Create symbol - always use line symbol for line charts
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', 0);
+      line.setAttribute('y1', 10);
+      line.setAttribute('x2', 20);
+      line.setAttribute('y2', 10);
+      line.setAttribute('stroke', dataset.color);
+      line.setAttribute('stroke-width', 2);
+      itemGroup.appendChild(line);
+      
+      // Add area indicator if area is enabled for this dataset
+      if (dataset.area) {
+        const areaRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        areaRect.setAttribute('x', 0);
+        areaRect.setAttribute('y', 7);
+        areaRect.setAttribute('width', 20);
+        areaRect.setAttribute('height', 6);
+        areaRect.setAttribute('fill', dataset.color);
+        areaRect.setAttribute('fill-opacity', dataset.areaOpacity || 0.2);
+        itemGroup.appendChild(areaRect);
       }
       
       // Create label
@@ -1540,8 +1543,8 @@ bindHoverEvents() {
     return;
   }
   
-  // Show crosshair - ALWAYS show for line and area charts
-  if (this.options.chartType === 'line' || this.options.chartType === 'area') {
+  // Show crosshair - ALWAYS show for line charts
+  if (this.options.chartType === 'line') {
     this.state.components.crosshair.update(x, 0);
     this.state.components.crosshair.show();
   }
@@ -1612,8 +1615,8 @@ updateHoverPoints(mouseX) {
   const xValue = this.state.scales.x.invert(mouseX);
   
   // For LineChart: CHANGE THIS - Always show crosshair regardless of point proximity
-  if (this.options.chartType === 'line' || this.options.chartType === 'area') {
-    // Always show the crosshair for line and area charts
+  if (this.options.chartType === 'line') {
+    // Always show the crosshair for line charts
     if (this.state.components.crosshair) {
       this.state.components.crosshair.show();
     }
@@ -1643,7 +1646,7 @@ updateHoverPoints(mouseX) {
       }
     });
     
-    // Modified threshold for LineChart vs. Area/Bar Charts
+    // Modified threshold for LineChart vs. Bar Charts
     const proximityThreshold = (this.options.chartType === 'line') ? 50 : 50;
     
     // Update hover point position
@@ -1891,4 +1894,3 @@ destroy() {
   this.state.chart = null;
  }
 }
-

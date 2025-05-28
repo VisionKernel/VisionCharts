@@ -24,7 +24,6 @@ import SvgRenderer from './renderers/SvgRenderer.js';
 // Chart types
 import LineChart from './charts/LineChart.js';
 import BarChart from './charts/BarChart.js';
-import AreaChart from './charts/AreaChart.js';
 
 // Utility functions
 import { 
@@ -34,7 +33,7 @@ import {
 
 /**
  * Create a chart instance based on type
- * @param {string} type - Chart type ('line', 'bar', 'area')
+ * @param {string} type - Chart type ('line', 'bar')
  * @param {Object} config - Chart configuration
  * @returns {Chart} Chart instance
  */
@@ -45,7 +44,9 @@ export function createChart(type, config) {
     case 'bar':
       return new BarChart(config);
     case 'area':
-      return new AreaChart(config);
+      // For backward compatibility, map area to line
+      console.warn('AreaChart is deprecated. Use LineChart with dataset.area = true instead.');
+      return new LineChart(config);
     default:
       throw new Error(`Unsupported chart type: ${type}`);
   }
@@ -128,7 +129,6 @@ export {
   // Charts
   LineChart,
   BarChart,
-  AreaChart,
   
   // Utils
   calculateIndicator,
@@ -161,7 +161,6 @@ export default {
   
   LineChart,
   BarChart,
-  AreaChart,
   
   calculateIndicator,
   formatDateValue,
