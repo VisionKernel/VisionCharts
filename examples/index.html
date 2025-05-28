@@ -134,6 +134,15 @@
       height: 30px;
     }
     
+    input[type="checkbox"] {
+      min-width: auto;
+      margin-right: 5px;
+    }
+    
+    input[type="range"] {
+      min-width: 100px;
+    }
+    
     .tabs {
       display: flex;
       border-bottom: 1px solid #ddd;
@@ -251,6 +260,19 @@
     .accordion-content.active {
       display: block;
     }
+    
+    .area-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 0;
+    }
+    
+    .opacity-value {
+      font-size: 12px;
+      min-width: 30px;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -262,15 +284,14 @@
   <div id="debug-output" class="debug-info" style="display: none;"></div>
   
   <div class="tabs">
-    <div class="tab active" data-tab="line">Line Chart</div>
-    <div class="tab" data-tab="area">Area Chart</div>
+    <div class="tab active" data-tab="line">Line & Area Chart</div>
     <div class="tab" data-tab="bar">Bar Chart</div>
   </div>
   
   <main>
-    <!-- Line Chart Section -->
+    <!-- Line & Area Chart Section -->
     <section id="line-section" class="chart-section">
-      <h2>Line Chart</h2>
+      <h2>Line & Area Chart</h2>
       
       <div class="control-panel">
         <h3>Basic Settings</h3>
@@ -308,6 +329,11 @@
               <option value="cardinal">Cardinal</option>
               <option value="monotone" selected>Monotone</option>
             </select>
+          </div>
+          <div class="control-group">
+            <label for="line-toggle-gradient">
+              <input type="checkbox" id="line-toggle-gradient"> Use Gradient for Areas
+            </label>
           </div>
         </div>
         
@@ -362,102 +388,6 @@
       </div>
       
       <div id="line-chart" class="chart-container"></div>
-    </section>
-    
-    <!-- Area Chart Section -->
-    <section id="area-section" class="chart-section" style="display: none;">
-      <h2>Area Chart</h2>
-      
-      <div class="control-panel">
-        <h3>Basic Settings</h3>
-        <div class="control-row">
-          <div class="control-group">
-            <label for="area-x-name">X Axis Name</label>
-            <input type="text" id="area-x-name" value="Date" placeholder="X Axis Name">
-          </div>
-          <div class="control-group">
-            <label for="area-y-name">Y Axis Name</label>
-            <input type="text" id="area-y-name" value="Value" placeholder="Y Axis Name">
-          </div>
-          <div class="control-group">
-            <label>Scale Type</label>
-            <button id="area-toggle-log" class="toggle-button">Toggle Logarithmic</button>
-          </div>
-          <div class="control-group">
-            <label>Visualization</label>
-            <div style="display: flex; gap: 10px;">
-              <button id="area-toggle-zero" class="toggle-button">Toggle Zero Line</button>
-              <button id="area-toggle-recession" class="toggle-button">Toggle Recessions</button>
-              <button id="area-toggle-panel" class="toggle-button">Toggle Panel View</button>
-              <button id="area-toggle-legend" class="toggle-button active">Toggle Legend</button>
-            </div>
-          </div>
-        </div>
-        
-        <h3>Area Settings</h3>
-        <div class="control-row">
-          <div class="control-group">
-            <label for="area-curve">Curve Type</label>
-            <select id="area-curve">
-              <option value="linear">Linear</option>
-              <option value="step">Step</option>
-              <option value="cardinal">Cardinal</option>
-              <option value="monotone" selected>Monotone</option>
-            </select>
-          </div>
-        </div>
-        
-        <h3>Dataset Manager</h3>
-        <div class="dataset-manager" id="area-datasets">
-          <!-- Dataset items will be added here dynamically -->
-        </div>
-        <button id="area-add-dataset">Add Dataset</button>
-        
-        <div class="accordion">
-          <div class="accordion-header">
-            Technical Indicators / Studies
-            <span>+</span>
-          </div>
-          <div class="accordion-content">
-            <div class="control-row">
-              <div class="control-group">
-                <label for="area-study-type">Study Type</label>
-                <select id="area-study-type">
-                  <option value="sma">Simple Moving Average (SMA)</option>
-                  <option value="ema">Exponential Moving Average (EMA)</option>
-                  <option value="bollinger">Bollinger Bands</option>
-                  <option value="rsi">Relative Strength Index (RSI)</option>
-                  <option value="macd">MACD</option>
-                </select>
-              </div>
-              <div class="control-group">
-                <label for="area-study-period">Period</label>
-                <input type="number" id="area-study-period" value="14" min="1" max="200">
-              </div>
-              <div class="control-group">
-                <label for="area-study-dataset">Apply To</label>
-                <select id="area-study-dataset">
-                  <option value="dataset-1">Dataset 1</option>
-                </select>
-              </div>
-              <div class="control-group">
-                <label for="area-study-color">Color</label>
-                <input type="color" id="area-study-color" value="#FBBC05">
-              </div>
-              <div class="control-group">
-                <label>&nbsp;</label>
-                <button>Add Study</button>
-              </div>
-            </div>
-            <div>
-              <strong>Active Studies:</strong>
-              <div>No studies added</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div id="area-chart" class="chart-container"></div>
     </section>
     
     <!-- Bar Chart Section -->
@@ -557,8 +487,8 @@
   </footer>
   
   <script type="module">
-    // Import the VisionCharts library
-    import { LineChart, AreaChart, BarChart, calculateIndicator } from '../src/index.js';
+    // Import the VisionCharts library - note: no AreaChart import needed anymore
+    import { LineChart, BarChart, calculateIndicator } from '../src/index.js';
     
     // Debug helper function - logs to console only
     function log(message, obj = null) {
@@ -624,7 +554,6 @@
     
     // Chart instances
     let lineChart = null;
-    let areaChart = null;
     let barChart = null;
     
     // Define recession data for charts
@@ -661,13 +590,6 @@
             datasets[datasetIndex].name = e.target.value;
             lineChart.update();
           }
-        } else if (chartType === 'area' && areaChart) {
-          const datasets = areaChart.config.data;
-          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-          if (datasetIndex >= 0) {
-            datasets[datasetIndex].name = e.target.value;
-            areaChart.update();
-          }
         } else if (chartType === 'bar' && barChart) {
           const datasets = barChart.config.data;
           const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
@@ -701,13 +623,6 @@
             datasets[datasetIndex].color = e.target.value;
             lineChart.update();
           }
-        } else if (chartType === 'area' && areaChart) {
-          const datasets = areaChart.config.data;
-          const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-          if (datasetIndex >= 0) {
-            datasets[datasetIndex].color = e.target.value;
-            areaChart.update();
-          }
         } else if (chartType === 'bar' && barChart) {
           const datasets = barChart.config.data;
           const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
@@ -721,8 +636,8 @@
       colorGroup.appendChild(colorLabel);
       colorGroup.appendChild(colorInput);
       
-      // Create width input for line/area charts
-      if (chartType === 'line' || chartType === 'area') {
+      // Create width input for line charts
+      if (chartType === 'line') {
         const widthGroup = document.createElement('div');
         widthGroup.className = 'control-group';
         
@@ -738,19 +653,12 @@
         
         widthInput.addEventListener('change', (e) => {
           // Update dataset width in the chart
-          if (chartType === 'line' && lineChart) {
+          if (lineChart) {
             const datasets = lineChart.config.data;
             const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
             if (datasetIndex >= 0) {
               datasets[datasetIndex].width = parseFloat(e.target.value);
               lineChart.update();
-            }
-          } else if (chartType === 'area' && areaChart) {
-            const datasets = areaChart.config.data;
-            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-            if (datasetIndex >= 0) {
-              datasets[datasetIndex].width = parseFloat(e.target.value);
-              areaChart.update();
             }
           }
         });
@@ -759,6 +667,58 @@
         widthGroup.appendChild(widthInput);
         
         item.appendChild(widthGroup);
+        
+        // Add area controls for line charts
+        const areaControls = document.createElement('div');
+        areaControls.className = 'area-controls';
+        
+        // Area checkbox
+        const areaCheckbox = document.createElement('input');
+        areaCheckbox.type = 'checkbox';
+        areaCheckbox.id = `area-${dataset.id}`;
+        areaCheckbox.checked = Boolean(dataset.area);
+        
+        const areaLabel = document.createElement('label');
+        areaLabel.htmlFor = `area-${dataset.id}`;
+        areaLabel.textContent = 'Area Fill';
+        
+        areaCheckbox.addEventListener('change', (e) => {
+          if (lineChart) {
+            lineChart.toggleDatasetArea(dataset.id, e.target.checked);
+          }
+        });
+        
+        // Area opacity slider
+        const opacityLabel = document.createElement('label');
+        opacityLabel.textContent = 'Opacity:';
+        opacityLabel.style.marginLeft = '15px';
+        
+        const opacityInput = document.createElement('input');
+        opacityInput.type = 'range';
+        opacityInput.min = '0';
+        opacityInput.max = '1';
+        opacityInput.step = '0.1';
+        opacityInput.value = dataset.areaOpacity || '0.2';
+        opacityInput.style.width = '80px';
+        
+        const opacityValue = document.createElement('span');
+        opacityValue.className = 'opacity-value';
+        opacityValue.textContent = opacityInput.value;
+        
+        opacityInput.addEventListener('input', (e) => {
+          opacityValue.textContent = e.target.value;
+          if (lineChart) {
+            lineChart.setDatasetAreaOpacity(dataset.id, parseFloat(e.target.value));
+          }
+        });
+        
+        areaControls.appendChild(areaCheckbox);
+        areaControls.appendChild(areaLabel);
+        areaControls.appendChild(opacityLabel);
+        areaControls.appendChild(opacityInput);
+        areaControls.appendChild(opacityValue);
+        
+        item.appendChild(areaControls);
       }
       
       // Create actions
@@ -797,21 +757,6 @@
             }
             lineChart.update();
           }
-        } else if (chartType === 'area' && areaChart) {
-          // Similar approach for area chart
-          const datasetIndex = areaChart.config.data.findIndex(d => d.id === dataset.id);
-          if (datasetIndex >= 0) {
-            if (newVisibility) {
-              if (areaChart.config.data[datasetIndex]._originalData) {
-                areaChart.config.data[datasetIndex].data = areaChart.config.data[datasetIndex]._originalData;
-                delete areaChart.config.data[datasetIndex]._originalData;
-              }
-            } else {
-              areaChart.config.data[datasetIndex]._originalData = areaChart.config.data[datasetIndex].data;
-              areaChart.config.data[datasetIndex].data = [];
-            }
-            areaChart.update();
-          }
         } else if (chartType === 'bar' && barChart) {
           // Similar approach for bar chart
           const datasetIndex = barChart.config.data.findIndex(d => d.id === dataset.id);
@@ -845,15 +790,6 @@
             if (datasetIndex >= 0) {
               datasets.splice(datasetIndex, 1);
               lineChart.update();
-              // Also remove from UI
-              container.removeChild(item);
-            }
-          } else if (chartType === 'area' && areaChart) {
-            const datasets = areaChart.config.data;
-            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-            if (datasetIndex >= 0) {
-              datasets.splice(datasetIndex, 1);
-              areaChart.update();
               // Also remove from UI
               container.removeChild(item);
             }
@@ -891,9 +827,6 @@
       if (chartType === 'line') {
         chart = lineChart;
         container = document.getElementById('line-datasets');
-      } else if (chartType === 'area') {
-        chart = areaChart;
-        container = document.getElementById('area-datasets');
       } else if (chartType === 'bar') {
         chart = barChart;
         container = document.getElementById('bar-datasets');
@@ -954,6 +887,8 @@
         name: `Dataset ${index + 1}`,
         color: colors[index % colors.length],
         width: 2,
+        area: false, // Default to no area for new datasets
+        areaOpacity: 0.2, // Default opacity
         data: newData
       };
     }
@@ -972,13 +907,15 @@
           price: item.y
         }));
         
-        // Create a single dataset
+        // Create a single dataset with area disabled by default
         const data = [
           {
             id: 'dataset-1',
             name: 'Time Series Data',
             color: '#1468a8', 
             width: 2,
+            area: false, // Area disabled by default
+            areaOpacity: 0.2,
             data: formattedData
           }
         ];
@@ -1001,9 +938,9 @@
             yAxisName: yAxisName,
             curve: 'monotone',
             showPoints: true,
-            area: false,
             showZeroLine: false,
             showLegend: true, // Enable legend by default
+            gradient: false, // Gradient disabled by default
             recessions: recessions
           }
         });
@@ -1026,258 +963,102 @@
     
     // Add event listeners for Line Chart Controls
     function setupLineChartControls() {
-  if (!lineChart) return;
-  
-  // X axis name
-  document.getElementById('line-x-name').addEventListener('change', (e) => {
-    lineChart.setXAxisName(e.target.value);
-  });
-  
-  // Y axis name
-  document.getElementById('line-y-name').addEventListener('change', (e) => {
-    lineChart.setYAxisName(e.target.value);
-  });
-  
-  // Toggle logarithmic scale
-  document.getElementById('line-toggle-log').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const isLogarithmic = e.target.classList.contains('active');
-    lineChart.toggleLogarithmic(isLogarithmic);
-  });
-  
-  // Toggle zero line
-  document.getElementById('line-toggle-zero').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showZeroLine = e.target.classList.contains('active');
-    lineChart.toggleZeroLine(showZeroLine);
-  });
-  
-  // Toggle recession lines
-  document.getElementById('line-toggle-recession').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showRecessionLines = e.target.classList.contains('active');
-    lineChart.toggleRecessionLines(showRecessionLines);
-  });
-  
-  // Toggle panel view
-  document.getElementById('line-toggle-panel').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const isPanelView = e.target.classList.contains('active');
-    lineChart.togglePanelView(isPanelView);
-  });
-  
-  // Toggle legend - improved to work with the chart's internal state
-  document.getElementById('line-toggle-legend').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showLegend = e.target.classList.contains('active');
-    
-    // Find and toggle the legend element directly
-    if (lineChart && lineChart.state.svg) {
-      const legend = lineChart.state.svg.querySelector('.visioncharts-legend');
-      if (legend) {
-        // If legend exists, toggle its visibility
-        legend.style.display = showLegend ? 'block' : 'none';
-      } else if (showLegend) {
-        // If legend doesn't exist but we want to show it, re-render the chart
-        // This ensures the legend will be properly created and positioned
-        lineChart.options.showLegend = true;
-        lineChart.render();
-      }
-    }
-  });
-  
-  // Curve type
-  document.getElementById('line-curve').addEventListener('change', (e) => {
-    if (!lineChart) return;
-    
-    // Update the curve option
-    lineChart.options.curve = e.target.value;
-    
-    // Update the chart
-    lineChart.update();
-  });
-  
-  // Add dataset button
-  document.getElementById('line-add-dataset').addEventListener('click', () => {
-    if (!lineChart || !lineChart.config.data.length) return;
-    
-    // Get the source dataset (the first one)
-    const sourceDataset = lineChart.config.data[0];
-    
-    // Create a new randomized dataset
-    const newDataset = createRandomizedDataset(sourceDataset, lineChart.config.data.length);
-    
-    // Add to chart
-    lineChart.config.data.push(newDataset);
-    lineChart.update();
-    
-    // Update UI
-    updateDatasetManager('line');
-  });
-}
-    
-    // Initialize Area Chart
-    async function initAreaChart() {
-      log('Initializing Area Chart');
+      if (!lineChart) return;
       
-      try {
-        // Load the time series data
-        const timeSeriesData = await loadTimeSeriesData();
+      // X axis name
+      document.getElementById('line-x-name').addEventListener('change', (e) => {
+        lineChart.setXAxisName(e.target.value);
+      });
+      
+      // Y axis name
+      document.getElementById('line-y-name').addEventListener('change', (e) => {
+        lineChart.setYAxisName(e.target.value);
+      });
+      
+      // Toggle logarithmic scale
+      document.getElementById('line-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isLogarithmic = e.target.classList.contains('active');
+        lineChart.toggleLogarithmic(isLogarithmic);
+      });
+      
+      // Toggle zero line
+      document.getElementById('line-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showZeroLine = e.target.classList.contains('active');
+        lineChart.toggleZeroLine(showZeroLine);
+      });
+      
+      // Toggle recession lines
+      document.getElementById('line-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showRecessionLines = e.target.classList.contains('active');
+        lineChart.toggleRecessionLines(showRecessionLines);
+      });
+      
+      // Toggle panel view
+      document.getElementById('line-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isPanelView = e.target.classList.contains('active');
+        lineChart.togglePanelView(isPanelView);
+      });
+      
+      // Toggle legend
+      document.getElementById('line-toggle-legend').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showLegend = e.target.classList.contains('active');
         
-        // Format data for the area chart
-        const formattedData = timeSeriesData.map(item => ({
-          date: new Date(item.x),
-          price: item.y
-        }));
-        
-        // Create a single dataset
-        const data = [
-          {
-            id: 'dataset-1',
-            name: 'Time Series Data',
-            color: '#1468a8', 
-            width: 2,
-            data: formattedData
+        // Find and toggle the legend element directly
+        if (lineChart && lineChart.state.svg) {
+          const legend = lineChart.state.svg.querySelector('.visioncharts-legend');
+          if (legend) {
+            // If legend exists, toggle its visibility
+            legend.style.display = showLegend ? 'block' : 'none';
+          } else if (showLegend) {
+            // If legend doesn't exist but we want to show it, re-render the chart
+            // This ensures the legend will be properly created and positioned
+            lineChart.options.showLegend = true;
+            lineChart.render();
           }
-        ];
+        }
+      });
+      
+      // Curve type
+      document.getElementById('line-curve').addEventListener('change', (e) => {
+        if (!lineChart) return;
         
-        // Get initial values from inputs
-        const xAxisName = document.getElementById('area-x-name').value;
-        const yAxisName = document.getElementById('area-y-name').value;
+        // Update the curve option
+        lineChart.options.curve = e.target.value;
         
-        // Create the area chart
-        areaChart = new AreaChart({
-          container: '#area-chart',
-          data: data,
-          options: {
-            title: 'Time Series Data',
-            xField: 'date',
-            yField: 'price',
-            xType: 'time',
-            yType: 'number',
-            xAxisName: xAxisName,
-            yAxisName: yAxisName,
-            curve: 'monotone',
-            showPoints: false,
-            area: true,
-            stacked: false,
-            gradient: true,
-            areaOpacity: 0.2,
-            recessions: recessions,
-            showZeroLine: false,
-            showRecessionLines: false,
-            showLegend: true, // Enable legend by default
-            isLogarithmic: false
-          }
-        });
+        // Update the chart
+        lineChart.update();
+      });
+      
+      // Toggle gradient
+      document.getElementById('line-toggle-gradient').addEventListener('change', (e) => {
+        if (!lineChart) return;
         
-        // Render the chart (this will also render the legend)
-        areaChart.render();
+        lineChart.toggleGradient(e.target.checked);
+      });
+      
+      // Add dataset button
+      document.getElementById('line-add-dataset').addEventListener('click', () => {
+        if (!lineChart || !lineChart.config.data.length) return;
         
-        log('Area chart rendered successfully');
+        // Get the source dataset (the first one)
+        const sourceDataset = lineChart.config.data[0];
         
-        // Update dataset manager UI
-        updateDatasetManager('area');
+        // Create a new randomized dataset
+        const newDataset = createRandomizedDataset(sourceDataset, lineChart.config.data.length);
         
-        // Setup event listeners for controls
-        setupAreaChartControls();
-      } catch (error) {
-        log('Error initializing area chart:', error);
-        handleError('area-chart', error);
-      }
+        // Add to chart
+        lineChart.config.data.push(newDataset);
+        lineChart.update();
+        
+        // Update UI
+        updateDatasetManager('line');
+      });
     }
-    
-    // Add event listeners for Area Chart Controls
-    function setupAreaChartControls() {
-  if (!areaChart) return;
-  
-  // X axis name
-  document.getElementById('area-x-name').addEventListener('change', (e) => {
-    areaChart.setXAxisName(e.target.value);
-  });
-  
-  // Y axis name
-  document.getElementById('area-y-name').addEventListener('change', (e) => {
-    areaChart.setYAxisName(e.target.value);
-  });
-  
-  // Toggle logarithmic scale
-  document.getElementById('area-toggle-log').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const isLogarithmic = e.target.classList.contains('active');
-    areaChart.toggleLogarithmic(isLogarithmic);
-  });
-  
-  // Toggle zero line
-  document.getElementById('area-toggle-zero').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showZeroLine = e.target.classList.contains('active');
-    areaChart.toggleZeroLine(showZeroLine);
-  });
-  
-  // Toggle recession lines
-  document.getElementById('area-toggle-recession').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showRecessionLines = e.target.classList.contains('active');
-    areaChart.toggleRecessionLines(showRecessionLines);
-  });
-  
-  // Toggle panel view
-  document.getElementById('area-toggle-panel').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const isPanelView = e.target.classList.contains('active');
-    areaChart.togglePanelView(isPanelView);
-  });
-  
-  // Toggle legend - improved to work with the chart's internal state
-  document.getElementById('area-toggle-legend').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showLegend = e.target.classList.contains('active');
-    
-    // Find and toggle the legend element directly
-    if (areaChart && areaChart.state.svg) {
-      const legend = areaChart.state.svg.querySelector('.visioncharts-legend');
-      if (legend) {
-        // If legend exists, toggle its visibility
-        legend.style.display = showLegend ? 'block' : 'none';
-      } else if (showLegend) {
-        // If legend doesn't exist but we want to show it, re-render the chart
-        // This ensures the legend will be properly created and positioned
-        areaChart.options.showLegend = true;
-        areaChart.render();
-      }
-    }
-  });
-  
-  // Curve type
-  document.getElementById('area-curve').addEventListener('change', (e) => {
-    if (!areaChart) return;
-    
-    // Update the curve option
-    areaChart.options.curve = e.target.value;
-    
-    // Update the chart
-    areaChart.update();
-  });
-  
-  // Add dataset button
-  document.getElementById('area-add-dataset').addEventListener('click', () => {
-    if (!areaChart || !areaChart.config.data.length) return;
-    
-    // Get the source dataset (the first one)
-    const sourceDataset = areaChart.config.data[0];
-    
-    // Create a new randomized dataset
-    const newDataset = createRandomizedDataset(sourceDataset, areaChart.config.data.length);
-    
-    // Add to chart
-    areaChart.config.data.push(newDataset);
-    areaChart.update();
-    
-    // Update UI
-    updateDatasetManager('area');
-  });
-}
     
     // Initialize Bar Chart with time series data
     async function initBarChart() {
@@ -1350,84 +1131,84 @@
     
     // Add event listeners for Bar Chart Controls
     function setupBarChartControls() {
-  if (!barChart) return;
-  
-  // X axis name
-  document.getElementById('bar-x-name').addEventListener('change', (e) => {
-    barChart.setXAxisName(e.target.value);
-  });
-  
-  // Y axis name
-  document.getElementById('bar-y-name').addEventListener('change', (e) => {
-    barChart.setYAxisName(e.target.value);
-  });
-  
-  // Toggle logarithmic scale
-  document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const isLogarithmic = e.target.classList.contains('active');
-    barChart.toggleLogarithmic(isLogarithmic);
-  });
-  
-  // Toggle zero line
-  document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showZeroLine = e.target.classList.contains('active');
-    barChart.toggleZeroLine(showZeroLine);
-  });
-  
-  // Toggle recession lines
-  document.getElementById('bar-toggle-recession').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showRecessionLines = e.target.classList.contains('active');
-    barChart.toggleRecessionLines(showRecessionLines);
-  });
-  
-  // Toggle panel view
-  document.getElementById('bar-toggle-panel').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const isPanelView = e.target.classList.contains('active');
-    barChart.togglePanelView(isPanelView);
-  });
-  
-  // Toggle legend - improved to work with the chart's internal state
-  document.getElementById('bar-toggle-legend').addEventListener('click', (e) => {
-    e.target.classList.toggle('active');
-    const showLegend = e.target.classList.contains('active');
-    
-    // Find and toggle the legend element directly
-    if (barChart && barChart.state.svg) {
-      const legend = barChart.state.svg.querySelector('.visioncharts-legend');
-      if (legend) {
-        // If legend exists, toggle its visibility
-        legend.style.display = showLegend ? 'block' : 'none';
-      } else if (showLegend) {
-        // If legend doesn't exist but we want to show it, re-render the chart
-        // This ensures the legend will be properly created and positioned
-        barChart.options.showLegend = true;
-        barChart.render();
-      }
+      if (!barChart) return;
+      
+      // X axis name
+      document.getElementById('bar-x-name').addEventListener('change', (e) => {
+        barChart.setXAxisName(e.target.value);
+      });
+      
+      // Y axis name
+      document.getElementById('bar-y-name').addEventListener('change', (e) => {
+        barChart.setYAxisName(e.target.value);
+      });
+      
+      // Toggle logarithmic scale
+      document.getElementById('bar-toggle-log').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isLogarithmic = e.target.classList.contains('active');
+        barChart.toggleLogarithmic(isLogarithmic);
+      });
+      
+      // Toggle zero line
+      document.getElementById('bar-toggle-zero').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showZeroLine = e.target.classList.contains('active');
+        barChart.toggleZeroLine(showZeroLine);
+      });
+      
+      // Toggle recession lines
+      document.getElementById('bar-toggle-recession').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showRecessionLines = e.target.classList.contains('active');
+        barChart.toggleRecessionLines(showRecessionLines);
+      });
+      
+      // Toggle panel view
+      document.getElementById('bar-toggle-panel').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const isPanelView = e.target.classList.contains('active');
+        barChart.togglePanelView(isPanelView);
+      });
+      
+      // Toggle legend
+      document.getElementById('bar-toggle-legend').addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showLegend = e.target.classList.contains('active');
+        
+        // Find and toggle the legend element directly
+        if (barChart && barChart.state.svg) {
+          const legend = barChart.state.svg.querySelector('.visioncharts-legend');
+          if (legend) {
+            // If legend exists, toggle its visibility
+            legend.style.display = showLegend ? 'block' : 'none';
+          } else if (showLegend) {
+            // If legend doesn't exist but we want to show it, re-render the chart
+            // This ensures the legend will be properly created and positioned
+            barChart.options.showLegend = true;
+            barChart.render();
+          }
+        }
+      });
+      
+      // Add dataset button
+      document.getElementById('bar-add-dataset').addEventListener('click', () => {
+        if (!barChart || !barChart.config.data.length) return;
+        
+        // Get the source dataset (the first one)
+        const sourceDataset = barChart.config.data[0];
+        
+        // Create a new randomized dataset
+        const newDataset = createRandomizedDataset(sourceDataset, barChart.config.data.length);
+        
+        // Add to chart
+        barChart.config.data.push(newDataset);
+        barChart.update();
+        
+        // Update UI
+        updateDatasetManager('bar');
+      });
     }
-  });
-  
-  // Add dataset button
-  document.getElementById('bar-add-dataset').addEventListener('click', () => {
-    if (!barChart || !barChart.config.data.length) return;
-    
-    // Get the source dataset (the first one)
-    const sourceDataset = barChart.config.data[0];
-    
-    // Create a new randomized dataset
-    const newDataset = createRandomizedDataset(sourceDataset, barChart.config.data.length);
-    
-    // Add to chart
-    barChart.config.data.push(newDataset);
-    barChart.update();
-    
-    // Update UI
-    updateDatasetManager('bar');
-  });
-}
     
     // Tab functionality
     function setupTabs() {
@@ -1451,8 +1232,6 @@
               // Initialize chart if not already done
               if (tabName === 'line' && !lineChart) {
                 initLineChart();
-              } else if (tabName === 'area' && !areaChart) {
-                initAreaChart();
               } else if (tabName === 'bar' && !barChart) {
                 initBarChart();
               }
