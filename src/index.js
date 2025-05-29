@@ -69,6 +69,7 @@ export function parseChartConfig(config) {
     isPanelView: false,
     showRecessionLines: false,
     showZeroLine: false,
+    showPoints: false,
     studies: [],
     datasets: []
   };

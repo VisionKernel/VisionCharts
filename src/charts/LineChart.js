@@ -20,7 +20,7 @@ export default class LineChart extends Chart {
       options: {
         chartType: 'line',
         curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
-        showPoints: true,
+        showPoints: false,
         pointRadius: 3,
         xField: 'x',
         yField: 'y',
