@@ -708,7 +708,16 @@
         opacityInput.addEventListener('input', (e) => {
           opacityValue.textContent = e.target.value;
           if (lineChart) {
-            lineChart.setDatasetAreaOpacity(dataset.id, parseFloat(e.target.value));
+            // Update the dataset in config.data directly
+            const datasets = lineChart.config.data;
+            const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
+            if (datasetIndex >= 0) {
+              datasets[datasetIndex].areaOpacity = parseFloat(e.target.value);
+              // Only update if area is enabled
+              if (datasets[datasetIndex].area) {
+                lineChart.update();
+              }
+            }
           }
         });
         
@@ -907,15 +916,15 @@
           price: item.y
         }));
         
-        // Create a single dataset with area disabled by default
+        // Create a single dataset with area ENABLED by default for testing
         const data = [
           {
             id: 'dataset-1',
             name: 'Time Series Data',
             color: '#1468a8', 
             width: 2,
-            area: false, // Area disabled by default
-            areaOpacity: 0.2,
+            area: true, // Area ENABLED by default for testing
+            areaOpacity: 0.3, // Increased opacity for visibility
             data: formattedData
           }
         ];
@@ -938,8 +947,8 @@
             yAxisName: yAxisName,
             curve: 'monotone',
             showPoints: false,
-            area: false,
             showZeroLine: false,
+            area: false,
             showLegend: true, // Enable legend by default
             gradient: false, // Gradient disabled by default
             recessions: recessions
@@ -1039,7 +1048,9 @@
       document.getElementById('line-toggle-gradient').addEventListener('change', (e) => {
         if (!lineChart) return;
         
-        lineChart.toggleGradient(e.target.checked);
+        // Update gradient option and re-render
+        lineChart.options.gradient = e.target.checked;
+        lineChart.update();
       });
       
       // Add dataset button
