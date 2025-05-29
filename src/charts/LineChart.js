@@ -13,27 +13,44 @@ export default class LineChart extends Chart {
    */
   constructor(config) {
     console.log('LineChart constructor called');
-    
-    // Call parent constructor with merged options
-    super({
-      ...config,
-      options: {
-        chartType: 'line',
-        curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
-        showPoints: false,
-        pointRadius: 3,
-        xField: 'x',
-        yField: 'y',
-        xType: 'number', // 'number', 'time'
-        yType: 'number',
-        // Remove global area options - now per-dataset
-        areaOpacity: 0.2, // Default opacity for areas
-        gradient: false, // Whether to use gradients for area fills
-        ...config.options
+
+    // Define default options for LineChart
+    const defaultLineChartOptions = {
+      chartType: 'line',
+      curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
+      showPoints: false,
+      pointRadius: 3,
+      xField: 'x',
+      yField: 'y',
+      xType: 'number', // 'number', 'time'
+      yType: 'number',
+      areaOpacity: 0.2,
+      gradient: false,
+      grid: {
+        show: false,
+        color: '#e0e0e0', // Default grid color
+        strokeWidth: 1,   // Default grid stroke width
+        dashArray: '4,4'  // Default grid dash array
       }
+    };
+
+    // Merge options: user's config.options take precedence, with special handling for grid
+    const mergedOptions = {
+      ...defaultLineChartOptions,
+      ...(config.options || {}), // Spread user's top-level options
+      grid: { // Deep merge for the grid object
+        ...defaultLineChartOptions.grid, // Start with LineChart's grid defaults
+        ...((config.options && config.options.grid) || {}) // Override with user's grid options
+      }
+    };
+
+    // Call parent constructor with the fully merged config
+    super({
+      ...config, // Pass through other parts of config like container, data
+      options: mergedOptions // Use the carefully merged options
     });
     
-    console.log('LineChart constructor finished');
+    console.log('LineChart constructor finished with merged options:', this.options);
   }
   
   /**
@@ -74,7 +91,6 @@ export default class LineChart extends Chart {
         const { xType, xField } = this.options;
         const scale = this.state.scales.x;
         
-        // Create axis group
         const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         axisGroup.setAttribute('class', 'visioncharts-x-axis');
         
@@ -174,22 +190,28 @@ export default class LineChart extends Chart {
           }
           
           // Draw grid line if needed
-          if (this.options.grid) {
+          if (this.options.grid && this.options.grid.show) {
             const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             gridLine.setAttribute('x1', x);
-            gridLine.setAttribute('y1', 0);
+            gridLine.setAttribute('y1', 0); // Top of the plotting area
             gridLine.setAttribute('x2', x);
-            gridLine.setAttribute('y2', height);
-            gridLine.setAttribute('stroke', '#eee');
-            gridLine.setAttribute('stroke-width', 1);
-            gridLine.setAttribute('stroke-dasharray', '4,4');
-            axisGroup.appendChild(gridLine);
+            gridLine.setAttribute('y2', height); // Bottom of the plotting area
+            gridLine.setAttribute('stroke', this.options.grid.color);
+            gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
+            if (this.options.grid.dashArray) {
+              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
+            }
+            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-x');
+            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
+            if (axisGroup.firstChild) {
+              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
+            } else {
+              axisGroup.appendChild(gridLine);
+            }
           }
         });
         
-        // Add to container
         container.appendChild(axisGroup);
-        
         return axisGroup;
       }
     };
@@ -200,7 +222,6 @@ export default class LineChart extends Chart {
         const { yType, isLogarithmic } = this.options;
         const scale = this.state.scales.y;
         
-        // Create axis group
         const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         axisGroup.setAttribute('class', 'visioncharts-y-axis');
         
@@ -280,27 +301,32 @@ export default class LineChart extends Chart {
           axisGroup.appendChild(label);
           
           // Draw grid line if needed
-          if (this.options.grid) {
+          if (this.options.grid && this.options.grid.show) {
             const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            gridLine.setAttribute('x1', 0);
+            gridLine.setAttribute('x1', 0); // Left of the plotting area
             gridLine.setAttribute('y1', y);
-            gridLine.setAttribute('x2', width);
+            gridLine.setAttribute('x2', width); // Right of the plotting area
             gridLine.setAttribute('y2', y);
-            gridLine.setAttribute('stroke', '#eee');
-            gridLine.setAttribute('stroke-width', 1);
-            gridLine.setAttribute('stroke-dasharray', '4,4');
-            axisGroup.appendChild(gridLine);
+            gridLine.setAttribute('stroke', this.options.grid.color);
+            gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
+            if (this.options.grid.dashArray) {
+              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
+            }
+            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-y');
+            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
+            if (axisGroup.firstChild) {
+              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
+            } else {
+              axisGroup.appendChild(gridLine);
+            }
           }
         });
         
-        // Add to container
         container.appendChild(axisGroup);
-        
         return axisGroup;
       }
     };
-    
-    console.log('LineChart axes created (render functions defined)');
+    console.log('LineChart axes creation setup complete');
   }
   
   /**

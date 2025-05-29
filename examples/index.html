@@ -946,12 +946,18 @@
             xAxisName: xAxisName,
             yAxisName: yAxisName,
             curve: 'monotone',
-            showPoints: false,
-            showZeroLine: false,
+            showPoints: false, // Ensuring points are off as per previous request
             area: false,
+            showZeroLine: false,
             showLegend: true, // Enable legend by default
             gradient: false, // Gradient disabled by default
-            recessions: recessions
+            recessions: recessions,
+            grid: { // Added to enable and configure the grid
+              show: true
+              // You can override other grid defaults here if needed, e.g.:
+              // color: '#d3d3d3',
+              // dashArray: '5,5'
+            }
           }
         });
         
