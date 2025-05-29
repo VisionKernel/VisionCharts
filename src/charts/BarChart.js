@@ -14,29 +14,47 @@ export default class BarChart extends Chart {
    */
   constructor(config) {
     console.log('BarChart constructor called');
-    
-    // Call parent constructor with merged options
-    super({
-      ...config,
-      options: {
-        chartType: 'bar',
-        xField: 'category', // Default field for category labels
-        yField: 'y',
-        xType: 'category', // 'category', 'time', 'number'
-        yType: 'number',
-        barWidth: 0.7, // Width of bar as percentage of available space
-        barSpacing: 0.2, // Spacing between bars
-        showValues: false, // Whether to show values on bars
-        valuePosition: 'top', // 'top', 'middle', 'bottom'
-        colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-        stacked: true, // Always stacked by default
-        dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-        skipLabels: 3, // Skip labels for readability in time series
-        ...config.options
+
+    // Define default options for BarChart
+    const defaultBarChartOptions = {
+      chartType: 'bar',
+      xField: 'category', // Default field for category labels
+      yField: 'y',
+      xType: 'category', // 'category', 'time', 'number'
+      yType: 'number',
+      barWidth: 0.7, // Width of bar as percentage of available space
+      barSpacing: 0.2, // Spacing between bars
+      showValues: false, // Whether to show values on bars
+      valuePosition: 'top', // 'top', 'middle', 'bottom'
+      colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
+      stacked: true, // Always stacked by default
+      dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
+      skipLabels: 3, // Skip labels for readability in time series
+      grid: { // Added default grid configuration
+        show: True,
+        color: '#e0e0e0', // Default grid color
+        strokeWidth: 1,   // Default grid stroke width
+        dashArray: '4,4'  // Default grid dash array
       }
+    };
+
+    // Merge options: user's config.options take precedence, with special handling for grid
+    const mergedOptions = {
+      ...defaultBarChartOptions,
+      ...(config.options || {}), // Spread user's top-level options
+      grid: { // Deep merge for the grid object
+        ...defaultBarChartOptions.grid, // Start with BarChart's grid defaults
+        ...((config.options && config.options.grid) || {}) // Override with user's grid options
+      }
+    };
+
+    // Call parent constructor with the fully merged config
+    super({
+      ...config, // Pass through other parts of config like container, data
+      options: mergedOptions // Use the carefully merged options
     });
     
-    console.log('BarChart constructor finished');
+    console.log('BarChart constructor finished with merged options:', this.options);
   }
   
   /**
@@ -206,16 +224,24 @@ export default class BarChart extends Chart {
           }
           
           // Draw grid line if needed
-          if (this.options.grid) {
+          if (this.options.grid && this.options.grid.show) {
             const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
             gridLine.setAttribute('x1', x);
-            gridLine.setAttribute('y1', 0);
+            gridLine.setAttribute('y1', 0); // Top of the plotting area
             gridLine.setAttribute('x2', x);
-            gridLine.setAttribute('y2', height);
-            gridLine.setAttribute('stroke', '#eee');
-            gridLine.setAttribute('stroke-width', 1);
-            gridLine.setAttribute('stroke-dasharray', '4,4');
-            axisGroup.appendChild(gridLine);
+            gridLine.setAttribute('y2', height); // Bottom of the plotting area
+            gridLine.setAttribute('stroke', this.options.grid.color);
+            gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
+            if (this.options.grid.dashArray) {
+              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
+            }
+            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-x');
+            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
+            if (axisGroup.firstChild) {
+              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
+            } else {
+              axisGroup.appendChild(gridLine);
+            }
           }
         });
         
@@ -313,16 +339,24 @@ export default class BarChart extends Chart {
           axisGroup.appendChild(label);
           
           // Draw grid line if needed
-          if (this.options.grid) {
+          if (this.options.grid && this.options.grid.show) {
             const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            gridLine.setAttribute('x1', 0);
+            gridLine.setAttribute('x1', 0); // Left of the plotting area
             gridLine.setAttribute('y1', y);
-            gridLine.setAttribute('x2', width);
+            gridLine.setAttribute('x2', width); // Right of the plotting area
             gridLine.setAttribute('y2', y);
-            gridLine.setAttribute('stroke', '#eee');
-            gridLine.setAttribute('stroke-width', 1);
-            gridLine.setAttribute('stroke-dasharray', '4,4');
-            axisGroup.appendChild(gridLine);
+            gridLine.setAttribute('stroke', this.options.grid.color);
+            gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
+            if (this.options.grid.dashArray) {
+              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
+            }
+            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-y');
+            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
+            if (axisGroup.firstChild) {
+              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
+            } else {
+              axisGroup.appendChild(gridLine);
+            }
           }
         });
         

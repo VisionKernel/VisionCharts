@@ -27,7 +27,7 @@ export default class LineChart extends Chart {
       areaOpacity: 0.2,
       gradient: false,
       grid: {
-        show: false,
+        show: True,
         color: '#e0e0e0', // Default grid color
         strokeWidth: 1,   // Default grid stroke width
         dashArray: '4,4'  // Default grid dash array

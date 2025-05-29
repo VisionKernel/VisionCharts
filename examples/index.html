@@ -1127,7 +1127,13 @@
             showLegend: true, // Enable legend by default
             isLogarithmic: false,
             dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-            skipLabels: 3 // Only show every 3rd label for readability
+            skipLabels: 3, // Only show every 3rd label for readability
+            grid: { // Added to enable and configure the grid for the bar chart
+              show: true
+              // You can override other grid defaults here if needed, e.g.:
+              // color: '#anothercolor',
+              // dashArray: '1,1'
+            }
           }
         });
         
