@@ -1,5 +1,6 @@
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
+import RecessionLines from '../components/RecessionLines.js'; // Import the component
 
 /**
  * Base Chart class that handles common chart functionality
@@ -99,7 +100,7 @@ export default class Chart {
       datasets: [],
       processedData: [],
       components: {
-        recessionLines: null,
+        recessionLines: null, // Ensure this is initialized
         zeroLine: null,
         tooltip: null,
         legend: null,
@@ -275,6 +276,19 @@ export default class Chart {
     this.state.rendered = false;
     this.state.svg = null;
     this.state.chart = null;
+    
+    // Destroy components
+    if (this.state.components.recessionLines) {
+      this.state.components.recessionLines.destroy();
+      this.state.components.recessionLines = null;
+    }
+    if (this.state.components.crosshair) {
+      this.state.components.crosshair.destroy();
+    }
+    
+    if (this.state.components.tooltip) {
+      this.state.components.tooltip.destroy();
+    }
   }
   
   /**
@@ -624,79 +638,71 @@ export default class Chart {
    * @private
    */
   renderRecessionLines() {
-    console.log('renderRecessionLines called');
+    console.log('Chart.renderRecessionLines called');
+    
+    if (!this.state.chart || !this.options.recessions || !this.options.recessions.length || !this.options.showRecessionLines) {
+      if (this.state.components.recessionLines) {
+        this.state.components.recessionLines.destroy();
+        this.state.components.recessionLines = null;
+      }
+      return;
+    }
+    
+    const xScale = this.state.scales.x;
+    const plotAreaHeight = this.state.dimensions.innerHeight;
+    
+    if (!xScale) {
+      console.warn('Cannot render recession lines: X scale not available.');
+      return;
+    }
+
+    // Instantiate or update RecessionLines component
+    if (!this.state.components.recessionLines) {
+      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+    } else {
+      // If options could change, update them (RecessionLines component might need an updateOptions method)
+      // For now, we assume options are set at instantiation or the component handles merging if re-rendered.
+    }
+    
+    // Render the recession lines using the component
+    // The component handles its own DOM elements.
+    // We pass the main chart group as the container for the recession lines group.
+    this.state.components.recessionLines.render(this.state.chart, this.options.recessions, xScale, plotAreaHeight);
+  }
+
+  /**
+   * Update recession lines using the RecessionLines component
+   * @private
+   */
+  updateRecessionLines() {
+    console.log('Chart.updateRecessionLines called');
     
     if (!this.state.chart) return;
-    
-    const { recessions } = this.options;
-    const { innerHeight, innerWidth } = this.state.dimensions;
+
+    // If recession lines should not be shown, destroy the component if it exists
+    if (!this.options.showRecessionLines || !this.options.recessions || !this.options.recessions.length) {
+      if (this.state.components.recessionLines) {
+        this.state.components.recessionLines.destroy();
+        this.state.components.recessionLines = null;
+      }
+      return;
+    }
+
+    // If they should be shown, ensure the component exists and re-render
     const xScale = this.state.scales.x;
+    const plotAreaHeight = this.state.dimensions.innerHeight;
+
+    if (!xScale) {
+      console.warn('Cannot update recession lines: X scale not available.');
+      return;
+    }
+
+    if (!this.state.components.recessionLines) {
+      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+    }
     
-    if (!xScale) return;
-    
-    // Create recession lines group
-    const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    recessionsGroup.setAttribute('class', 'visioncharts-recession-lines');
-    
-    // Process each recession period
-    recessions.forEach((recession, index) => {
-      // Extract dates
-      const startDate = recession.start instanceof Date ? 
-                      recession.start : new Date(recession.start);
-      const endDate = recession.end instanceof Date ? 
-                      recession.end : (recession.end ? new Date(recession.end) : new Date());
-      
-      // Validate dates
-      if (!startDate || isNaN(startDate.getTime())) {
-        console.warn('Invalid recession start date:', recession.start);
-        return;
-      }
-      
-      if (!endDate || isNaN(endDate.getTime())) {
-        console.warn('Invalid recession end date:', recession.end);
-        return;
-      }
-      
-      try {
-        // Get x coordinates using the scale
-        const startX = xScale.scale(startDate);
-        const endX = xScale.scale(endDate);
-        
-        // Create recession area
-        const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        recessionArea.setAttribute('x', startX);
-        recessionArea.setAttribute('y', 0);
-        recessionArea.setAttribute('width', endX - startX);
-        recessionArea.setAttribute('height', innerHeight);
-        recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
-        recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
-        recessionArea.setAttribute('stroke-width', 1);
-        recessionArea.setAttribute('class', `visioncharts-recession-area recession-${index}`);
-        
-        // Add to group
-        recessionsGroup.appendChild(recessionArea);
-        
-        // Add label if there's enough space
-        if (endX - startX > 30) {
-          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', startX + (endX - startX) / 2);
-          label.setAttribute('y', 15);
-          label.setAttribute('text-anchor', 'middle');
-          label.setAttribute('font-size', '10px');
-          label.setAttribute('fill', '#888');
-          label.setAttribute('class', 'visioncharts-recession-label');
-          
-          recessionsGroup.appendChild(label);
-        }
-      } catch (error) {
-        console.error('Error rendering recession area:', error);
-      }
-    });
-    
-    // Add to chart
-    this.state.chart.appendChild(recessionsGroup);
+    // The render method of RecessionLines should handle clearing previous areas and drawing new ones.
+    this.state.components.recessionLines.render(this.state.chart, this.options.recessions, xScale, plotAreaHeight);
   }
 
   /**

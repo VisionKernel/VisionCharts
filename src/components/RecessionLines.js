@@ -11,17 +11,17 @@ export default class RecessionLines {
    */
   constructor(options = {}) {
     this.options = Object.assign({
-      color: 'rgba(235, 54, 54, 0.15)',
-      border: 'rgba(235, 54, 54, 0.3)',
+      color: 'rgba(64, 64, 64, 0.4)', // Darker grey with more opacity
+      border: 'rgba(80, 80, 80, 0.5)',
       borderWidth: 1,
       labelColor: '#888',
       labelFontSize: 10,
-      showLabels: true,
+      showLabels: false, //default to false to avoid clutter
       labelPosition: 'top', // 'top', 'bottom'
       labelFormat: (start, end) => {
-        // Format dates for label display
-        const formatYear = date => date.getFullYear();
-        return `${formatYear(start)}${end ? '-' + formatYear(end) : ''}`;
+      // Format dates for label display
+      const formatYear = date => date.getFullYear();
+      return `${formatYear(start)}${end ? '-' + formatYear(end) : ''}`;
       }
     }, options);
     

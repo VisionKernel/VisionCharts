@@ -1081,19 +1081,16 @@
     // Initialize Bar Chart with time series data
     async function initBarChart() {
       log('Initializing Bar Chart with Time Series Data');
-      
       try {
-        // Load the time series data
         const timeSeriesData = await loadTimeSeriesData();
         
-        // Transform data for display - add formatted date as category
+        // Transform data: 'x' should be Date objects for xType: 'time'
         const transformedData = timeSeriesData.map(item => ({
-          x: item.x, // Keep original timestamp
-          y: item.y, // Keep original value
-          category: formatDate(item.x) // Add formatted date
+          x: new Date(item.x), // Ensure 'x' is a Date object
+          y: item.y
+          // category: formatDate(item.x) // Can be kept if used for tooltips, but not for xField
         }));
         
-        // Create a single dataset
         const data = [
           {
             id: 'dataset-1',
@@ -1103,49 +1100,36 @@
           }
         ];
         
-        // Get initial values from inputs
         const xAxisName = document.getElementById('bar-x-name').value;
         const yAxisName = document.getElementById('bar-y-name').value;
         
-        // Create the bar chart
         barChart = new BarChart({
           container: '#bar-chart',
           data: data,
           options: {
-            title: 'Time Series Data',
-            xField: 'category', // Use the formatted date as the category
+            title: 'Time Series Data (Time X-Axis)',
+            xField: 'x',         // Point to the 'x' field which contains Date objects
             yField: 'y',
-            xType: 'category', // Use category type for x-axis
+            xType: 'time',       // Explicitly set to 'time'
             yType: 'number',
             xAxisName: xAxisName,
             yAxisName: yAxisName,
-            barWidth: 0.7,
-            barSpacing: 0.2,
+            // timeBarPixelWidth: 12, // Optional: override default pixel width for time bars
             showValues: false,
-            valuePosition: 'top',
             showZeroLine: true,
-            showLegend: true, // Enable legend by default
+            showLegend: true,
             isLogarithmic: false,
-            dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-            skipLabels: 3, // Only show every 3rd label for readability
-            grid: { // Added to enable and configure the grid for the bar chart
-              show: true
-              // You can override other grid defaults here if needed, e.g.:
-              // color: '#anothercolor',
-              // dashArray: '1,1'
+            recessions: recessions, // Pass recessions data
+            dateFormat: { year: 'numeric', month: 'short', day: 'numeric' }, // Date format for time axis labels
+            grid: {
+              show: true // Enable grid for bar chart example
             }
           }
         });
         
-        // Render the chart (this will also render the legend)
         barChart.render();
-        
         log('Bar chart rendered successfully');
-        
-        // Update dataset manager UI
         updateDatasetManager('bar');
-        
-        // Setup event listeners for controls
         setupBarChartControls();
       } catch (error) {
         log('Error initializing bar chart:', error);

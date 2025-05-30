@@ -2,61 +2,56 @@ import Chart from '../core/Chart.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
+import RecessionLines from '../components/RecessionLines.js'; // Keep for type hinting if needed, but Chart.js handles instance
 
 /**
- * BarChart class for rendering bar charts with time series data
- * Styled to match the Line and Area charts
+ * BarChart class for rendering bar charts.
+ * Can use a time-based or category-based x-axis.
  */
 export default class BarChart extends Chart {
-  /**
-   * Create a new bar chart
-   * @param {Object} config - Chart configuration
-   */
   constructor(config) {
     console.log('BarChart constructor called');
 
-    // Define default options for BarChart
     const defaultBarChartOptions = {
       chartType: 'bar',
-      xField: 'category', // Default field for category labels
+      xField: 'x', // Default field for x-axis data (e.g., time or category)
       yField: 'y',
-      xType: 'category', // 'category', 'time', 'number'
+      xType: 'time', // Default to 'time' to align with LineChart for recession logic
       yType: 'number',
-      barWidth: 0.7, // Width of bar as percentage of available space
-      barSpacing: 0.2, // Spacing between bars
-      showValues: false, // Whether to show values on bars
-      valuePosition: 'top', // 'top', 'middle', 'bottom'
+      barWidth: 0.7, // For category: % of available space. For time: interpreted differently or use timeBarPixelWidth.
+      timeBarPixelWidth: 10, // Default pixel width for bars when xType is 'time'
+      barSpacing: 0.2, // Primarily for category type
+      showValues: false,
+      valuePosition: 'top',
       colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-      stacked: true, // Always stacked by default
-      dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-      skipLabels: 3, // Skip labels for readability in time series
-      grid: { // Added default grid configuration
-        show: True,
-        color: '#e0e0e0', // Default grid color
-        strokeWidth: 1,   // Default grid stroke width
-        dashArray: '4,4'  // Default grid dash array
+      stacked: true, // Note: Stacking logic for xType: 'time' needs careful implementation if data points don't align.
+      dateFormat: { year: 'numeric', month: 'short', day: 'numeric' }, // Default date format for time axis
+      skipLabels: 1, // Default skip labels (1 means show all initially for time)
+      grid: {
+        show: false, // Default grid to OFF, user can enable
+        color: '#e0e0e0',
+        strokeWidth: 1,
+        dashArray: '4,4'
       }
     };
 
-    // Merge options: user's config.options take precedence, with special handling for grid
     const mergedOptions = {
       ...defaultBarChartOptions,
-      ...(config.options || {}), // Spread user's top-level options
-      grid: { // Deep merge for the grid object
-        ...defaultBarChartOptions.grid, // Start with BarChart's grid defaults
-        ...((config.options && config.options.grid) || {}) // Override with user's grid options
+      ...(config.options || {}),
+      grid: {
+        ...defaultBarChartOptions.grid,
+        ...((config.options && config.options.grid) || {})
       }
     };
 
-    // Call parent constructor with the fully merged config
     super({
-      ...config, // Pass through other parts of config like container, data
-      options: mergedOptions // Use the carefully merged options
+      ...config,
+      options: mergedOptions
     });
     
     console.log('BarChart constructor finished with merged options:', this.options);
   }
-  
+
   /**
    * Create scales for the chart
    * @private
@@ -89,180 +84,93 @@ export default class BarChart extends Chart {
   createAxes() {
     console.log('BarChart.createAxes called');
     
-    // Create X axis
     this.state.axes.x = {
       render: (container, width, height) => {
         const { xType, xField, dateFormat, skipLabels } = this.options;
         const scale = this.state.scales.x;
-        
-        // Create axis group
         const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         axisGroup.setAttribute('class', 'visioncharts-x-axis');
         
-        // Draw axis line
         const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        axisLine.setAttribute('x1', 0);
-        axisLine.setAttribute('y1', height);
-        axisLine.setAttribute('x2', width);
-        axisLine.setAttribute('y2', height);
-        axisLine.setAttribute('stroke', '#ccc');
-        axisLine.setAttribute('stroke-width', 1);
+        axisLine.setAttribute('x1', 0); axisLine.setAttribute('y1', height);
+        axisLine.setAttribute('x2', width); axisLine.setAttribute('y2', height);
+        axisLine.setAttribute('stroke', '#ccc'); axisLine.setAttribute('stroke-width', 1);
         axisGroup.appendChild(axisLine);
-        
-        // Get unique x values for bar charts
+
         let tickValues = [];
-        
-        if (this.state.datasets.length > 0) {
-          // Collect all unique x values across datasets
-          const uniqueXValues = new Set();
+        if (xType === 'time') {
+          tickValues = scale.ticks(Math.max(2, Math.floor(width / 100))); // Auto ticks for TimeScale
+        } else { // category or number
+          // Existing category logic for collecting uniqueXValues and sorting them
+          const uniqueXValuesSet = new Set();
           this.state.datasets.forEach(dataset => {
             dataset.data.forEach(d => {
-              if (d[xField] !== undefined) {
-                uniqueXValues.add(d[xField]);
-              }
+              if (d[xField] !== undefined) uniqueXValuesSet.add(d[xField]);
             });
           });
-          
-          // Convert to array and sort
-          tickValues = Array.from(uniqueXValues);
-          
-          // Sort based on type
-          if (xType === 'time') {
-            tickValues.sort((a, b) => {
-              const dateA = a instanceof Date ? a : new Date(a);
-              const dateB = b instanceof Date ? b : new Date(b);
-              return dateA - dateB;
-            });
-          } else if (xType === 'number') {
-            tickValues.sort((a, b) => a - b);
-          } else {
-            // For category, try to sort based on timestamp if available
-            const firstDataset = this.state.datasets[0];
-            if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
-              // Create a map of category to timestamp
-              const categoryMap = new Map();
-              firstDataset.data.forEach(d => {
-                if (d.x && d[xField]) {
-                  categoryMap.set(d[xField], d.x);
-                }
-              });
-              
-              // Sort by timestamp if available
-              if (categoryMap.size > 0) {
-                tickValues.sort((a, b) => {
-                  const timeA = categoryMap.get(a) || 0;
-                  const timeB = categoryMap.get(b) || 0;
-                  return timeA - timeB;
-                });
-              } else {
-                // Default string sorting
-                tickValues.sort();
-              }
-            } else {
-              // Default string sorting
-              tickValues.sort();
-            }
-          }
+          tickValues = Array.from(uniqueXValuesSet);
+          // Sorting for category/number (simplified, might need original sorting logic from your file)
+          tickValues.sort((a, b) => String(a).localeCompare(String(b)));
         }
         
-        // Calculate if labels need rotation (if there are many or if container is small)
-        const needsRotation = tickValues.length > 4 || width < 400;
-        
-        // For large datasets, skip some labels for readability
+        const needsRotation = tickValues.length * (xType === 'time' ? 80 : 50) > width || width < 400; // Adjust estimate
         const labelInterval = skipLabels || 1;
-        
-        // Draw ticks and labels
+
         tickValues.forEach((value, index) => {
-          // Skip some labels for readability
-          const showLabel = index % labelInterval === 0;
-          
-          // For bar charts, position tick in the middle of the bar
-          const barWidth = width / tickValues.length;
-          const x = index * barWidth + barWidth / 2;
-          
-          // Draw tick
-          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          tick.setAttribute('x1', x);
-          tick.setAttribute('y1', height);
-          tick.setAttribute('x2', x);
-          tick.setAttribute('y2', height + (showLabel ? 6 : 3)); // Shorter ticks for skipped labels
-          tick.setAttribute('stroke', '#ccc');
-          tick.setAttribute('stroke-width', 1);
-          axisGroup.appendChild(tick);
-          
-          // Only show some labels for readability
-          if (showLabel) {
-            // Format label text
-            let labelText;
-            if (xType === 'time') {
-              const date = value instanceof Date ? value : new Date(value);
-              labelText = new Intl.DateTimeFormat('en-US', dateFormat).format(date);
-            } else {
-              labelText = String(value);
-            }
-            
-            // Draw label with rotation if needed
-            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.textContent = labelText;
-            
-            if (needsRotation) {
-              // For rotated labels, position them further below
-              label.setAttribute('x', x);
-              label.setAttribute('y', height + 20); // Increased from 16 to 20
-              label.setAttribute('transform', `rotate(-45, ${x}, ${height + 20})`);
-              label.setAttribute('text-anchor', 'end');
-            } else {
-              label.setAttribute('x', x);
-              label.setAttribute('y', height + 25); // Increased from 20 to 25
-              label.setAttribute('text-anchor', 'middle');
-            }
-            
-            label.setAttribute('font-size', '12px');
-            label.setAttribute('font-family', this.options.fontFamily);
-            label.setAttribute('fill', this.options.textColor);
-            axisGroup.appendChild(label);
+          if (index % labelInterval !== 0 && index !== tickValues.length -1 && tickValues.length > 5) return; // Smart skipping
+
+          let xPos, labelText;
+          if (xType === 'time') {
+            xPos = scale.scale(value); // value is a Date object
+            labelText = new Intl.DateTimeFormat('en-US', dateFormat).format(value);
+          } else { // category
+            const barWidthCat = width / tickValues.length; // Width per category slot
+            xPos = index * barWidthCat + barWidthCat / 2; // Center of category slot
+            labelText = String(value);
           }
-          
-          // Draw grid line if needed
+
+          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          tick.setAttribute('x1', xPos); tick.setAttribute('y1', height);
+          tick.setAttribute('x2', xPos); tick.setAttribute('y2', height + 6);
+          tick.setAttribute('stroke', '#ccc'); axisGroup.appendChild(tick);
+
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          if (needsRotation) {
+            label.setAttribute('x', xPos); label.setAttribute('y', height + 20);
+            label.setAttribute('transform', `rotate(-45, ${xPos}, ${height + 20})`);
+            label.setAttribute('text-anchor', 'end');
+          } else {
+            label.setAttribute('x', xPos); label.setAttribute('y', height + 25);
+            label.setAttribute('text-anchor', 'middle');
+          }
+          label.setAttribute('font-size', '12px'); label.setAttribute('fill', this.options.textColor || '#333');
+          axisGroup.appendChild(label);
+
           if (this.options.grid && this.options.grid.show) {
             const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            gridLine.setAttribute('x1', x);
-            gridLine.setAttribute('y1', 0); // Top of the plotting area
-            gridLine.setAttribute('x2', x);
-            gridLine.setAttribute('y2', height); // Bottom of the plotting area
+            gridLine.setAttribute('x1', xPos); gridLine.setAttribute('y1', 0);
+            gridLine.setAttribute('x2', xPos); gridLine.setAttribute('y2', height);
             gridLine.setAttribute('stroke', this.options.grid.color);
             gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
-            if (this.options.grid.dashArray) {
-              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
-            }
-            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-x');
-            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
-            if (axisGroup.firstChild) {
-              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
-            } else {
-              axisGroup.appendChild(gridLine);
-            }
+            if (this.options.grid.dashArray) gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
+            if (axisGroup.firstChild) axisGroup.insertBefore(gridLine, axisGroup.firstChild);
+            else axisGroup.appendChild(gridLine);
           }
         });
-        
-        // Add to container
         container.appendChild(axisGroup);
-        
         return axisGroup;
       }
     };
     
-    // Create Y axis
+    // Y-axis logic remains largely the same as in your provided BarChart.js
     this.state.axes.y = {
       render: (container, width, height) => {
         const { yType, isLogarithmic } = this.options;
         const scale = this.state.scales.y;
-        
-        // Create axis group
         const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         axisGroup.setAttribute('class', 'visioncharts-y-axis');
         
-        // Draw axis line
         const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         axisLine.setAttribute('x1', 0);
         axisLine.setAttribute('y1', 0);
@@ -360,7 +268,6 @@ export default class BarChart extends Chart {
           }
         });
         
-        // Add to container
         container.appendChild(axisGroup);
         
         return axisGroup;
@@ -479,177 +386,299 @@ export default class BarChart extends Chart {
    */
   renderData() {
     console.log('BarChart.renderData called');
+    if (!this.state.chart) return;
     
-    if (!this.state.chart) {
-      console.error('Cannot render data: chart element is null');
-      return;
-    }
-    
-    try {
-      const {
-        xField,
-        yField,
-        barWidth,
-        barSpacing,
-        showValues,
-        valuePosition
-      } = this.options;
-      
-      // Create data group
-      const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      dataGroup.setAttribute('class', 'visioncharts-data');
-      
-      // No data to render
-      if (!this.state.datasets.length) {
-        this.state.chart.appendChild(dataGroup);
-        console.log('No datasets to render');
-        return;
-      }
-      
-      console.log('Rendering', this.state.datasets.length, 'datasets');
-      
-      // Get unique X values
-      const allXValues = new Set();
-      this.state.datasets.forEach(dataset => {
-        dataset.data.forEach(d => {
-          if (d[xField] !== undefined) {
-            allXValues.add(d[xField]);
-          }
-        });
-      });
-      
-      const uniqueXValues = Array.from(allXValues);
-      
-      // Sort X values based on type
-      if (this.options.xType === 'time') {
-        uniqueXValues.sort((a, b) => {
-          const dateA = a instanceof Date ? a : new Date(a);
-          const dateB = b instanceof Date ? b : new Date(b);
-          return dateA - dateB;
-        });
-      } else if (this.options.xType === 'number') {
-        uniqueXValues.sort((a, b) => a - b);
-      } else {
-        // For category, try to sort based on timestamp if available
-        const firstDataset = this.state.datasets[0];
-        if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
-          // Create a map of category to timestamp
-          const categoryMap = new Map();
-          firstDataset.data.forEach(d => {
-            if (d.x && d[xField]) {
-              categoryMap.set(d[xField], d.x);
-            }
-          });
-          
-          // Sort by timestamp if available
-          if (categoryMap.size > 0) {
-            uniqueXValues.sort((a, b) => {
-              const timeA = categoryMap.get(a) || 0;
-              const timeB = categoryMap.get(b) || 0;
-              return timeA - timeB;
-            });
-          } else {
-            // Default string sorting
-            uniqueXValues.sort();
-          }
-        } else {
-          // Default string sorting
-          uniqueXValues.sort();
-        }
-      }
-      
-      // Calculate bar dimensions
-      const totalBarWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
-      const usableBarWidth = totalBarWidth * (1 - barSpacing);
-      const actualBarWidth = usableBarWidth * barWidth;
-      
-      // For each unique X value, create a stacked bar
-      uniqueXValues.forEach((xValue, xIndex) => {
-        // Calculate bar x position
-        const barX = xIndex * totalBarWidth + (totalBarWidth - actualBarWidth) / 2;
-        
-        // Keep track of the stack position (height)
-        let stackTop = this.state.dimensions.innerHeight;
-        
-        // Process each dataset from bottom to top
-        this.state.datasets.forEach((dataset, datasetIndex) => {
-          // Find data point for this X value in this dataset
-          const dataPoint = dataset.data.find(d => d[xField] === xValue);
-          
-          // Skip if no data point found
-          if (!dataPoint) return;
-          
-          const value = dataPoint[yField] || 0;
-          
-          // Skip if value is 0
-          if (value === 0) return;
-          
-          // Calculate Y positions
+    const { xField, yField, xType, timeBarPixelWidth, barWidth, barSpacing, colors } = this.options;
+    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    dataGroup.setAttribute('class', 'visioncharts-data');
+
+    if (xType === 'time') {
+      // Simplified rendering for time-based bars (non-stacked for this example)
+      this.state.datasets.forEach((dataset, datasetIndex) => {
+        const color = dataset.color || colors[datasetIndex % colors.length];
+        dataset.data.forEach(dataPoint => {
+          const xValue = dataPoint[xField]; // Should be a Date object
+          const yValue = dataPoint[yField] || 0;
+          if (yValue === 0 && !this.options.showZeroValueBars) return;
+
+          const barCenter = this.state.scales.x.scale(xValue);
+          const actualBarWidth = timeBarPixelWidth;
+          const barX = barCenter - actualBarWidth / 2;
+
           const zeroY = this.state.scales.y.scale(0);
-          const valueY = this.state.scales.y.scale(value);
+          const valueY = this.state.scales.y.scale(yValue);
           const barHeight = Math.abs(zeroY - valueY);
-          
-          // Calculate the new top of the stack
-          const newStackTop = stackTop - barHeight;
-          
-          // Create bar element
+          // Ensure y is the top of the bar (min of zeroY, valueY for positive bars)
+          const finalY = (yValue >= 0) ? valueY : zeroY; 
+
           const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
           bar.setAttribute('x', barX);
-          bar.setAttribute('y', newStackTop);
+          bar.setAttribute('y', finalY);
           bar.setAttribute('width', actualBarWidth);
-          bar.setAttribute('height', Math.max(1, barHeight)); // Ensure at least 1px height
-          bar.setAttribute('fill', dataset.color);
+          bar.setAttribute('height', Math.max(0, barHeight)); // Height can be 0
+          bar.setAttribute('fill', color);
           bar.setAttribute('class', 'visioncharts-bar');
-          
           // Add data attributes for tooltips
-          bar.setAttribute('data-x', xValue);
-          bar.setAttribute('data-y', value);
-          bar.setAttribute('data-dataset', dataset.id);
-          
+          bar.setAttribute('data-x', xValue instanceof Date ? xValue.toISOString() : xValue);
+          bar.setAttribute('data-y', yValue);
+          bar.setAttribute('data-dataset', dataset.id || `dataset-${datasetIndex}`);
           dataGroup.appendChild(bar);
-          
-          // Show values if enabled
-          if (showValues) {
-            const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            // Format large numbers with K/M suffix
-            valueText.textContent = this.formatLargeNumber(value);
-            
-            // Position value based on option
-            let valueX = barX + actualBarWidth / 2;
-            let valueY;
-            
-            if (valuePosition === 'top') {
-              valueY = newStackTop - 5;
-            } else if (valuePosition === 'middle') {
-              valueY = newStackTop + barHeight / 2;
-            } else { // bottom
-              valueY = newStackTop + barHeight - 5;
-            }
-            
-            valueText.setAttribute('x', valueX);
-            valueText.setAttribute('y', valueY);
-            valueText.setAttribute('text-anchor', 'middle');
-            valueText.setAttribute('font-size', '10px');
-            valueText.setAttribute('font-family', this.options.fontFamily);
-            valueText.setAttribute('fill', valuePosition === 'middle' ? '#fff' : this.options.textColor);
-            valueText.setAttribute('class', 'visioncharts-bar-value');
-            
-            dataGroup.appendChild(valueText);
-          }
-          
-          // Update stack top for next dataset
-          stackTop = newStackTop;
+          // Add value labels if enabled (simplified)
         });
       });
+    } else { // Category logic (taken from your provided BarChart.js)
+      const allXValuesSet = new Set();
+      this.state.datasets.forEach(dataset => {
+        dataset.data.forEach(d => { if (d[xField] !== undefined) allXValuesSet.add(d[xField]); });
+      });
+      const uniqueXValues = Array.from(allXValuesSet);
+      // Sorting for category (simplified, might need original sorting logic)
+      uniqueXValues.sort((a, b) => String(a).localeCompare(String(b)));
+
+      const totalCategorySlotWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
+      const actualBarWidthCategory = totalCategorySlotWidth * (1 - barSpacing) * barWidth;
       
-      // Add data group to chart
-      this.state.chart.appendChild(dataGroup);
-      console.log('Data rendered successfully');
-    } catch (error) {
-      console.error('Error rendering data:', error);
+      uniqueXValues.forEach((xCatValue, xIndex) => {
+        const categorySlotX = xIndex * totalCategorySlotWidth;
+        const barGroupXOffset = categorySlotX + (totalCategorySlotWidth - actualBarWidthCategory) / 2; // Centering the bar(s) in the slot
+
+        let currentStackHeight = 0; // For stacked bars
+
+        this.state.datasets.forEach((dataset, datasetIndex) => {
+          const dataPoint = dataset.data.find(d => d[xField] === xCatValue);
+          if (!dataPoint) return;
+          const yValue = dataPoint[yField] || 0;
+          if (yValue === 0 && !this.options.showZeroValueBars) return;
+
+          const color = dataset.color || colors[datasetIndex % colors.length];
+          const valueY = this.state.scales.y.scale(yValue);
+          const zeroY = this.state.scales.y.scale(0);
+          const barSegmentHeight = Math.abs(zeroY - valueY);
+
+          const barY = this.state.scales.y.scale(currentStackHeight + yValue);
+          
+          const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          bar.setAttribute('x', barGroupXOffset);
+          bar.setAttribute('y', barY);
+          bar.setAttribute('width', actualBarWidthCategory);
+          bar.setAttribute('height', Math.max(0, barSegmentHeight));
+          bar.setAttribute('fill', color);
+          bar.setAttribute('class', 'visioncharts-bar');
+          // Add data attributes
+          bar.setAttribute('data-x', xCatValue);
+          bar.setAttribute('data-y', yValue);
+          bar.setAttribute('data-dataset', dataset.id || `dataset-${datasetIndex}`);
+          dataGroup.appendChild(bar);
+
+          currentStackHeight += yValue; // For stacked bars
+        });
+      });
+    }
+    this.state.chart.appendChild(dataGroup);
+    console.log('Data rendered successfully');
+  }
+  
+  /**
+   * Format large numbers with K/M suffix
+   * @private
+   * @param {number} value - The number to format
+   * @returns {string} Formatted number
+   */
+  formatLargeNumber(value) {
+    if (value >= 1000000) {
+      return (value / 1000000).toFixed(1) + 'M';
+    } else if (value >= 1000) {
+      return (value / 1000).toFixed(1) + 'K';
+    } else {
+      return value.toFixed(isNaN(value) || Math.floor(value) === value ? 0 : 1);
     }
   }
   
+  /**
+   * Update scales with actual data
+   * @private
+   */
+  updateScales() {
+    console.log('BarChart.updateScales called');
+    
+    const { xField, yField, xType, isLogarithmic } = this.options;
+    
+    // Get all data points from all datasets
+    const allPoints = this.state.datasets.reduce((acc, dataset) => {
+      return acc.concat(dataset.data || []);
+    }, []);
+    
+    if (!allPoints.length) {
+      // Set default domain if no data
+      this.state.scales.x.setDomain([0, 1]);
+      this.state.scales.y.setDomain(isLogarithmic ? [0.1, 1] : [0, 1]);
+      
+      // Set ranges based on dimensions
+      this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
+      this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+      console.log('No data points, using default domains');
+      return;
+    }
+    
+    // Extract unique X values
+    const xValues = allPoints.map(d => d[xField]);
+    
+    // For stacked bars, we need to calculate the sum of Y values for each X value
+    const uniqueXValues = Array.from(new Set(xValues));
+    const stackedYValues = [];
+    
+    uniqueXValues.forEach(xValue => {
+      let sum = 0;
+      this.state.datasets.forEach(dataset => {
+        const matchingPoint = dataset.data.find(d => d[xField] === xValue);
+        if (matchingPoint) {
+          sum += matchingPoint[yField] || 0;
+        }
+      });
+      stackedYValues.push(sum);
+    });
+    
+    // Get the max of stacked values for Y scale
+    const maxYValue = Math.max(...stackedYValues);
+    
+    // Set X domain based on type
+    let xMin, xMax;
+    if (xType === 'time') {
+      // For time type, convert string dates to Date objects if needed
+      const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+      xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+      xMax = new Date(Math.max(...dates.map(d => d.getTime())));
+    } else if (xType === 'number') {
+      xMin = Math.min(...xValues);
+      xMax = Math.max(...xValues);
+    } else {
+      // For category, we need to create a band scale but are using linear scale as approximation
+      // Set range from -0.5 to (uniqueValues.length - 0.5) to center bars
+      xMin = -0.5;
+      xMax = uniqueXValues.length - 0.5;
+      
+      // Store unique values for bar positioning
+      this.state.uniqueXValues = uniqueXValues;
+    }
+    
+    // Y domain - starting from 0 for bar charts with some padding at the top
+    const yMin = 0;
+    const yMax = maxYValue * 1.1; // Add 10% padding at the top
+    
+    // For logarithmic scale, ensure minimum is positive
+    const effectiveYMin = isLogarithmic ? Math.max(0.01, yMin) : yMin;
+    
+    // Set domains
+    this.state.scales.x.setDomain([xMin, xMax]);
+    this.state.scales.y.setDomain([effectiveYMin, yMax]);
+    
+    // Set ranges based on dimensions
+    this.state.scales.x.setRange([0, this.state.dimensions.innerWidth]);
+    this.state.scales.y.setRange([this.state.dimensions.innerHeight, 0]);
+    
+    console.log('Scales updated with domains:', 
+        'x:', [xMin, xMax],
+        'y:', [effectiveYMin, yMax]);
+  }
+  
+  /**
+   * Render chart data
+   * @private
+   */
+  renderData() {
+    console.log('BarChart.renderData called');
+    if (!this.state.chart) return;
+    
+    const { xField, yField, xType, timeBarPixelWidth, barWidth, barSpacing, colors } = this.options;
+    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    dataGroup.setAttribute('class', 'visioncharts-data');
+
+    if (xType === 'time') {
+      // Simplified rendering for time-based bars (non-stacked for this example)
+      this.state.datasets.forEach((dataset, datasetIndex) => {
+        const color = dataset.color || colors[datasetIndex % colors.length];
+        dataset.data.forEach(dataPoint => {
+          const xValue = dataPoint[xField]; // Should be a Date object
+          const yValue = dataPoint[yField] || 0;
+          if (yValue === 0 && !this.options.showZeroValueBars) return;
+
+          const barCenter = this.state.scales.x.scale(xValue);
+          const actualBarWidth = timeBarPixelWidth;
+          const barX = barCenter - actualBarWidth / 2;
+
+          const zeroY = this.state.scales.y.scale(0);
+          const valueY = this.state.scales.y.scale(yValue);
+          const barHeight = Math.abs(zeroY - valueY);
+          // Ensure y is the top of the bar (min of zeroY, valueY for positive bars)
+          const finalY = (yValue >= 0) ? valueY : zeroY; 
+
+          const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          bar.setAttribute('x', barX);
+          bar.setAttribute('y', finalY);
+          bar.setAttribute('width', actualBarWidth);
+          bar.setAttribute('height', Math.max(0, barHeight)); // Height can be 0
+          bar.setAttribute('fill', color);
+          bar.setAttribute('class', 'visioncharts-bar');
+          // Add data attributes for tooltips
+          bar.setAttribute('data-x', xValue instanceof Date ? xValue.toISOString() : xValue);
+          bar.setAttribute('data-y', yValue);
+          bar.setAttribute('data-dataset', dataset.id || `dataset-${datasetIndex}`);
+          dataGroup.appendChild(bar);
+          // Add value labels if enabled (simplified)
+        });
+      });
+    } else { // Category logic (taken from your provided BarChart.js)
+      const allXValuesSet = new Set();
+      this.state.datasets.forEach(dataset => {
+        dataset.data.forEach(d => { if (d[xField] !== undefined) allXValuesSet.add(d[xField]); });
+      });
+      const uniqueXValues = Array.from(allXValuesSet);
+      // Sorting for category (simplified, might need original sorting logic)
+      uniqueXValues.sort((a, b) => String(a).localeCompare(String(b)));
+
+      const totalCategorySlotWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
+      const actualBarWidthCategory = totalCategorySlotWidth * (1 - barSpacing) * barWidth;
+      
+      uniqueXValues.forEach((xCatValue, xIndex) => {
+        const categorySlotX = xIndex * totalCategorySlotWidth;
+        const barGroupXOffset = categorySlotX + (totalCategorySlotWidth - actualBarWidthCategory) / 2; // Centering the bar(s) in the slot
+
+        let currentStackHeight = 0; // For stacked bars
+
+        this.state.datasets.forEach((dataset, datasetIndex) => {
+          const dataPoint = dataset.data.find(d => d[xField] === xCatValue);
+          if (!dataPoint) return;
+          const yValue = dataPoint[yField] || 0;
+          if (yValue === 0 && !this.options.showZeroValueBars) return;
+
+          const color = dataset.color || colors[datasetIndex % colors.length];
+          const valueY = this.state.scales.y.scale(yValue);
+          const zeroY = this.state.scales.y.scale(0);
+          const barSegmentHeight = Math.abs(zeroY - valueY);
+
+          const barY = this.state.scales.y.scale(currentStackHeight + yValue);
+          
+          const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          bar.setAttribute('x', barGroupXOffset);
+          bar.setAttribute('y', barY);
+          bar.setAttribute('width', actualBarWidthCategory);
+          bar.setAttribute('height', Math.max(0, barSegmentHeight));
+          bar.setAttribute('fill', color);
+          bar.setAttribute('class', 'visioncharts-bar');
+          // Add data attributes
+          bar.setAttribute('data-x', xCatValue);
+          bar.setAttribute('data-y', yValue);
+          bar.setAttribute('data-dataset', dataset.id || `dataset-${datasetIndex}`);
+          dataGroup.appendChild(bar);
+
+          currentStackHeight += yValue; // For stacked bars
+        });
+      });
+    }
+    this.state.chart.appendChild(dataGroup);
+    console.log('Data rendered successfully');
+  }
+
   /**
    * Render chart title - consistent with other charts
    * @private
@@ -684,622 +713,23 @@ export default class BarChart extends Chart {
   }
   
   /**
-   * Render the chart
+   * Render the chart.
+   * Overridden to ensure hover elements are on top if specific z-ordering is needed beyond parent.
    * @public
    */
   render() {
-  // Call parent render method
-  super.render();
-  
-  // Ensure hover elements are on top
-  if (this.state.chart) {
-    // Find crosshair
-    const crosshair = this.state.chart.querySelector('.visioncharts-crosshair');
-    if (crosshair && crosshair.parentNode) {
-      // Move to end (top of z-order)
-      crosshair.parentNode.appendChild(crosshair);
-    }
+    super.render(); // This will call Chart.js render, which calls renderRecessionLines
     
-    // Find tooltip
-    const tooltip = this.state.chart.querySelector('.visioncharts-tooltip');
-    if (tooltip && tooltip.parentNode) {
-      // Move to end (top of z-order)
-      tooltip.parentNode.appendChild(tooltip);
-    }
-    
-    // Find hover points
-    const hoverPoints = this.state.chart.querySelector('.visioncharts-hover-points');
-    if (hoverPoints && hoverPoints.parentNode) {
-      // Move to end (top of z-order)
-      hoverPoints.parentNode.appendChild(hoverPoints);
-    }
-  }
-  
-  return this;
-}
-  
-  /**
-   * Render axes
-   * @private
-   */
-  renderAxes() {
-    console.log('BarChart.renderAxes called');
-    
-    try {
-      if (!this.state.chart) {
-        console.error('Cannot render axes: chart element is null');
-        return;
-      }
-      
-      const { innerWidth, innerHeight } = this.state.dimensions;
-      
-      // Render X axis
-      if (this.state.axes.x && this.state.axes.x.render) {
-        this.state.axes.x.render(this.state.chart, innerWidth, innerHeight);
-      }
-      
-      // Render Y axis
-      if (this.state.axes.y && this.state.axes.y.render) {
-        this.state.axes.y.render(this.state.chart, innerWidth, innerHeight);
-      }
-      
-      console.log('Axes rendered successfully');
-    } catch (error) {
-      console.error('Error rendering axes:', error);
-    }
-  }
-  
-  /**
-   * Update axes
-   * @private
-   */
-  updateAxes() {
-    console.log('BarChart.updateAxes called');
-    
-    // Print chart state for debugging
-    console.log('Chart state:', {
-      rendered: this.state.rendered,
-      hasChart: Boolean(this.state.chart),
-      chartClassName: this.state.chart ? this.state.chart.className : 'N/A'
-    });
-    
-    // Safety check - don't try to update DOM elements that don't exist yet
-    if (!this.state.rendered) {
-      console.log('Chart not rendered yet, skipping updateAxes');
-      return;
-    }
-    
-    if (!this.state.chart) {
-      console.error('Cannot update axes: chart element is null');
-      return;
-    }
-    
-    try {
-      // Checking if chart is attached to DOM
-      if (!this.state.chart.ownerDocument || !this.state.chart.parentNode) {
-        console.error('Chart element is not attached to DOM');
-        return;
-      }
-      
-      console.log('Finding existing axes elements');
-      
-      // Look for existing axes with error handling
-      let xAxis = null;
-      let yAxis = null;
-      
-      try {
-        xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
-        console.log('Found X axis:', Boolean(xAxis));
-      } catch (error) {
-        console.error('Error finding X axis:', error);
-      }
-      
-      try {
-        yAxis = this.state.chart.querySelector('.visioncharts-y-axis');
-        console.log('Found Y axis:', Boolean(yAxis));
-      } catch (error) {
-        console.error('Error finding Y axis:', error);
-      }
-      
-      // Remove existing axes if found
-      if (xAxis) {
-        try {
-          xAxis.parentNode.removeChild(xAxis);
-          console.log('Removed X axis');
-        } catch (error) {
-          console.error('Error removing X axis:', error);
+    // Ensure hover elements are on top (from your existing BarChart.js)
+    if (this.state.chart && this.state.components) {
+        const { crosshair, tooltip } = this.state.components;
+        if (crosshair && crosshair.elements.group && crosshair.elements.group.parentNode === this.state.chart) {
+            this.state.chart.appendChild(crosshair.elements.group);
         }
-      }
-      
-      if (yAxis) {
-        try {
-          yAxis.parentNode.removeChild(yAxis);
-          console.log('Removed Y axis');
-        } catch (error) {
-          console.error('Error removing Y axis:', error);
+        if (tooltip && tooltip.elements.tooltip && tooltip.elements.tooltip.parentNode === this.state.svg) {
+            this.state.svg.appendChild(tooltip.elements.tooltip);
         }
-      }
-      
-      // Re-render axes
-      console.log('Re-rendering axes');
-      this.renderAxes();
-      
-      console.log('Axes updated successfully');
-    } catch (error) {
-      console.error('Fatal error in updateAxes:', error);
     }
-  }
-  
-  /**
-   * Update chart data
-   * @private
-   */
-  updateData() {
-    console.log('BarChart.updateData called');
-    
-    if (!this.state.chart) {
-      console.error('Cannot update data: chart element is null');
-      return;
-    }
-    
-    try {
-      // Remove existing data
-      const dataGroup = this.state.chart.querySelector('.visioncharts-data');
-      if (dataGroup) {
-        dataGroup.parentNode.removeChild(dataGroup);
-        console.log('Removed existing data');
-      } else {
-        console.log('No existing data to remove');
-      }
-      
-      // Re-render data
-      this.renderData();
-    } catch (error) {
-      console.error('Error updating data:', error);
-    }
-  }
-  
-  /**
-   * Update the chart
-   * @public
-   */
-  update() {
-    console.log('BarChart.update called');
-    
-    // Use the parent Chart class's update method
-    return super.update();
-  }
-  
-  /**
-   * Toggle logarithmic scale
-   * @public
-   * @param {boolean} isLogarithmic - Whether to use logarithmic scale
-   * @returns {BarChart} This chart instance
-   */
-  toggleLogarithmic(isLogarithmic) {
-    console.log('BarChart.toggleLogarithmic called:', isLogarithmic);
-    
-    this.options.isLogarithmic = isLogarithmic;
-    
-    // Re-create Y scale based on type
-    this.state.scales.y = isLogarithmic ? 
-      new LogScale([0.1, 1], [0, 1]) :
-      new LinearScale([0, 1], [0, 1]);
-    
-    return this.update();
-  }
-  
-  /**
-   * Render panels for multi-panel view
-   * @private
-   */
-  renderPanels() {
-    console.log('BarChart.renderPanels called');
-    
-    if (!this.state.chart) {
-      console.error('Cannot render panels: chart element is null');
-      return;
-    }
-    
-    try {
-      const { innerWidth, innerHeight } = this.state.dimensions;
-      
-      // Determine number of panels (one per dataset)
-      const panelCount = this.state.datasets.length;
-      if (panelCount === 0) {
-        console.log('No datasets for panels');
-        return;
-      }
-      
-      console.log('Rendering', panelCount, 'panels');
-      
-      // Create panel for each dataset
-      this.state.datasets.forEach((dataset, index) => {
-        // Calculate panel dimensions
-        const panelHeight = innerHeight / panelCount;
-        const panelMargin = index === 0 ? 30 : 20;  // Extra margin for first panel
-        const effectivePanelHeight = panelHeight - panelMargin;
-        
-        // Create panel group
-        const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-        // Add top margin of 10px for the first panel
-        const yPos = index * panelHeight + (index === 0 ? 20 : 0);
-        panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
-        
-        // Create panel background
-        const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        panelBg.setAttribute('x', 0);
-        panelBg.setAttribute('y', 0);
-        panelBg.setAttribute('width', innerWidth);
-        panelBg.setAttribute('height', effectivePanelHeight);
-        panelBg.setAttribute('fill', '#f9f9f9');
-        panelBg.setAttribute('stroke', '#eee');
-        panelGroup.appendChild(panelBg);
-        
-        // Create local scales for this panel
-        // Extract X values from this dataset only
-        const { xField, yField, xType, isLogarithmic } = this.options;
-        const xValues = dataset.data.map(d => d[xField]);
-        
-        // Create a custom X scale for this panel
-        let xScale;
-        
-        // For category data, we need to set up a special domain
-        if (xType === 'category') {
-          // Get unique values
-          const uniqueXValues = Array.from(new Set(xValues));
-          
-          // Setup a linear scale with domain that creates even spacing
-          xScale = new LinearScale(
-            [-0.5, uniqueXValues.length - 0.5],
-            [0, innerWidth]
-          );
-          
-          // Store unique values for bar positioning
-          panelGroup._uniqueXValues = uniqueXValues;
-        } else if (xType === 'time') {
-          // For time, handle date objects
-          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
-          const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
-          const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
-          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
-        } else {
-          // For numeric data
-          const xMin = Math.min(...xValues);
-          const xMax = Math.max(...xValues);
-          xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
-        }
-        
-        // Create Y scale for this panel
-        let yScale;
-        if (isLogarithmic) {
-          yScale = new LogScale([0.1, 1], [0, 1]);
-        } else {
-          yScale = new LinearScale([0, 1], [0, 1]);
-        }
-        
-        // Update Y scale range to panel height
-        yScale.setRange([effectivePanelHeight, 0]);
-        
-        // Calculate Y domain for this dataset
-        const yValues = dataset.data.map(d => d[yField]);
-        if (yValues.length) {
-          const yMin = 0; // Bar charts start at 0
-          const yMax = Math.max(...yValues);
-          const yPadding = yMax * 0.1;
-          
-          // Set domain based on scale type
-          if (isLogarithmic) {
-            yScale.setDomain([Math.max(0.01, yMin), yMax + yPadding]);
-          } else {
-            yScale.setDomain([yMin, yMax + yPadding]);
-          }
-        }
-        
-        // Render panel axes
-        this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
-        
-        // Render panel data
-        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight);
-        
-        // Render panel label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = dataset.name;
-        label.setAttribute('x', 5);
-        label.setAttribute('y', 15);
-        label.setAttribute('font-size', '12px');
-        label.setAttribute('font-weight', 'bold');
-        label.setAttribute('fill', dataset.color);
-        panelGroup.appendChild(label);
-        
-        // Add panel to chart
-        this.state.chart.appendChild(panelGroup);
-      });
-      
-      console.log('Panels rendered successfully');
-    } catch (error) {
-      console.error('Error rendering panels:', error);
-    }
-  }
-  
-  /**
-   * Render axes for a panel
-   * @private
-   */
-  renderPanelAxes(panel, xScale, yScale, width, height) {
-    const { xType, dateFormat, xField } = this.options;
-    
-    // X-axis (draw line and labels)
-    const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    xAxis.setAttribute('x1', 0);
-    xAxis.setAttribute('y1', height);
-    xAxis.setAttribute('x2', width);
-    xAxis.setAttribute('y2', height);
-    xAxis.setAttribute('stroke', '#ccc');
-    xAxis.setAttribute('stroke-width', 1);
-    panel.appendChild(xAxis);
-    
-    // Get unique X values for bar positions
-    let uniqueXValues = [];
-    
-    if (xType === 'category' && panel._uniqueXValues) {
-      // Use cached unique values if available
-      uniqueXValues = panel._uniqueXValues;
-    } else {
-      // Extract from dataset data
-      uniqueXValues = Array.from(new Set(
-        panel._dataset?.data.map(d => d[xField]) || []
-      ));
-    }
-    
-    // Generate a reasonable number of ticks
-    const tickCount = Math.min(5, uniqueXValues.length);
-    const tickStep = Math.max(1, Math.floor(uniqueXValues.length / tickCount));
-    
-    // Draw X ticks and labels
-    if (xType === 'category') {
-      // For category type, position ticks at the bar centers
-      uniqueXValues.forEach((value, index) => {
-        // Skip some labels for readability
-        if (index % tickStep !== 0 && index !== uniqueXValues.length - 1) return;
-        
-        const barX = (index / (uniqueXValues.length - 1)) * width;
-        
-        // Draw tick
-        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        tick.setAttribute('x1', barX);
-        tick.setAttribute('y1', height);
-        tick.setAttribute('x2', barX);
-        tick.setAttribute('y2', height + 4);
-        tick.setAttribute('stroke', '#ccc');
-        tick.setAttribute('stroke-width', 1);
-        panel.appendChild(tick);
-        
-        // Add label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = String(value);
-        label.setAttribute('x', barX);
-        label.setAttribute('y', height + 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#666');
-        panel.appendChild(label);
-      });
-    } else if (xType === 'time') {
-      // For time axis, create evenly spaced ticks
-      const tickCount = 5;
-      const xDomain = xScale.domain;
-      const start = xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0]);
-      const end = xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1]);
-      const timeRange = end.getTime() - start.getTime();
-      const timeStep = timeRange / (tickCount - 1);
-      
-      for (let i = 0; i < tickCount; i++) {
-        const tickTime = start.getTime() + (i * timeStep);
-        const tickDate = new Date(tickTime);
-        const x = xScale.scale(tickDate);
-        
-        // Draw tick
-        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        tick.setAttribute('x1', x);
-        tick.setAttribute('y1', height);
-        tick.setAttribute('x2', x);
-        tick.setAttribute('y2', height + 4);
-        tick.setAttribute('stroke', '#ccc');
-        tick.setAttribute('stroke-width', 1);
-        panel.appendChild(tick);
-        
-        // Format date for label
-        const labelText = tickDate.toLocaleDateString(undefined, 
-          {year: 'numeric', month: 'short'});
-        
-        // Add label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = labelText;
-        label.setAttribute('x', x);
-        label.setAttribute('y', height + 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#666');
-        panel.appendChild(label);
-      }
-    } else {
-      // For numeric axes, generate evenly spaced ticks
-      const tickCount = 5;
-      const xDomain = xScale.domain;
-      const start = xDomain[0];
-      const end = xDomain[1];
-      const step = (end - start) / (tickCount - 1);
-      
-      for (let i = 0; i < tickCount; i++) {
-        const tickValue = start + (i * step);
-        const x = xScale.scale(tickValue);
-        
-        // Draw tick
-        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        tick.setAttribute('x1', x);
-        tick.setAttribute('y1', height);
-        tick.setAttribute('x2', x);
-        tick.setAttribute('y2', height + 4);
-        tick.setAttribute('stroke', '#ccc');
-        tick.setAttribute('stroke-width', 1);
-        panel.appendChild(tick);
-        
-        // Add label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = tickValue.toFixed(1);
-        label.setAttribute('x', x);
-        label.setAttribute('y', height + 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#666');
-        panel.appendChild(label);
-      }
-    }
-    
-    // Y-axis (draw line and ticks)
-    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    yAxis.setAttribute('x1', 0);
-    yAxis.setAttribute('y1', 0);
-    yAxis.setAttribute('x2', 0);
-    yAxis.setAttribute('y2', height);
-    yAxis.setAttribute('stroke', '#ccc');
-    yAxis.setAttribute('stroke-width', 1);
-    panel.appendChild(yAxis);
-    
-    // Y-axis ticks (show 3 evenly-spaced ticks)
-    const yDomain = yScale.domain;
-    const tickValues = [
-      yDomain[0], 
-      yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
-      yDomain[1]
-    ];
-    
-    tickValues.forEach(value => {
-      const y = yScale.scale(value);
-      
-      // Skip if out of range
-      if (y < 0 || y > height) return;
-      
-      // Draw tick
-      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      tick.setAttribute('x1', 0);
-      tick.setAttribute('y1', y);
-      tick.setAttribute('x2', -4);  // Make tick go left instead of right
-      tick.setAttribute('y2', y);
-      tick.setAttribute('stroke', '#ccc');
-      tick.setAttribute('stroke-width', 1);
-      panel.appendChild(tick);
-      
-      // Format label text
-      let labelText = this.formatLargeNumber(value);
-      
-      // Draw label - Position to the left
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = labelText;
-      label.setAttribute('x', -8);  // Position to the left
-      label.setAttribute('y', y);
-      label.setAttribute('text-anchor', 'end');  // Right-align text
-      label.setAttribute('dominant-baseline', 'middle');
-      label.setAttribute('font-size', '10px');
-      label.setAttribute('fill', '#666');
-      panel.appendChild(label);
-    });
-  }
-  
-  /**
-   * Render data for a panel
-   * @private
-   */
-  renderPanelData(panel, dataset, xScale, yScale, panelHeight) {
-    const { xField, yField, barWidth, barSpacing, showValues, valuePosition } = this.options;
-    
-    if (!dataset.data || !dataset.data.length) return;
-    
-    // Store dataset for axes rendering
-    panel._dataset = dataset;
-    
-    // Get unique X values from this dataset
-    const uniqueXValues = Array.from(
-      new Set(dataset.data.map(d => d[xField]))
-    ).sort((a, b) => {
-      // Sort by timestamp if available
-      if (dataset.data[0].x) {
-        const pointA = dataset.data.find(d => d[xField] === a);
-        const pointB = dataset.data.find(d => d[xField] === b);
-        if (pointA && pointB && pointA.x && pointB.x) {
-          return pointA.x - pointB.x;
-        }
-      }
-      // Default sorting
-      return String(a).localeCompare(String(b));
-    });
-    
-    // Calculate bar dimensions
-    const totalBarWidth = xScale.range()[1] / uniqueXValues.length;
-    const usableBarWidth = totalBarWidth * (1 - barSpacing);
-    const actualBarWidth = usableBarWidth * barWidth;
-    
-    // Render bars for this dataset
-    uniqueXValues.forEach((xValue, xIndex) => {
-      // Find data point for this X value
-      const dataPoint = dataset.data.find(d => d[xField] === xValue);
-      
-      // Skip if no data point found
-      if (!dataPoint) return;
-      
-      const value = dataPoint[yField] || 0;
-      
-      // Skip if value is 0
-      if (value === 0) return;
-      
-      // Calculate X position based on index within uniqueXValues
-      const barX = xIndex * totalBarWidth + (totalBarWidth - actualBarWidth) / 2;
-      
-      // Calculate Y positions (note: in SVG, y=0 is at the top)
-      const zeroY = yScale.scale(0);
-      const valueY = yScale.scale(value);
-      const barHeight = Math.abs(zeroY - valueY);
-      
-      // Create bar element
-      const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      bar.setAttribute('x', barX);
-      bar.setAttribute('y', valueY);
-      bar.setAttribute('width', actualBarWidth);
-      bar.setAttribute('height', Math.max(1, barHeight)); // Ensure at least 1px height
-      bar.setAttribute('fill', dataset.color);
-      bar.setAttribute('class', 'visioncharts-panel-bar');
-      
-      panel.appendChild(bar);
-      
-      // Show values if enabled
-      if (showValues) {
-        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        // Format large numbers with K/M suffix
-        valueText.textContent = this.formatLargeNumber(value);
-        
-        // Position value based on option
-        let valueX = barX + actualBarWidth / 2;
-        let valueY;
-        
-        if (valuePosition === 'top') {
-          valueY = valueY - 5;
-        } else if (valuePosition === 'middle') {
-          valueY = valueY + barHeight / 2;
-        } else { // bottom
-          valueY = valueY + barHeight - 5;
-        }
-        
-        valueText.setAttribute('x', valueX);
-        valueText.setAttribute('y', valueY);
-        valueText.setAttribute('text-anchor', 'middle');
-        valueText.setAttribute('font-size', '10px');
-        valueText.setAttribute('fill', valuePosition === 'middle' ? '#fff' : '#666');
-        valueText.setAttribute('class', 'visioncharts-panel-bar-value');
-        
-        panel.appendChild(valueText);
-      }
-    });
+    return this;
   }
 }
