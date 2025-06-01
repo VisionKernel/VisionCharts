@@ -7,31 +7,28 @@ import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
  * LineChart class for rendering line charts with optional per-dataset area fills
  */
 export default class LineChart extends Chart {
-  /**
-   * Create a new line chart
-   * @param {Object} config - Chart configuration
-   */
   constructor(config) {
     console.log('LineChart constructor called');
 
-    // Define default options for LineChart
     const defaultLineChartOptions = {
       chartType: 'line',
-      curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
+      curve: 'linear',
       showPoints: false,
       pointRadius: 3,
       xField: 'x',
       yField: 'y',
-      xType: 'number', // 'number', 'time'
+      xType: 'number',
       yType: 'number',
       areaOpacity: 0.2,
       gradient: false,
+      tickLabelFontSize: '13px', // Added new default font size for tick labels
       grid: {
         show: true,
-        color: '#e0e0e0', // Default grid color
-        strokeWidth: 1,   // Default grid stroke width
-        dashArray: '4,4'  // Default grid dash array
+        color: '#e0e0e0',
+        strokeWidth: 1,
+        dashArray: '4,4'
       }
+      // ... any other existing default options ...
     };
 
     // Merge options: user's config.options take precedence, with special handling for grid
@@ -84,11 +81,12 @@ export default class LineChart extends Chart {
    */
   createAxes() {
     console.log('LineChart.createAxes called');
-    
+    const { xType, yType, isLogarithmic, dateFormat, skipLabels, fontFamily, textColor, tickLabelFontSize } = this.options; // Added tickLabelFontSize
+    const { innerWidth, innerHeight } = this.state.dimensions;
+
     // Create X axis
     this.state.axes.x = {
       render: (container, width, height) => {
-        const { xType, xField } = this.options;
         const scale = this.state.scales.x;
         
         const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -180,12 +178,12 @@ export default class LineChart extends Chart {
           
           // Skip labels if they would overlap
           // Simple solution: only show every nth label if space is tight
-          if (width < 400 && index % 2 === 1) {
-            // Skip every other label on small screens
+          if (width < 400 && index % 2 === 1 && tickValues.length > 5) {
+            // Skip every other label on small screens for X-axis
           } else {
-            label.setAttribute('font-size', '12px');
-            label.setAttribute('font-family', this.options.fontFamily);
-            label.setAttribute('fill', this.options.textColor);
+            label.setAttribute('font-size', tickLabelFontSize); // Use new option
+            label.setAttribute('font-family', fontFamily);
+            label.setAttribute('fill', textColor);
             axisGroup.appendChild(label);
           }
           
@@ -219,7 +217,6 @@ export default class LineChart extends Chart {
     // Create Y axis
     this.state.axes.y = {
       render: (container, width, height) => {
-        const { yType, isLogarithmic } = this.options;
         const scale = this.state.scales.y;
         
         const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -262,7 +259,7 @@ export default class LineChart extends Chart {
         }
         
         // Draw ticks and labels
-        tickValues.forEach(value => {
+        tickValues.forEach((value, index) => {
           const y = scale.scale(value);
           
           // Skip if out of range
