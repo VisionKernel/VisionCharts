@@ -2,6 +2,7 @@ import Chart from '../core/Chart.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
+import RecessionLines from '../components/RecessionLines.js'; // Added import
 
 /**
  * BarChart class for rendering bar charts with time series data
@@ -15,27 +16,33 @@ export default class BarChart extends Chart {
   constructor(config) {
     console.log('BarChart constructor called');
 
-    // Define default options for BarChart
     const defaultBarChartOptions = {
       chartType: 'bar',
-      xField: 'category', // Default field for category labels
+      xField: 'category', 
       yField: 'y',
-      xType: 'time', // 'category', 'time', 'number'
+      xType: 'time', 
       yType: 'number',
-      barWidth: 0.7, // Width of bar as percentage of available space
-      barSpacing: 0.2, // Spacing between bars
-      showValues: false, // Whether to show values on bars
-      valuePosition: 'top', // 'top', 'middle', 'bottom'
+      barWidth: 0.7, 
+      barSpacing: 0.2, 
+      showValues: false, 
+      valuePosition: 'top', 
       colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-      stacked: true, // Always stacked by default
-      dateFormat: { year: 'numeric', month: 'short' }, // Format for date labels
-      skipLabels: 3, // Skip labels for readability in time series
-      grid: { // Added default grid configuration
+      stacked: true, 
+      dateFormat: { year: 'numeric', month: 'short' }, 
+      skipLabels: 3, 
+      grid: { 
         show: true,
-        color: '#e0e0e0', // Default grid color
-        strokeWidth: 1,   // Default grid stroke width
-        dashArray: '4,4'  // Default grid dash array
-      }
+        color: '#e0e0e0', 
+        strokeWidth: 1,   
+        dashArray: '4,4'  
+      },
+      isPanelView: false, // Changed from panelView to isPanelView
+      timeBarPixelWidth: 10, // New option for panel time bars
+      showZeroValueBars: true, // New option for panel bars
+      // Options for recession lines (if used)
+      // showRecessionLines: false,
+      // recessions: [],
+      // recessionLinesOptions: {},
     };
 
     // Merge options: user's config.options take precedence, with special handling for grid
@@ -478,6 +485,16 @@ export default class BarChart extends Chart {
    * @private
    */
   renderData() {
+    if (this.options.isPanelView) { // Changed from panelView
+      console.log('Panel view enabled, skipping main data rendering.');
+      // Ensure a data group exists, even if empty, for consistency if other parts expect it
+      const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      dataGroup.setAttribute('class', 'visioncharts-data');
+      if (this.state.chart && !this.state.chart.querySelector('.visioncharts-data')) {
+        this.state.chart.appendChild(dataGroup);
+      }
+      return;
+    }
     console.log('BarChart.renderData called');
     
     if (!this.state.chart) {
@@ -688,41 +705,58 @@ export default class BarChart extends Chart {
    * @public
    */
   render() {
-  // Call parent render method
-  super.render();
-  
-  // Ensure hover elements are on top
-  if (this.state.chart) {
-    // Find crosshair
-    const crosshair = this.state.chart.querySelector('.visioncharts-crosshair');
-    if (crosshair && crosshair.parentNode) {
-      // Move to end (top of z-order)
-      crosshair.parentNode.appendChild(crosshair);
+    // Call parent render method. This will set up the SVG, dimensions,
+    // and call methods like createScales, renderTitle, renderLegend,
+    // and (conditionally, due to our changes) renderAxes and renderData.
+    super.render(); 
+
+    if (this.options.isPanelView) { // Changed from panelView
+      // If isPanelView is true, call renderPanels after super.render()
+      // has prepared the main chart container.
+      // renderPanels will draw its own axes and data per panel.
+      this.renderPanels();
     }
     
-    // Find tooltip
-    const tooltip = this.state.chart.querySelector('.visioncharts-tooltip');
-    if (tooltip && tooltip.parentNode) {
-      // Move to end (top of z-order)
-      tooltip.parentNode.appendChild(tooltip);
+    // Ensure hover elements (crosshair, tooltip) are rendered on top,
+    // regardless of whether it's panel view or regular view.
+    if (this.state.chart) {
+      const crosshair = this.state.chart.querySelector('.visioncharts-crosshair');
+      if (crosshair && crosshair.parentNode) {
+        crosshair.parentNode.appendChild(crosshair);
+      }
+      
+      const tooltip = this.state.chart.querySelector('.visioncharts-tooltip');
+      if (tooltip && tooltip.parentNode) {
+        tooltip.parentNode.appendChild(tooltip);
+      }
+      
+      const hoverPoints = this.state.chart.querySelector('.visioncharts-hover-points');
+      if (hoverPoints && hoverPoints.parentNode) {
+        hoverPoints.parentNode.appendChild(hoverPoints);
+      }
     }
     
-    // Find hover points
-    const hoverPoints = this.state.chart.querySelector('.visioncharts-hover-points');
-    if (hoverPoints && hoverPoints.parentNode) {
-      // Move to end (top of z-order)
-      hoverPoints.parentNode.appendChild(hoverPoints);
-    }
+    return this;
   }
-  
-  return this;
-}
   
   /**
    * Render axes
    * @private
    */
   renderAxes() {
+    if (this.options.isPanelView) { // Changed from panelView
+      console.log('Panel view enabled, skipping main axes rendering.');
+      // Ensure axis groups exist, even if empty, if other parts expect them
+      const xAxisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      xAxisGroup.setAttribute('class', 'visioncharts-x-axis');
+      const yAxisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      yAxisGroup.setAttribute('class', 'visioncharts-y-axis');
+      if (this.state.chart) {
+        if (!this.state.chart.querySelector('.visioncharts-x-axis')) this.state.chart.appendChild(xAxisGroup);
+        if (!this.state.chart.querySelector('.visioncharts-y-axis')) this.state.chart.appendChild(yAxisGroup);
+      }
+      return;
+    }
     console.log('BarChart.renderAxes called');
     
     try {
@@ -938,79 +972,92 @@ export default class BarChart extends Chart {
         panelGroup.appendChild(panelBg);
         
         // Create local scales for this panel
-        // Extract X values from this dataset only
         const { xField, yField, xType, isLogarithmic } = this.options;
+        
+        // Extract X values from this dataset only
         const xValues = dataset.data.map(d => d[xField]);
         
-        // Create a custom X scale for this panel
-        let xScale;
-        
-        // For category data, we need to set up a special domain
-        if (xType === 'category') {
-          // Get unique values
-          const uniqueXValues = Array.from(new Set(xValues));
-          
-          // Setup a linear scale with domain that creates even spacing
-          xScale = new LinearScale(
-            [-0.5, uniqueXValues.length - 0.5],
-            [0, innerWidth]
-          );
-          
-          // Store unique values for bar positioning
-          panelGroup._uniqueXValues = uniqueXValues;
-        } else if (xType === 'time') {
-          // For time, handle date objects
+        // Calculate domain based on dataset values
+        let xMin, xMax;
+        if (xType === 'time') {
+          // For time type, handle date objects
           const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
-          const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
-          const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
-          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
+          xMin = dates.length ? new Date(Math.min(...dates.map(d => d.getTime()))) : new Date();
+          xMax = dates.length ? new Date(Math.max(...dates.map(d => d.getTime()))) : new Date();
+          if (xMin.getTime() === xMax.getTime()) { // Handle single data point case for time
+            xMax = new Date(xMin.getTime() + 86400000); // Add one day
+          }
         } else {
-          // For numeric data
-          const xMin = Math.min(...xValues);
-          const xMax = Math.max(...xValues);
+          xMin = xValues.length ? Math.min(...xValues) : 0;
+          xMax = xValues.length ? Math.max(...xValues) : 1;
+          if (xMin === xMax) { // Handle single data point case for numbers
+            xMax = xMin + 1;
+          }
+        }
+        
+        // Create appropriate scale type
+        let xScale;
+        if (xType === 'time') {
+          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
+        } else if (isLogarithmic && xType !== 'category') { // Log scale typically not for x-axis categories
+          xScale = new LogScale([Math.max(0.01, xMin), xMax], [0, innerWidth]);
+        } else {
           xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
         }
         
         // Create Y scale for this panel
         let yScale;
-        if (isLogarithmic) {
-          yScale = new LogScale([0.1, 1], [0, 1]);
+        if (this.options.isLogarithmic) { // Use the chart-wide isLogarithmic option for Y-axis
+          yScale = new LogScale([0.1, 1], [effectivePanelHeight, 0]); // Range inverted for Y
         } else {
-          yScale = new LinearScale([0, 1], [0, 1]);
+          yScale = new LinearScale([0, 1], [effectivePanelHeight, 0]); // Range inverted for Y
         }
-        
-        // Update Y scale range to panel height
-        yScale.setRange([effectivePanelHeight, 0]);
         
         // Calculate Y domain for this dataset
         const yValues = dataset.data.map(d => d[yField]);
         if (yValues.length) {
-          const yMin = 0; // Bar charts start at 0
-          const yMax = Math.max(...yValues);
-          const yPadding = yMax * 0.1;
-          
-          // Set domain based on scale type
-          if (isLogarithmic) {
-            yScale.setDomain([Math.max(0.01, yMin), yMax + yPadding]);
-          } else {
-            yScale.setDomain([yMin, yMax + yPadding]);
+          const yDataMin = Math.min(...yValues);
+          const yDataMax = Math.max(...yValues);
+          let yDomainMin = this.options.isLogarithmic ? Math.max(0.01, yDataMin * 0.9) : 0; // Bar charts often start at 0
+          let yDomainMax = yDataMax * 1.1; // Add 10% padding
+
+          if (yDomainMin === yDomainMax) { // Handle single y-value or all same y-values
+            yDomainMax = yDomainMin > 0 ? yDomainMin * 1.1 : 1;
+            if (this.options.isLogarithmic && yDomainMin <= 0.01) yDomainMin = 0.01;
           }
+          if (this.options.isLogarithmic) {
+             yScale.setDomain([Math.max(yDomainMin, 0.01), yDomainMax]);
+          } else {
+             yScale.setDomain([yDomainMin, yDomainMax]);
+          }
+        } else {
+            // Default domain if no yValues
+            if (this.options.isLogarithmic) {
+                yScale.setDomain([0.01, 1]);
+            } else {
+                yScale.setDomain([0, 1]);
+            }
         }
         
         // Render panel axes
         this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
         
+        // Render recession lines for this panel if enabled
+        if (typeof this.renderPanelRecessionLines === 'function') {
+            this.renderPanelRecessionLines(panelGroup, xScale, effectivePanelHeight);
+        }
+        
         // Render panel data
-        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight);
+        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight, index); // Pass index for color assignment
         
         // Render panel label
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = dataset.name;
+        label.textContent = dataset.name || `Dataset ${index + 1}`;
         label.setAttribute('x', 5);
-        label.setAttribute('y', 15);
+        label.setAttribute('y', 15); // Positioned from the top of the panelGroup
         label.setAttribute('font-size', '12px');
         label.setAttribute('font-weight', 'bold');
-        label.setAttribute('fill', dataset.color);
+        label.setAttribute('fill', dataset.color || this.options.colors[index % this.options.colors.length]);
         panelGroup.appendChild(label);
         
         // Add panel to chart
@@ -1028,278 +1075,206 @@ export default class BarChart extends Chart {
    * @private
    */
   renderPanelAxes(panel, xScale, yScale, width, height) {
-    const { xType, dateFormat, xField } = this.options;
+    const { xType, dateFormat } = this.options; // Removed yType, tickLabelFontSize as they weren't used as per prompt
     
-    // X-axis (draw line and labels)
-    const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    xAxis.setAttribute('x1', 0);
-    xAxis.setAttribute('y1', height);
-    xAxis.setAttribute('x2', width);
-    xAxis.setAttribute('y2', height);
-    xAxis.setAttribute('stroke', '#ccc');
-    xAxis.setAttribute('stroke-width', 1);
-    panel.appendChild(xAxis);
+    // X-axis (simplified for panels)
+    const xAxisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    xAxisLine.setAttribute('x1', 0);
+    xAxisLine.setAttribute('y1', height);
+    xAxisLine.setAttribute('x2', width);
+    xAxisLine.setAttribute('y2', height);
+    xAxisLine.setAttribute('stroke', '#ccc');
+    xAxisLine.setAttribute('stroke-width', 1);
+    panel.appendChild(xAxisLine);
     
-    // Get unique X values for bar positions
-    let uniqueXValues = [];
+    // Generate X ticks - simplified for space
+    const xTickCount = Math.min(5, Math.floor(width / 80)); // Ensure at least 1 tick if xTickCount is 0
+    const xDomain = xScale.domain;
     
-    if (xType === 'category' && panel._uniqueXValues) {
-      // Use cached unique values if available
-      uniqueXValues = panel._uniqueXValues;
-    } else {
-      // Extract from dataset data
-      uniqueXValues = Array.from(new Set(
-        panel._dataset?.data.map(d => d[xField]) || []
-      ));
+    if (xDomain && xDomain.length === 2 && xTickCount > 0) {
+        for (let i = 0; i <= xTickCount; i++) {
+          let tickValue;
+          if (xType === 'time') {
+            const start = (xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0])).getTime();
+            const end = (xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1])).getTime();
+            if (start === end && i > 0) continue; // Avoid multiple ticks at same spot for single point
+            const tickTime = start + (end - start) * i / xTickCount;
+            tickValue = new Date(tickTime);
+          } else {
+            if (xDomain[0] === xDomain[1] && i > 0) continue; // Avoid multiple ticks at same spot
+            tickValue = xDomain[0] + (xDomain[1] - xDomain[0]) * i / xTickCount;
+          }
+          
+          const x = xScale.scale(tickValue);
+          
+          // Draw tick
+          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          tick.setAttribute('x1', x);
+          tick.setAttribute('y1', height);
+          tick.setAttribute('x2', x);
+          tick.setAttribute('y2', height + 4);
+          tick.setAttribute('stroke', '#ccc');
+          tick.setAttribute('stroke-width', 1);
+          panel.appendChild(tick);
+          
+          // Format label
+          let labelText;
+          if (xType === 'time') {
+            labelText = new Intl.DateTimeFormat('en-US', dateFormat || { year: 'numeric', month: 'short' }).format(tickValue);
+          } else {
+            labelText = typeof tickValue === 'number' ? tickValue.toFixed(1) : String(tickValue);
+          }
+          
+          // Add label
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', x);
+          label.setAttribute('y', height + 16);
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('font-size', '10px'); // As per prompt's code
+          label.setAttribute('fill', '#666');    // As per prompt's code
+          panel.appendChild(label);
+        }
     }
     
-    // Generate a reasonable number of ticks
-    const tickCount = Math.min(5, uniqueXValues.length);
-    const tickStep = Math.max(1, Math.floor(uniqueXValues.length / tickCount));
+    // Y-axis
+    const yAxisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    yAxisLine.setAttribute('x1', 0);
+    yAxisLine.setAttribute('y1', 0);
+    yAxisLine.setAttribute('x2', 0);
+    yAxisLine.setAttribute('y2', height);
+    yAxisLine.setAttribute('stroke', '#ccc');
+    yAxisLine.setAttribute('stroke-width', 1);
+    panel.appendChild(yAxisLine);
     
-    // Draw X ticks and labels
-    if (xType === 'category') {
-      // For category type, position ticks at the bar centers
-      uniqueXValues.forEach((value, index) => {
-        // Skip some labels for readability
-        if (index % tickStep !== 0 && index !== uniqueXValues.length - 1) return;
-        
-        const barX = (index / (uniqueXValues.length - 1)) * width;
-        
-        // Draw tick
-        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        tick.setAttribute('x1', barX);
-        tick.setAttribute('y1', height);
-        tick.setAttribute('x2', barX);
-        tick.setAttribute('y2', height + 4);
-        tick.setAttribute('stroke', '#ccc');
-        tick.setAttribute('stroke-width', 1);
-        panel.appendChild(tick);
-        
-        // Add label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = String(value);
-        label.setAttribute('x', barX);
-        label.setAttribute('y', height + 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#666');
-        panel.appendChild(label);
-      });
-    } else if (xType === 'time') {
-      // For time axis, create evenly spaced ticks
-      const tickCount = 5;
-      const xDomain = xScale.domain;
-      const start = xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0]);
-      const end = xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1]);
-      const timeRange = end.getTime() - start.getTime();
-      const timeStep = timeRange / (tickCount - 1);
-      
-      for (let i = 0; i < tickCount; i++) {
-        const tickTime = start.getTime() + (i * timeStep);
-        const tickDate = new Date(tickTime);
-        const x = xScale.scale(tickDate);
-        
-        // Draw tick
-        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        tick.setAttribute('x1', x);
-        tick.setAttribute('y1', height);
-        tick.setAttribute('x2', x);
-        tick.setAttribute('y2', height + 4);
-        tick.setAttribute('stroke', '#ccc');
-        tick.setAttribute('stroke-width', 1);
-        panel.appendChild(tick);
-        
-        // Format date for label
-        const labelText = tickDate.toLocaleDateString(undefined, 
-          {year: 'numeric', month: 'short'});
-        
-        // Add label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = labelText;
-        label.setAttribute('x', x);
-        label.setAttribute('y', height + 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#666');
-        panel.appendChild(label);
-      }
-    } else {
-      // For numeric axes, generate evenly spaced ticks
-      const tickCount = 5;
-      const xDomain = xScale.domain;
-      const start = xDomain[0];
-      const end = xDomain[1];
-      const step = (end - start) / (tickCount - 1);
-      
-      for (let i = 0; i < tickCount; i++) {
-        const tickValue = start + (i * step);
-        const x = xScale.scale(tickValue);
-        
-        // Draw tick
-        const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        tick.setAttribute('x1', x);
-        tick.setAttribute('y1', height);
-        tick.setAttribute('x2', x);
-        tick.setAttribute('y2', height + 4);
-        tick.setAttribute('stroke', '#ccc');
-        tick.setAttribute('stroke-width', 1);
-        panel.appendChild(tick);
-        
-        // Add label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = tickValue.toFixed(1);
-        label.setAttribute('x', x);
-        label.setAttribute('y', height + 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('font-size', '10px');
-        label.setAttribute('fill', '#666');
-        panel.appendChild(label);
-      }
-    }
-    
-    // Y-axis (draw line and ticks)
-    const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    yAxis.setAttribute('x1', 0);
-    yAxis.setAttribute('y1', 0);
-    yAxis.setAttribute('x2', 0);
-    yAxis.setAttribute('y2', height);
-    yAxis.setAttribute('stroke', '#ccc');
-    yAxis.setAttribute('stroke-width', 1);
-    panel.appendChild(yAxis);
-    
-    // Y-axis ticks (show 3 evenly-spaced ticks)
+    // Y-axis ticks (only show 3 for panels, as per prompt)
     const yDomain = yScale.domain;
-    const tickValues = [
-      yDomain[0], 
-      yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
-      yDomain[1]
-    ];
+    if (yDomain && yDomain.length === 2) {
+        const tickValues = [
+          yDomain[0], 
+          yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
+          yDomain[1]
+        ];
+        
+        tickValues.forEach(value => {
+          const y = yScale.scale(value);
+          if (isNaN(y) || y < 0 || y > height + 1) return; // Add small tolerance for y > height
+          
+          // Draw tick
+          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          tick.setAttribute('x1', 0);
+          tick.setAttribute('y1', y);
+          tick.setAttribute('x2', -4);
+          tick.setAttribute('y2', y);
+          tick.setAttribute('stroke', '#ccc');
+          tick.setAttribute('stroke-width', 1);
+          panel.appendChild(tick);
+          
+          // Format label
+          const labelText = this.formatLargeNumber(value); // Assumes formatLargeNumber method exists
+          
+          // Draw label
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', -8);
+          label.setAttribute('y', y);
+          label.setAttribute('text-anchor', 'end');
+          label.setAttribute('dominant-baseline', 'middle');
+          label.setAttribute('font-size', '10px'); // As per prompt's code
+          label.setAttribute('fill', '#666');    // As per prompt's code
+          panel.appendChild(label);
+        });
+    }
+  }
+  
+  /**
+   * Render recession lines for a panel
+   * @private
+   */
+  renderPanelRecessionLines(panel, xScale, panelHeight) {
+    // Note: This method requires the 'RecessionLines' class to be defined and imported,
+    // and options like 'showRecessionLines', 'recessions', 'recessionLinesOptions'.
+    if (!this.options.showRecessionLines || !this.options.recessions || !this.options.recessions.length) { // Cleaned up check
+      return;
+    }
     
-    tickValues.forEach(value => {
-      const y = yScale.scale(value);
-      
-      // Skip if out of range
-      if (y < 0 || y > height) return;
-      
-      // Draw tick
-      const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      tick.setAttribute('x1', 0);
-      tick.setAttribute('y1', y);
-      tick.setAttribute('x2', -4);  // Make tick go left instead of right
-      tick.setAttribute('y2', y);
-      tick.setAttribute('stroke', '#ccc');
-      tick.setAttribute('stroke-width', 1);
-      panel.appendChild(tick);
-      
-      // Format label text
-      let labelText = this.formatLargeNumber(value);
-      
-      // Draw label - Position to the left
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = labelText;
-      label.setAttribute('x', -8);  // Position to the left
-      label.setAttribute('y', y);
-      label.setAttribute('text-anchor', 'end');  // Right-align text
-      label.setAttribute('dominant-baseline', 'middle');
-      label.setAttribute('font-size', '10px');
-      label.setAttribute('fill', '#666');
-      panel.appendChild(label);
-    });
+    // Create a temporary recession lines component for this panel
+    const panelRecessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+    
+    // Render recession lines into the panel
+    panelRecessionLines.render(panel, this.options.recessions, xScale, panelHeight);
   }
   
   /**
    * Render data for a panel
    * @private
    */
-  renderPanelData(panel, dataset, xScale, yScale, panelHeight) {
-    const { xField, yField, barWidth, barSpacing, showValues, valuePosition } = this.options;
+  renderPanelData(panel, dataset, xScale, yScale, panelHeight, datasetIndex) { // Added datasetIndex parameter
+    const { xField, yField, xType, timeBarPixelWidth, colors, showZeroValueBars } = this.options;
     
     if (!dataset.data || !dataset.data.length) return;
     
-    // Store dataset for axes rendering
-    panel._dataset = dataset;
+    const color = dataset.color || colors[datasetIndex % colors.length] || colors[0]; // Simplified color assignment
     
-    // Get unique X values from this dataset
-    const uniqueXValues = Array.from(
-      new Set(dataset.data.map(d => d[xField]))
-    ).sort((a, b) => {
-      // Sort by timestamp if available
-      if (dataset.data[0].x) {
-        const pointA = dataset.data.find(d => d[xField] === a);
-        const pointB = dataset.data.find(d => d[xField] === b);
-        if (pointA && pointB && pointA.x && pointB.x) {
-          return pointA.x - pointB.x;
-        }
-      }
-      // Default sorting
-      return String(a).localeCompare(String(b));
-    });
-    
-    // Calculate bar dimensions
-    const totalBarWidth = xScale.range()[1] / uniqueXValues.length;
-    const usableBarWidth = totalBarWidth * (1 - barSpacing);
-    const actualBarWidth = usableBarWidth * barWidth;
-    
-    // Render bars for this dataset
-    uniqueXValues.forEach((xValue, xIndex) => {
-      // Find data point for this X value
-      const dataPoint = dataset.data.find(d => d[xField] === xValue);
-      
-      // Skip if no data point found
-      if (!dataPoint) return;
-      
-      const value = dataPoint[yField] || 0;
-      
-      // Skip if value is 0
-      if (value === 0) return;
-      
-      // Calculate X position based on index within uniqueXValues
-      const barX = xIndex * totalBarWidth + (totalBarWidth - actualBarWidth) / 2;
-      
-      // Calculate Y positions (note: in SVG, y=0 is at the top)
-      const zeroY = yScale.scale(0);
-      const valueY = yScale.scale(value);
-      const barHeight = Math.abs(zeroY - valueY);
-      
-      // Create bar element
-      const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      bar.setAttribute('x', barX);
-      bar.setAttribute('y', valueY);
-      bar.setAttribute('width', actualBarWidth);
-      bar.setAttribute('height', Math.max(1, barHeight)); // Ensure at least 1px height
-      bar.setAttribute('fill', dataset.color);
-      bar.setAttribute('class', 'visioncharts-panel-bar');
-      
-      panel.appendChild(bar);
-      
-      // Show values if enabled
-      if (showValues) {
-        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        // Format large numbers with K/M suffix
-        valueText.textContent = this.formatLargeNumber(value);
+    if (xType === 'time') {
+      // Time-based bars
+      dataset.data.forEach(dataPoint => {
+        const xValue = dataPoint[xField] instanceof Date ? dataPoint[xField] : new Date(dataPoint[xField]);
+        const yValue = dataPoint[yField] || 0;
+        if (yValue === 0 && !showZeroValueBars) return;
         
-        // Position value based on option
-        let valueX = barX + actualBarWidth / 2;
-        let valueY;
+        const barCenter = xScale.scale(xValue);
+        // Ensure timeBarPixelWidth is a positive number, default to 10 if not set or invalid
+        const actualBarWidth = (typeof timeBarPixelWidth === 'number' && timeBarPixelWidth > 0) ? timeBarPixelWidth : 10;
+        const barX = barCenter - actualBarWidth / 2;
         
-        if (valuePosition === 'top') {
-          valueY = valueY - 5;
-        } else if (valuePosition === 'middle') {
-          valueY = valueY + barHeight / 2;
-        } else { // bottom
-          valueY = valueY + barHeight - 5;
-        }
+        const zeroY = yScale.scale(0);
+        const valueY = yScale.scale(yValue);
+        const barHeight = Math.abs(zeroY - valueY);
+        const finalY = (yValue >= 0) ? valueY : zeroY; // Bars for negative values start at zero line and go down
         
-        valueText.setAttribute('x', valueX);
-        valueText.setAttribute('y', valueY);
-        valueText.setAttribute('text-anchor', 'middle');
-        valueText.setAttribute('font-size', '10px');
-        valueText.setAttribute('fill', valuePosition === 'middle' ? '#fff' : '#666');
-        valueText.setAttribute('class', 'visioncharts-panel-bar-value');
+        const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bar.setAttribute('x', barX);
+        bar.setAttribute('y', finalY);
+        bar.setAttribute('width', actualBarWidth);
+        bar.setAttribute('height', Math.max(0, barHeight)); // Ensure non-negative height
+        bar.setAttribute('fill', color);
+        bar.setAttribute('class', 'visioncharts-panel-bar');
+        panel.appendChild(bar);
+      });
+    } else { // Covers 'category' and 'number' xTypes if not time
+      // Category/Numeric bars - simplified implementation from prompt
+      const barCount = dataset.data.length;
+      if (barCount === 0) return;
+
+      const rangeMax = xScale.range[1]; // Fixed: xScale.range is an array
+      const categoryWidth = rangeMax / barCount;
+      const actualBarWidth = categoryWidth * 0.8; // 80% of available space for the bar
+      
+      dataset.data.forEach((dataPoint, i) => {
+        const yValue = dataPoint[yField] || 0;
+        if (yValue === 0 && !showZeroValueBars) return;
         
-        panel.appendChild(valueText);
-      }
-    });
+        // For category/number, bars are typically centered in their "slot"
+        // The x-value itself might be used by the scale if it's numeric,
+        // or an index can be used for pure categories if scale is set up for indices.
+        // The prompt's logic implies an indexed approach for non-time.
+        const barX = i * categoryWidth + (categoryWidth - actualBarWidth) / 2;
+        
+        const zeroY = yScale.scale(0);
+        const valueY = yScale.scale(yValue);
+        const barHeight = Math.abs(zeroY - valueY);
+        const finalY = (yValue >= 0) ? valueY : zeroY;
+        
+        const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bar.setAttribute('x', barX);
+        bar.setAttribute('y', finalY);
+        bar.setAttribute('width', actualBarWidth);
+        bar.setAttribute('height', Math.max(0, barHeight));
+        bar.setAttribute('fill', color);
+        bar.setAttribute('class', 'visioncharts-panel-bar');
+        panel.appendChild(bar);
+      });
+    }
   }
 }
