@@ -367,3 +367,24 @@ export function sum(values) {
     const factor = Math.pow(10, decimals);
     return Math.round(value * factor) / factor;
   }
+  
+  export function calculateAverage(values) {
+    if (!values || values.length === 0) return NaN;
+    const numericValues = values.filter(v => typeof v === 'number' && !isNaN(v));
+    if (numericValues.length === 0) return NaN;
+    const sum = numericValues.reduce((acc, val) => acc + val, 0);
+    return sum / numericValues.length;
+  }
+  
+  export function calculateMedian(values) {
+    if (!values || values.length === 0) return NaN;
+    const numericValues = values.filter(v => typeof v === 'number' && !isNaN(v));
+    if (numericValues.length === 0) return NaN;
+    
+    const sortedValues = [...numericValues].sort((a, b) => a - b);
+    const mid = Math.floor(sortedValues.length / 2);
+    
+    return sortedValues.length % 2 !== 0 
+      ? sortedValues[mid] 
+      : (sortedValues[mid - 1] + sortedValues[mid]) / 2;
+  }
