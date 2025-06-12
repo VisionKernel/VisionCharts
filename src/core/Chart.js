@@ -1,6 +1,5 @@
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
-import RecessionLines from '../components/RecessionLines.js'; // Import the component
 
 /**
  * Base Chart class that handles common chart functionality
@@ -100,7 +99,7 @@ export default class Chart {
       datasets: [],
       processedData: [],
       components: {
-        recessionLines: null, // Ensure this is initialized
+        recessionLines: null,
         zeroLine: null,
         tooltip: null,
         legend: null,
@@ -252,47 +251,8 @@ export default class Chart {
     }
   }
   
-  // Modify destroy method to clean up the ResizeObserver
-  destroy() {
-    console.log('destroy called');
-    
-    // Remove event listeners
-    window.removeEventListener('resize', this.resizeHandler);
-    
-    // Clean up resize observer
-    if (this.state.resizeObserver) {
-      this.state.resizeObserver.disconnect();
-      this.state.resizeObserver = null;
-    }
-    
-    // Remove SVG
-    if (this.state.svg && this.state.container) {
-      if (this.state.container.contains(this.state.svg)) {
-        this.state.container.removeChild(this.state.svg);
-      }
-    }
-    
-    // Reset state
-    this.state.rendered = false;
-    this.state.svg = null;
-    this.state.chart = null;
-    
-    // Destroy components
-    if (this.state.components.recessionLines) {
-      this.state.components.recessionLines.destroy();
-      this.state.components.recessionLines = null;
-    }
-    if (this.state.components.crosshair) {
-      this.state.components.crosshair.destroy();
-    }
-    
-    if (this.state.components.tooltip) {
-      this.state.components.tooltip.destroy();
-    }
-  }
-  
   /**
-   * Process datasets into a standardized format with area support
+   * Process datasets into a standardized format
    * @private
    */
   processDatasets() {
@@ -311,14 +271,13 @@ export default class Chart {
       if (data.length === 0) {
         this.state.datasets = [];
       } else if (data[0] && data[0].hasOwnProperty('data')) {
-        // Array of datasets - preserve area property per dataset
+        // Array of datasets
         this.state.datasets = data.map((dataset, index) => ({
           id: dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`,
           name: dataset.name || `Dataset ${index + 1}`,
           color: dataset.color || this.options.colors[index % this.options.colors.length],
           width: dataset.width || this.options.lineWidth,
-          area: Boolean(dataset.area), // Per-dataset area property
-          areaOpacity: dataset.areaOpacity || this.options.areaOpacity || 0.2,
+          type: dataset.type || 'line',
           data: Array.isArray(dataset.data) ? dataset.data : []
         }));
       } else {
@@ -328,8 +287,7 @@ export default class Chart {
           name: 'Dataset',
           color: this.options.colors[0],
           width: this.options.lineWidth,
-          area: false, // Default to no area for single dataset
-          areaOpacity: this.options.areaOpacity || 0.2,
+          type: 'line',
           data: data
         }];
       }
@@ -340,8 +298,7 @@ export default class Chart {
         name: 'Dataset',
         color: this.options.colors[0],
         width: this.options.lineWidth,
-        area: false, // Default to no area
-        areaOpacity: this.options.areaOpacity || 0.2,
+        type: 'line',
         data: data.data || []
       }];
     }
@@ -558,25 +515,13 @@ export default class Chart {
     
     console.log('About to render chart content');
     
-    // Strict panel mode enforcement
+    // Completely separate rendering modes
     if (this.options.isPanelView) {
-      console.log('STRICTLY rendering only panel content');
-      // Render ONLY panels - no other chart components
-      this.renderPanels();
+      console.log('PANEL MODE: Rendering panel-only content');
+      this.renderPanelMode();
     } else {
-      // Standard view mode
-      this.renderAxes();
-      this.renderData();
-      
-      // Render zero line if enabled
-      if (this.options.showZeroLine) {
-        this.renderZeroLine();
-      }
-      
-      // Render recession lines if enabled
-      if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-        this.renderRecessionLines();
-      }
+      console.log('SINGLE MODE: Rendering single-panel content');
+      this.renderSingleMode();
     }
     
     // Common components for both modes
@@ -586,12 +531,49 @@ export default class Chart {
     
     // Update state
     this.state.rendered = true;
-
-    this.initHoverFeatures();
     
     console.log('Chart rendering completed, rendered=true');
     
     return this;
+  }
+  
+  /**
+   * Render chart in single-panel mode
+   * @private
+   */
+  renderSingleMode() {
+    console.log('renderSingleMode called');
+    
+    // Standard view mode
+    this.renderAxes();
+    this.renderData();
+    
+    // Render zero line if enabled
+    if (this.options.showZeroLine) {
+      this.renderZeroLine();
+    }
+    
+    // Render recession lines if enabled
+    if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
+      this.renderRecessionLines();
+    }
+    
+    // Initialize hover features for single mode
+    this.initSingleModeHoverFeatures();
+  }
+  
+  /**
+   * Render chart in panel mode
+   * @private
+   */
+  renderPanelMode() {
+    console.log('renderPanelMode called');
+    
+    // Render ONLY panels - no single-chart components
+    this.renderPanels();
+    
+    // Initialize hover features for panel mode
+    this.initPanelModeHoverFeatures();
   }
   
   /**
@@ -638,71 +620,79 @@ export default class Chart {
    * @private
    */
   renderRecessionLines() {
-    console.log('Chart.renderRecessionLines called');
-    
-    if (!this.state.chart || !this.options.recessions || !this.options.recessions.length || !this.options.showRecessionLines) {
-      if (this.state.components.recessionLines) {
-        this.state.components.recessionLines.destroy();
-        this.state.components.recessionLines = null;
-      }
-      return;
-    }
-    
-    const xScale = this.state.scales.x;
-    const plotAreaHeight = this.state.dimensions.innerHeight;
-    
-    if (!xScale) {
-      console.warn('Cannot render recession lines: X scale not available.');
-      return;
-    }
-
-    // Instantiate or update RecessionLines component
-    if (!this.state.components.recessionLines) {
-      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
-    } else {
-      // If options could change, update them (RecessionLines component might need an updateOptions method)
-      // For now, we assume options are set at instantiation or the component handles merging if re-rendered.
-    }
-    
-    // Render the recession lines using the component
-    // The component handles its own DOM elements.
-    // We pass the main chart group as the container for the recession lines group.
-    this.state.components.recessionLines.render(this.state.chart, this.options.recessions, xScale, plotAreaHeight);
-  }
-
-  /**
-   * Update recession lines using the RecessionLines component
-   * @private
-   */
-  updateRecessionLines() {
-    console.log('Chart.updateRecessionLines called');
+    console.log('renderRecessionLines called');
     
     if (!this.state.chart) return;
-
-    // If recession lines should not be shown, destroy the component if it exists
-    if (!this.options.showRecessionLines || !this.options.recessions || !this.options.recessions.length) {
-      if (this.state.components.recessionLines) {
-        this.state.components.recessionLines.destroy();
-        this.state.components.recessionLines = null;
-      }
-      return;
-    }
-
-    // If they should be shown, ensure the component exists and re-render
-    const xScale = this.state.scales.x;
-    const plotAreaHeight = this.state.dimensions.innerHeight;
-
-    if (!xScale) {
-      console.warn('Cannot update recession lines: X scale not available.');
-      return;
-    }
-
-    if (!this.state.components.recessionLines) {
-      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
-    }
     
-    // The render method of RecessionLines should handle clearing previous areas and drawing new ones.
-    this.state.components.recessionLines.render(this.state.chart, this.options.recessions, xScale, plotAreaHeight);
+    const { recessions } = this.options;
+    const { innerHeight, innerWidth } = this.state.dimensions;
+    const xScale = this.state.scales.x;
+    
+    if (!xScale) return;
+    
+    // Create recession lines group
+    const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    recessionsGroup.setAttribute('class', 'visioncharts-recession-lines');
+    
+    // Process each recession period
+    recessions.forEach((recession, index) => {
+      // Extract dates
+      const startDate = recession.start instanceof Date ? 
+                      recession.start : new Date(recession.start);
+      const endDate = recession.end instanceof Date ? 
+                      recession.end : (recession.end ? new Date(recession.end) : new Date());
+      
+      // Validate dates
+      if (!startDate || isNaN(startDate.getTime())) {
+        console.warn('Invalid recession start date:', recession.start);
+        return;
+      }
+      
+      if (!endDate || isNaN(endDate.getTime())) {
+        console.warn('Invalid recession end date:', recession.end);
+        return;
+      }
+      
+      try {
+        // Get x coordinates using the scale
+        const startX = xScale.scale(startDate);
+        const endX = xScale.scale(endDate);
+        
+        // Create recession area
+        const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        recessionArea.setAttribute('x', startX);
+        recessionArea.setAttribute('y', 0);
+        recessionArea.setAttribute('width', endX - startX);
+        recessionArea.setAttribute('height', innerHeight);
+        recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
+        recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
+        recessionArea.setAttribute('stroke-width', 1);
+        recessionArea.setAttribute('class', `visioncharts-recession-area recession-${index}`);
+        
+        // Add to group
+        recessionsGroup.appendChild(recessionArea);
+        
+        // Add label if there's enough space
+        if (endX - startX > 30) {
+          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', startX + (endX - startX) / 2);
+          label.setAttribute('y', 15);
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('font-size', '10px');
+          label.setAttribute('fill', '#888');
+          label.setAttribute('class', 'visioncharts-recession-label');
+          
+          recessionsGroup.appendChild(label);
+        }
+      } catch (error) {
+        console.error('Error rendering recession area:', error);
+      }
+    });
+    
+    // Add to chart
+    this.state.chart.appendChild(recessionsGroup);
   }
 
   /**
@@ -715,7 +705,7 @@ export default class Chart {
     // To be implemented by subclasses
   }
 
- /**
+  /**
  * Render chart legend - centered under title
  * @private
  */
@@ -746,26 +736,26 @@ export default class Chart {
       // Create item group
       const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       
-      // Create symbol - always use line symbol for line charts
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', 0);
-      line.setAttribute('y1', 10);
-      line.setAttribute('x2', 20);
-      line.setAttribute('y2', 10);
-      line.setAttribute('stroke', dataset.color);
-      line.setAttribute('stroke-width', 2);
-      itemGroup.appendChild(line);
-      
-      // Add area indicator if area is enabled for this dataset
-      if (dataset.area) {
-        const areaRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        areaRect.setAttribute('x', 0);
-        areaRect.setAttribute('y', 7);
-        areaRect.setAttribute('width', 20);
-        areaRect.setAttribute('height', 6);
-        areaRect.setAttribute('fill', dataset.color);
-        areaRect.setAttribute('fill-opacity', dataset.areaOpacity || 0.2);
-        itemGroup.appendChild(areaRect);
+      // Create symbol based on dataset type
+      if (dataset.type === 'line' || dataset.type === 'area') {
+        // Line symbol
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', 0);
+        line.setAttribute('y1', 10);
+        line.setAttribute('x2', 20);
+        line.setAttribute('y2', 10);
+        line.setAttribute('stroke', dataset.color);
+        line.setAttribute('stroke-width', 2);
+        itemGroup.appendChild(line);
+      } else {
+        // Rectangle symbol for bar or other types
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', 0);
+        rect.setAttribute('y', 5);
+        rect.setAttribute('width', 20);
+        rect.setAttribute('height', 10);
+        rect.setAttribute('fill', dataset.color);
+        itemGroup.appendChild(rect);
       }
       
       // Create label
@@ -946,41 +936,29 @@ export default class Chart {
     // Update scales
     this.updateScales();
     
-    // Handle panel view mode specially
+    // Clear existing chart content completely
+    if (this.state.chart) {
+      this.state.chart.innerHTML = '';
+    }
+    
+    // Clean up any existing hover components
+    this.cleanupHoverFeatures();
+    
+    // Re-render based on current mode
     if (this.options.isPanelView) {
-      // Clear existing chart content - important for panel mode
-      if (this.state.chart) {
-        this.state.chart.innerHTML = '';
-      }
-      
-      // Only render panels in panel mode - no regular chart elements
-      this.renderPanels();
-      
-      // Update common elements
-      // We already have the legend and title from the initial render,
-      // but we'll update them in case dataset names changed
-      const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
-      if (oldLegend) {
-        oldLegend.parentNode.removeChild(oldLegend);
-      }
-      this.renderLegend();
-      
-      return this;
+      console.log('UPDATE: Re-rendering in panel mode');
+      this.renderPanelMode();
+    } else {
+      console.log('UPDATE: Re-rendering in single mode');
+      this.renderSingleMode();
     }
     
-    // Standard view mode updates
-    this.updateAxes();
-    this.updateData();
-    
-    // Update zero line if enabled
-    if (this.options.showZeroLine) {
-      this.updateZeroLine();
+    // Update common elements
+    const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
+    if (oldLegend) {
+      oldLegend.parentNode.removeChild(oldLegend);
     }
-    
-    // Update recession lines if enabled
-    if (this.options.showRecessionLines) {
-      this.updateRecessionLines();
-    }
+    this.renderLegend();
     
     return this;
   }
@@ -1109,6 +1087,9 @@ export default class Chart {
     console.log('toggleLogarithmic called:', isLogarithmic);
     
     this.options.isLogarithmic = isLogarithmic;
+    
+    // For logarithmic scale changes, always do a full update
+    // since scales need to be recreated
     return this.update();
   }
   
@@ -1147,7 +1128,13 @@ export default class Chart {
     this.options.showRecessionLines = showRecessionLines;
     
     if (this.state.rendered) {
-      this.updateRecessionLines();
+      if (this.options.isPanelView) {
+        // In panel mode, we need to re-render all panels
+        return this.update();
+      } else {
+        // In single mode, just update recession lines
+        this.updateRecessionLines();
+      }
     }
     
     return this;
@@ -1165,7 +1152,13 @@ export default class Chart {
     this.options.showZeroLine = showZeroLine;
     
     if (this.state.rendered) {
-      this.updateZeroLine();
+      if (this.options.isPanelView) {
+        // In panel mode, we need to re-render all panels
+        return this.update();
+      } else {
+        // In single mode, just update zero line
+        this.updateZeroLine();
+      }
     }
     
     return this;
@@ -1450,11 +1443,13 @@ export default class Chart {
     });
   }
 
-  /**
- * Initialize hover functionality
+/**
+ * Initialize hover functionality for single-panel mode
  * @private
  */
-initHoverFeatures() {
+initSingleModeHoverFeatures() {
+  console.log('initSingleModeHoverFeatures called');
+  
   // Skip if no SVG or chart present
   if (!this.state.svg || !this.state.chart) return;
   
@@ -1491,17 +1486,422 @@ initHoverFeatures() {
   this.state.components.tooltip.hide();
   
   // Create hover points for each dataset
-  this.createHoverPoints();
+  this.createSingleModeHoverPoints();
   
-  // Bind mouse events
-  this.bindHoverEvents();
+  // Bind mouse events for single mode
+  this.bindSingleModeHoverEvents();
 }
 
 /**
- * Create hover points for each dataset
+ * Initialize hover functionality for panel mode
  * @private
  */
-createHoverPoints() {
+initPanelModeHoverFeatures() {
+  console.log('initPanelModeHoverFeatures called');
+  
+  // For panel mode, we need different hover behavior
+  // Each panel should have its own hover features
+  this.state.components.panelHoverFeatures = [];
+  
+  // Get all panel elements
+  const panels = this.state.chart.querySelectorAll('.visioncharts-panel');
+  
+  panels.forEach((panel, index) => {
+    const panelFeatures = this.initPanelHoverFeatures(panel, index);
+    this.state.components.panelHoverFeatures.push(panelFeatures);
+  });
+}
+
+/**
+ * Initialize hover features for a specific panel
+ * @private
+ * @param {SVGElement} panel - Panel element
+ * @param {number} panelIndex - Panel index
+ * @returns {Object} Panel hover features
+ */
+initPanelHoverFeatures(panel, panelIndex) {
+  console.log('initPanelHoverFeatures called for panel', panelIndex);
+  
+  // Get panel dimensions from the background rect
+  const panelBg = panel.querySelector('rect');
+  if (!panelBg) return null;
+  
+  const panelWidth = parseFloat(panelBg.getAttribute('width'));
+  const panelHeight = parseFloat(panelBg.getAttribute('height'));
+  
+  // Create crosshair for this panel
+  const crosshair = new Crosshair({
+    showX: true,
+    showY: false,
+    stroke: '#666',
+    strokeWidth: 1,
+    strokeDasharray: '4,4',
+    snapToData: true
+  });
+  
+  // Create tooltip for this panel
+  const tooltip = new Tooltip({
+    followCursor: true,
+    offset: { x: 15, y: 10 },
+    background: '#fff',
+    border: '#ccc',
+    borderRadius: 4,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    formatter: (data) => this.formatPanelTooltip(data, panelIndex)
+  });
+  
+  // Render components within the panel
+  crosshair.render(panel, panelWidth, panelHeight);
+  tooltip.render(panel);
+  
+  // Hide by default
+  crosshair.hide();
+  tooltip.hide();
+  
+  // Create hover points for this panel's dataset
+  const hoverPoints = this.createPanelHoverPoints(panel, panelIndex, panelWidth, panelHeight);
+  
+  // Bind mouse events for this panel
+  this.bindPanelHoverEvents(panel, panelIndex, crosshair, tooltip, hoverPoints, panelWidth, panelHeight);
+  
+  return {
+    crosshair,
+    tooltip,
+    hoverPoints,
+    panel,
+    panelIndex
+  };
+}
+
+/**
+ * Create hover points for panel mode
+ * @private
+ * @param {SVGElement} panel - Panel element
+ * @param {number} panelIndex - Panel index
+ * @param {number} panelWidth - Panel width
+ * @param {number} panelHeight - Panel height
+ * @returns {Array} Hover points
+ */
+createPanelHoverPoints(panel, panelIndex, panelWidth, panelHeight) {
+  // Get the dataset for this panel
+  const dataset = this.state.datasets[panelIndex];
+  if (!dataset) return [];
+  
+  // Create hover points group
+  const hoverPointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  hoverPointsGroup.setAttribute('class', 'visioncharts-panel-hover-points');
+  hoverPointsGroup.style.display = 'none';
+  panel.appendChild(hoverPointsGroup);
+  
+  // Create hover point for this dataset
+  const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  point.setAttribute('r', 4);
+  point.setAttribute('fill', '#fff');
+  point.setAttribute('stroke', dataset.color);
+  point.setAttribute('stroke-width', 2);
+  point.setAttribute('class', `visioncharts-panel-hover-point-${dataset.id}`);
+  point.style.display = 'none';
+  
+  hoverPointsGroup.appendChild(point);
+  
+  return [{
+    element: point,
+    dataset: dataset,
+    group: hoverPointsGroup
+  }];
+}
+
+/**
+ * Bind hover events for panel mode
+ * @private
+ */
+bindPanelHoverEvents(panel, panelIndex, crosshair, tooltip, hoverPoints, panelWidth, panelHeight) {
+  // Mouse move handler for this panel
+  const mouseMoveHandler = (e) => {
+    // Get mouse position relative to panel
+    const rect = panel.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Check if within panel bounds
+    if (x < 0 || x > panelWidth || y < 0 || y > panelHeight) {
+      this.hidePanelHoverElements(panelIndex);
+      return;
+    }
+    
+    // Show crosshair
+    crosshair.update(x, 0);
+    crosshair.show();
+    
+    // Update hover points for this panel
+    this.updatePanelHoverPoints(panelIndex, x, hoverPoints, panelWidth, panelHeight);
+    
+    // Show tooltip with data for this panel
+    const closestData = this.findPanelClosestData(panelIndex, x, panelWidth);
+    if (closestData) {
+      tooltip.show(closestData, x, y, {
+        width: panelWidth,
+        height: panelHeight
+      });
+    }
+  };
+  
+  // Mouse leave handler
+  const mouseLeaveHandler = () => {
+    this.hidePanelHoverElements(panelIndex);
+  };
+  
+  // Add event listeners to panel
+  panel.addEventListener('mousemove', mouseMoveHandler);
+  panel.addEventListener('mouseleave', mouseLeaveHandler);
+  
+  // Store handlers for cleanup
+  this.state.eventHandlers = this.state.eventHandlers || {};
+  this.state.eventHandlers[`panel-${panelIndex}`] = {
+    move: mouseMoveHandler,
+    leave: mouseLeaveHandler
+  };
+}
+
+/**
+ * Update hover points for a specific panel
+ * @private
+ */
+updatePanelHoverPoints(panelIndex, mouseX, hoverPoints, panelWidth, panelHeight) {
+  // Get the dataset for this panel
+  const dataset = this.state.datasets[panelIndex];
+  if (!dataset || !hoverPoints.length) return;
+  
+  // Show hover points group
+  const hoverPoint = hoverPoints[0];
+  if (hoverPoint.group) {
+    hoverPoint.group.style.display = 'block';
+  }
+  
+  // For panel mode, we need to use panel-specific scales
+  // This is a simplified approach - in a real implementation, 
+  // you'd want to store the panel scales when creating panels
+  const { xField, yField } = this.options;
+  
+  // Find closest data point (simplified)
+  let closestPoint = null;
+  let minDistance = Infinity;
+  
+  dataset.data.forEach(point => {
+    if (point[xField] === undefined || point[yField] === undefined) return;
+    
+    // For simplicity, distribute points evenly across panel width
+    const pointIndex = dataset.data.indexOf(point);
+    const xPos = (pointIndex / (dataset.data.length - 1)) * panelWidth;
+    
+    const distance = Math.abs(mouseX - xPos);
+    
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestPoint = point;
+    }
+  });
+  
+  // Update hover point position
+  if (closestPoint && minDistance < 25) {
+    // Calculate position using panel-specific logic
+    const pointIndex = dataset.data.indexOf(closestPoint);
+    const x = (pointIndex / (dataset.data.length - 1)) * panelWidth;
+    
+    // For Y position, we need to use the panel's scale
+    // This is simplified - you'd want proper scale calculation
+    const yValues = dataset.data.map(d => d[yField]);
+    const minY = Math.min(...yValues);
+    const maxY = Math.max(...yValues);
+    const yRange = maxY - minY;
+    const normalizedY = yRange > 0 ? (closestPoint[yField] - minY) / yRange : 0;
+    const y = panelHeight - (normalizedY * panelHeight);
+    
+    hoverPoint.element.setAttribute('cx', x);
+    hoverPoint.element.setAttribute('cy', y);
+    hoverPoint.element.style.display = 'block';
+    
+    // Store data for tooltip
+    hoverPoint.data = closestPoint;
+  } else {
+    hoverPoint.element.style.display = 'none';
+    hoverPoint.data = null;
+  }
+}
+
+/**
+ * Find closest data for a specific panel
+ * @private
+ */
+findPanelClosestData(panelIndex, mouseX, panelWidth) {
+  const dataset = this.state.datasets[panelIndex];
+  if (!dataset) return null;
+  
+  const { xField, yField } = this.options;
+  
+  // Find closest data point (simplified)
+  let closestPoint = null;
+  let minDistance = Infinity;
+  
+  dataset.data.forEach(point => {
+    if (point[xField] === undefined || point[yField] === undefined) return;
+    
+    // For simplicity, distribute points evenly across panel width
+    const pointIndex = dataset.data.indexOf(point);
+    const xPos = (pointIndex / (dataset.data.length - 1)) * panelWidth;
+    
+    const distance = Math.abs(mouseX - xPos);
+    
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestPoint = point;
+    }
+  });
+  
+  if (!closestPoint || minDistance > 25) return null;
+  
+  // Format data for tooltip
+  return {
+    x: this.formatXValue(closestPoint[xField]),
+    points: [{
+      dataset: dataset,
+      data: closestPoint
+    }]
+  };
+}
+
+/**
+ * Hide hover elements for a specific panel
+ * @private
+ */
+hidePanelHoverElements(panelIndex) {
+  if (!this.state.components.panelHoverFeatures) return;
+  
+  const panelFeatures = this.state.components.panelHoverFeatures[panelIndex];
+  if (!panelFeatures) return;
+  
+  if (panelFeatures.crosshair) {
+    panelFeatures.crosshair.hide();
+  }
+  
+  if (panelFeatures.tooltip) {
+    panelFeatures.tooltip.hide();
+  }
+  
+  if (panelFeatures.hoverPoints) {
+    panelFeatures.hoverPoints.forEach(hp => {
+      if (hp.group) {
+        hp.group.style.display = 'none';
+      }
+    });
+  }
+}
+
+/**
+ * Format tooltip content for panel mode
+ * @private
+ */
+formatPanelTooltip(data, panelIndex) {
+  if (!data || !data.points || !data.points.length) return '';
+  
+  const { yField } = this.options;
+  const lines = [];
+  
+  // Add panel header
+  const dataset = this.state.datasets[panelIndex];
+  if (dataset) {
+    lines.push(`${dataset.name}`);
+  }
+  
+  // Add header (X value)
+  lines.push(data.x);
+  
+  // Add data points
+  data.points.forEach(point => {
+    const value = point.data[yField];
+    let formattedValue;
+    
+    // Format value based on type
+    if (this.options.yType === 'currency') {
+      formattedValue = '$' + value.toFixed(2);
+    } else if (this.options.yType === 'percent') {
+      formattedValue = (value * 100).toFixed(2) + '%';
+    } else {
+      formattedValue = value.toFixed(2);
+    }
+    
+    lines.push(formattedValue);
+  });
+  
+  return lines;
+}
+
+/**
+ * Clean up hover features
+ * @private
+ */
+cleanupHoverFeatures() {
+  console.log('cleanupHoverFeatures called');
+  
+  // Clean up single mode hover features
+  if (this.state.components.crosshair) {
+    this.state.components.crosshair.destroy();
+    this.state.components.crosshair = null;
+  }
+  
+  if (this.state.components.tooltip) {
+    this.state.components.tooltip.destroy();
+    this.state.components.tooltip = null;
+  }
+  
+  if (this.state.components.hoverPointsGroup) {
+    if (this.state.components.hoverPointsGroup.parentNode) {
+      this.state.components.hoverPointsGroup.parentNode.removeChild(this.state.components.hoverPointsGroup);
+    }
+    this.state.components.hoverPointsGroup = null;
+  }
+  
+  // Clean up panel mode hover features
+  if (this.state.components.panelHoverFeatures) {
+    this.state.components.panelHoverFeatures.forEach(panelFeatures => {
+      if (panelFeatures.crosshair) {
+        panelFeatures.crosshair.destroy();
+      }
+      if (panelFeatures.tooltip) {
+        panelFeatures.tooltip.destroy();
+      }
+    });
+    this.state.components.panelHoverFeatures = null;
+  }
+  
+  // Clean up event handlers
+  if (this.state.eventHandlers) {
+    Object.keys(this.state.eventHandlers).forEach(key => {
+      if (key.startsWith('panel-')) {
+        const panelIndex = key.split('-')[1];
+        const panel = this.state.chart.querySelector(`.panel-${panelIndex}`);
+        if (panel && this.state.eventHandlers[key]) {
+          panel.removeEventListener('mousemove', this.state.eventHandlers[key].move);
+          panel.removeEventListener('mouseleave', this.state.eventHandlers[key].leave);
+        }
+      }
+    });
+    
+    // Clean up single mode hover events
+    if (this.state.eventHandlers.hover && this.state.chart) {
+      this.state.chart.removeEventListener('mousemove', this.state.eventHandlers.hover.move);
+      this.state.chart.removeEventListener('mouseleave', this.state.eventHandlers.hover.leave);
+    }
+    
+    this.state.eventHandlers = {};
+  }
+}
+
+/**
+ * Create hover points for single mode
+ * @private
+ */
+createSingleModeHoverPoints() {
   // Create a group for hover points
   this.state.components.hoverPointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   this.state.components.hoverPointsGroup.setAttribute('class', 'visioncharts-hover-points');
@@ -1528,10 +1928,10 @@ createHoverPoints() {
 }
 
 /**
- * Bind hover events
+ * Bind hover events for single mode
  * @private
  */
-bindHoverEvents() {
+bindSingleModeHoverEvents() {
   // Only bind if chart is rendered
   if (!this.state.chart) return;
   
@@ -1545,18 +1945,18 @@ bindHoverEvents() {
   // Check if within chart bounds
   if (x < 0 || x > this.state.dimensions.innerWidth || 
       y < 0 || y > this.state.dimensions.innerHeight) {
-    this.hideHoverElements();
+    this.hideSingleModeHoverElements();
     return;
   }
   
-  // Show crosshair - ALWAYS show for line charts
-  if (this.options.chartType === 'line') {
+  // Show crosshair - ALWAYS show for line and area charts
+  if (this.options.chartType === 'line' || this.options.chartType === 'area') {
     this.state.components.crosshair.update(x, 0);
     this.state.components.crosshair.show();
   }
   
   // Update hover points
-  this.updateHoverPoints(x);
+  this.updateSingleModeHoverPoints(x);
   
   // Show tooltip with closest data
   const closestData = this.findClosestData(x);
@@ -1570,7 +1970,7 @@ bindHoverEvents() {
   
   // Mouse leave handler
   const mouseLeaveHandler = () => {
-    this.hideHoverElements();
+    this.hideSingleModeHoverElements();
   };
   
   // Add event listeners
@@ -1586,10 +1986,10 @@ bindHoverEvents() {
 }
 
 /**
- * Hide hover elements
+ * Hide hover elements for single mode
  * @private
  */
-hideHoverElements() {
+hideSingleModeHoverElements() {
   if (this.state.components.crosshair) {
     this.state.components.crosshair.hide();
   }
@@ -1604,11 +2004,11 @@ hideHoverElements() {
 }
 
 /**
- * Update hover points
+ * Update hover points for single mode
  * @private
  * @param {number} mouseX - Mouse X position
  */
-updateHoverPoints(mouseX) {
+updateSingleModeHoverPoints(mouseX) {
   // Skip if no hover points
   if (!this.state.components.hoverPoints) return;
   
@@ -1621,8 +2021,8 @@ updateHoverPoints(mouseX) {
   const xValue = this.state.scales.x.invert(mouseX);
   
   // For LineChart: CHANGE THIS - Always show crosshair regardless of point proximity
-  if (this.options.chartType === 'line') {
-    // Always show the crosshair for line charts
+  if (this.options.chartType === 'line' || this.options.chartType === 'area') {
+    // Always show the crosshair for line and area charts
     if (this.state.components.crosshair) {
       this.state.components.crosshair.show();
     }
@@ -1652,7 +2052,7 @@ updateHoverPoints(mouseX) {
       }
     });
     
-    // Modified threshold for LineChart vs. Bar Charts
+    // Modified threshold for LineChart vs. Area/Bar Charts
     const proximityThreshold = (this.options.chartType === 'line') ? 50 : 50;
     
     // Update hover point position
@@ -1860,7 +2260,7 @@ formatTooltip(data) {
     return this.update();
   }
 
-  /**
+ /**
  * Destroy the chart and clean up
  * @public
  */
@@ -1870,22 +2270,14 @@ destroy() {
   // Remove event listeners
   window.removeEventListener('resize', this.resizeHandler);
   
-  // Remove hover event listeners
-  if (this.state.eventHandlers && this.state.eventHandlers.hover) {
-    if (this.state.chart) {
-      this.state.chart.removeEventListener('mousemove', this.state.eventHandlers.hover.move);
-      this.state.chart.removeEventListener('mouseleave', this.state.eventHandlers.hover.leave);
-    }
+  // Clean up resize observer
+  if (this.state.resizeObserver) {
+    this.state.resizeObserver.disconnect();
+    this.state.resizeObserver = null;
   }
   
-  // Destroy components
-  if (this.state.components.crosshair) {
-    this.state.components.crosshair.destroy();
-  }
-  
-  if (this.state.components.tooltip) {
-    this.state.components.tooltip.destroy();
-  }
+  // Clean up hover features
+  this.cleanupHoverFeatures();
   
   // Remove SVG
   if (this.state.svg && this.state.container) {
