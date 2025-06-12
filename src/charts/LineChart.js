@@ -886,7 +886,7 @@ export default class LineChart extends Chart {
    * @private
    */
   renderPanels() {
-    console.log('BarChart.renderPanels called');
+    console.log('LineChart.renderPanels called');
     
     if (!this.state.chart) {
       console.error('Cannot render panels: chart element is null');
@@ -904,6 +904,9 @@ export default class LineChart extends Chart {
       }
       
       console.log('Rendering', panelCount, 'panels');
+      
+      // Store panel scales for hover functionality
+      this.state.panelScales = [];
       
       // Create panel for each dataset
       this.state.datasets.forEach((dataset, index) => {
@@ -930,27 +933,13 @@ export default class LineChart extends Chart {
         panelGroup.appendChild(panelBg);
         
         // Create local scales for this panel
-        // Extract X values from this dataset only
         const { xField, yField, xType, isLogarithmic } = this.options;
         const xValues = dataset.data.map(d => d[xField]);
+        const yValues = dataset.data.map(d => d[yField]);
         
-        // Create a custom X scale for this panel
+        // Create X scale for this panel
         let xScale;
-        
-        // For category data, we need to set up a special domain
-        if (xType === 'category') {
-          // Get unique values
-          const uniqueXValues = Array.from(new Set(xValues));
-          
-          // Setup a linear scale with domain that creates even spacing
-          xScale = new LinearScale(
-            [-0.5, uniqueXValues.length - 0.5],
-            [0, innerWidth]
-          );
-          
-          // Store unique values for bar positioning
-          panelGroup._uniqueXValues = uniqueXValues;
-        } else if (xType === 'time') {
+        if (xType === 'time') {
           // For time, handle date objects
           const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
           const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
@@ -966,28 +955,33 @@ export default class LineChart extends Chart {
         // Create Y scale for this panel
         let yScale;
         if (isLogarithmic) {
-          yScale = new LogScale([0.1, 1], [0, 1]);
+          yScale = new LogScale([0.1, 1], [effectivePanelHeight, 0]);
         } else {
-          yScale = new LinearScale([0, 1], [0, 1]);
+          yScale = new LinearScale([0, 1], [effectivePanelHeight, 0]);
         }
         
-        // Update Y scale range to panel height
-        yScale.setRange([effectivePanelHeight, 0]);
-        
         // Calculate Y domain for this dataset
-        const yValues = dataset.data.map(d => d[yField]);
         if (yValues.length) {
-          const yMin = 0; // Bar charts start at 0
+          const yMin = Math.min(...yValues);
           const yMax = Math.max(...yValues);
-          const yPadding = yMax * 0.1;
+          const yPadding = (yMax - yMin) * 0.1;
           
           // Set domain based on scale type
           if (isLogarithmic) {
             yScale.setDomain([Math.max(0.01, yMin), yMax + yPadding]);
           } else {
-            yScale.setDomain([yMin, yMax + yPadding]);
+            yScale.setDomain([yMin - yPadding, yMax + yPadding]);
           }
         }
+        
+        // Store scales for hover functionality
+        this.state.panelScales[index] = { 
+          xScale, 
+          yScale, 
+          panelHeight: effectivePanelHeight,
+          panelWidth: innerWidth,
+          yPos: yPos
+        };
         
         // Render panel axes
         this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);

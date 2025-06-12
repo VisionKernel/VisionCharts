@@ -947,6 +947,9 @@ export default class BarChart extends Chart {
       
       console.log('Rendering', panelCount, 'panels');
       
+      // Store panel scales for hover functionality
+      this.state.panelScales = [];
+      
       // Create panel for each dataset
       this.state.datasets.forEach((dataset, index) => {
         // Calculate panel dimensions
@@ -972,17 +975,44 @@ export default class BarChart extends Chart {
         panelGroup.appendChild(panelBg);
         
         // Create local scales for this panel
-        // Extract X values from this dataset only
         const { xField, yField, xType, isLogarithmic } = this.options;
         const xValues = dataset.data.map(d => d[xField]);
+        const yValues = dataset.data.map(d => d[yField]);
         
-        // Create a custom X scale for this panel
+        // Create X scale for this panel
         let xScale;
-        
-        // For category data, we need to set up a special domain
-        if (xType === 'category') {
-          // Get unique values
+        if (xType === 'time') {
+          // For time, handle date objects
+          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+          const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+          const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
+          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
+        } else if (xType === 'number') {
+          // For numeric data
+          const xMin = Math.min(...xValues);
+          const xMax = Math.max(...xValues);
+          xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
+        } else {
+          // For category data, we need to set up a special domain
           const uniqueXValues = Array.from(new Set(xValues));
+          
+          // Sort based on original data order if possible
+          if (dataset.data.length > 0 && dataset.data[0].x) {
+            const categoryMap = new Map();
+            dataset.data.forEach(d => {
+              if (d.x && d[xField]) {
+                categoryMap.set(d[xField], d.x);
+              }
+            });
+            
+            if (categoryMap.size > 0) {
+              uniqueXValues.sort((a, b) => {
+                const timeA = categoryMap.get(a) || 0;
+                const timeB = categoryMap.get(b) || 0;
+                return timeA - timeB;
+              });
+            }
+          }
           
           // Setup a linear scale with domain that creates even spacing
           xScale = new LinearScale(
@@ -991,33 +1021,18 @@ export default class BarChart extends Chart {
           );
           
           // Store unique values for bar positioning
-          panelGroup._uniqueXValues = uniqueXValues;
-        } else if (xType === 'time') {
-          // For time, handle date objects
-          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
-          const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
-          const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
-          xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
-        } else {
-          // For numeric data
-          const xMin = Math.min(...xValues);
-          const xMax = Math.max(...xValues);
-          xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
+          xScale._uniqueXValues = uniqueXValues;
         }
         
         // Create Y scale for this panel
         let yScale;
         if (isLogarithmic) {
-          yScale = new LogScale([0.1, 1], [0, 1]);
+          yScale = new LogScale([0.1, 1], [effectivePanelHeight, 0]);
         } else {
-          yScale = new LinearScale([0, 1], [0, 1]);
+          yScale = new LinearScale([0, 1], [effectivePanelHeight, 0]);
         }
         
-        // Update Y scale range to panel height
-        yScale.setRange([effectivePanelHeight, 0]);
-        
         // Calculate Y domain for this dataset
-        const yValues = dataset.data.map(d => d[yField]);
         if (yValues.length) {
           const yMin = 0; // Bar charts start at 0
           const yMax = Math.max(...yValues);
@@ -1030,6 +1045,9 @@ export default class BarChart extends Chart {
             yScale.setDomain([yMin, yMax + yPadding]);
           }
         }
+        
+        // Store scales for hover functionality
+        this.state.panelScales[index] = { xScale, yScale };
         
         // Render panel axes
         this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
@@ -1044,8 +1062,8 @@ export default class BarChart extends Chart {
           this.renderPanelRecessionLines(panelGroup, xScale, effectivePanelHeight, innerWidth);
         }
         
-        // Render panel data
-        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight);
+        // Render panel data - FIXED: Added missing datasetIndex parameter
+        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight, index);
         
         // Render panel label
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -1317,33 +1335,15 @@ export default class BarChart extends Chart {
   }
   
   /**
-   * Render recession lines for a panel
+   * Render data for a panel - FIXED version
    * @private
    */
-  renderPanelRecessionLines(panel, xScale, panelHeight) {
-    // Note: This method requires the 'RecessionLines' class to be defined and imported,
-    // and options like 'showRecessionLines', 'recessions', 'recessionLinesOptions'.
-    if (!this.options.showRecessionLines || !this.options.recessions || !this.options.recessions.length) { // Cleaned up check
-      return;
-    }
-    
-    // Create a temporary recession lines component for this panel
-    const panelRecessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
-    
-    // Render recession lines into the panel
-    panelRecessionLines.render(panel, this.options.recessions, xScale, panelHeight);
-  }
-  
-  /**
-   * Render data for a panel
-   * @private
-   */
-  renderPanelData(panel, dataset, xScale, yScale, panelHeight, datasetIndex) { // Added datasetIndex parameter
+  renderPanelData(panel, dataset, xScale, yScale, panelHeight, datasetIndex = 0) {
     const { xField, yField, xType, timeBarPixelWidth, colors, showZeroValueBars } = this.options;
     
     if (!dataset.data || !dataset.data.length) return;
     
-    const color = dataset.color || colors[datasetIndex % colors.length] || colors[0]; // Simplified color assignment
+    const color = dataset.color || colors[datasetIndex % colors.length] || colors[0];
     
     if (xType === 'time') {
       // Time-based bars
@@ -1353,41 +1353,68 @@ export default class BarChart extends Chart {
         if (yValue === 0 && !showZeroValueBars) return;
         
         const barCenter = xScale.scale(xValue);
-        // Ensure timeBarPixelWidth is a positive number, default to 10 if not set or invalid
         const actualBarWidth = (typeof timeBarPixelWidth === 'number' && timeBarPixelWidth > 0) ? timeBarPixelWidth : 10;
         const barX = barCenter - actualBarWidth / 2;
         
         const zeroY = yScale.scale(0);
         const valueY = yScale.scale(yValue);
         const barHeight = Math.abs(zeroY - valueY);
-        const finalY = (yValue >= 0) ? valueY : zeroY; // Bars for negative values start at zero line and go down
+        const finalY = (yValue >= 0) ? valueY : zeroY;
         
         const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         bar.setAttribute('x', barX);
         bar.setAttribute('y', finalY);
         bar.setAttribute('width', actualBarWidth);
-        bar.setAttribute('height', Math.max(0, barHeight)); // Ensure non-negative height
+        bar.setAttribute('height', Math.max(0, barHeight));
         bar.setAttribute('fill', color);
         bar.setAttribute('class', 'visioncharts-panel-bar');
         panel.appendChild(bar);
       });
-    } else { // Covers 'category' and 'number' xTypes if not time
-      // Category/Numeric bars - simplified implementation from prompt
+    } else if (xType === 'category') {
+      // Category bars using stored unique values
+      const uniqueXValues = xScale._uniqueXValues || [];
+      if (uniqueXValues.length === 0) return;
+      
+      const barWidth = xScale.range()[1] / uniqueXValues.length; // FIXED: Use range() method
+      const actualBarWidth = barWidth * 0.8;
+      
+      dataset.data.forEach(dataPoint => {
+        const xValue = dataPoint[xField];
+        const yValue = dataPoint[yField] || 0;
+        if (yValue === 0 && !showZeroValueBars) return;
+        
+        const xIndex = uniqueXValues.indexOf(xValue);
+        if (xIndex === -1) return;
+        
+        const barX = xIndex * barWidth + (barWidth - actualBarWidth) / 2;
+        
+        const zeroY = yScale.scale(0);
+        const valueY = yScale.scale(yValue);
+        const barHeight = Math.abs(zeroY - valueY);
+        const finalY = (yValue >= 0) ? valueY : zeroY;
+        
+        const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bar.setAttribute('x', barX);
+        bar.setAttribute('y', finalY);
+        bar.setAttribute('width', actualBarWidth);
+        bar.setAttribute('height', Math.max(0, barHeight));
+        bar.setAttribute('fill', color);
+        bar.setAttribute('class', 'visioncharts-panel-bar');
+        panel.appendChild(bar);
+      });
+    } else {
+      // Numeric bars
       const barCount = dataset.data.length;
       if (barCount === 0) return;
 
-      const rangeMax = xScale.range[1]; // Fixed: xScale.range is an array
+      const rangeMax = xScale.range()[1]; // FIXED: Use range() method
       const categoryWidth = rangeMax / barCount;
-      const actualBarWidth = categoryWidth * 0.8; // 80% of available space for the bar
+      const actualBarWidth = categoryWidth * 0.8;
       
       dataset.data.forEach((dataPoint, i) => {
         const yValue = dataPoint[yField] || 0;
         if (yValue === 0 && !showZeroValueBars) return;
         
-        // For category/number, bars are typically centered in their "slot"
-        // The x-value itself might be used by the scale if it's numeric,
-        // or an index can be used for pure categories if scale is set up for indices.
-        // The prompt's logic implies an indexed approach for non-time.
         const barX = i * categoryWidth + (categoryWidth - actualBarWidth) / 2;
         
         const zeroY = yScale.scale(0);

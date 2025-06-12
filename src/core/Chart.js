@@ -1612,16 +1612,25 @@ createPanelHoverPoints(panel, panelIndex, panelWidth, panelHeight) {
 }
 
 /**
- * Bind hover events for panel mode
+ * Bind hover events for panel mode - IMPROVED version
  * @private
  */
 bindPanelHoverEvents(panel, panelIndex, crosshair, tooltip, hoverPoints, panelWidth, panelHeight) {
+  // Get panel transform info for coordinate conversion
+  const panelScales = this.state.panelScales && this.state.panelScales[panelIndex];
+  const panelYOffset = panelScales ? panelScales.yPos : 0;
+  
   // Mouse move handler for this panel
   const mouseMoveHandler = (e) => {
-    // Get mouse position relative to panel
-    const rect = panel.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Get mouse position relative to the SVG container
+    const svgRect = this.state.svg.getBoundingClientRect();
+    const mouseXSvg = e.clientX - svgRect.left;
+    const mouseYSvg = e.clientY - svgRect.top;
+    
+    // Convert to panel-relative coordinates
+    // Account for margins and panel transform
+    const x = mouseXSvg - this.options.margins.left;
+    const y = mouseYSvg - this.options.margins.top - panelYOffset;
     
     // Check if within panel bounds
     if (x < 0 || x > panelWidth || y < 0 || y > panelHeight) {
@@ -1651,9 +1660,23 @@ bindPanelHoverEvents(panel, panelIndex, crosshair, tooltip, hoverPoints, panelWi
     this.hidePanelHoverElements(panelIndex);
   };
   
-  // Add event listeners to panel
-  panel.addEventListener('mousemove', mouseMoveHandler);
-  panel.addEventListener('mouseleave', mouseLeaveHandler);
+  // Add event listeners to the SVG instead of just the panel
+  // This ensures we can track mouse movement across panel boundaries
+  this.state.svg.addEventListener('mousemove', (e) => {
+    // Check if mouse is over this specific panel
+    const svgRect = this.state.svg.getBoundingClientRect();
+    const mouseYSvg = e.clientY - svgRect.top;
+    const panelTop = this.options.margins.top + panelYOffset;
+    const panelBottom = panelTop + panelHeight;
+    
+    if (mouseYSvg >= panelTop && mouseYSvg <= panelBottom) {
+      mouseMoveHandler(e);
+    } else {
+      this.hidePanelHoverElements(panelIndex);
+    }
+  });
+  
+  this.state.svg.addEventListener('mouseleave', mouseLeaveHandler);
   
   // Store handlers for cleanup
   this.state.eventHandlers = this.state.eventHandlers || {};
@@ -1664,7 +1687,7 @@ bindPanelHoverEvents(panel, panelIndex, crosshair, tooltip, hoverPoints, panelWi
 }
 
 /**
- * Update hover points for a specific panel
+ * Update hover points for a specific panel - FIXED version
  * @private
  */
 updatePanelHoverPoints(panelIndex, mouseX, hoverPoints, panelWidth, panelHeight) {
@@ -1672,28 +1695,32 @@ updatePanelHoverPoints(panelIndex, mouseX, hoverPoints, panelWidth, panelHeight)
   const dataset = this.state.datasets[panelIndex];
   if (!dataset || !hoverPoints.length) return;
   
+  // Get stored panel scales
+  const panelScales = this.state.panelScales && this.state.panelScales[panelIndex];
+  if (!panelScales) {
+    console.warn('Panel scales not found for panel', panelIndex);
+    return;
+  }
+  
+  const { xScale, yScale } = panelScales;
+  
   // Show hover points group
   const hoverPoint = hoverPoints[0];
   if (hoverPoint.group) {
     hoverPoint.group.style.display = 'block';
   }
   
-  // For panel mode, we need to use panel-specific scales
-  // This is a simplified approach - in a real implementation, 
-  // you'd want to store the panel scales when creating panels
   const { xField, yField } = this.options;
   
-  // Find closest data point (simplified)
+  // Find closest data point using actual scales
   let closestPoint = null;
   let minDistance = Infinity;
   
   dataset.data.forEach(point => {
     if (point[xField] === undefined || point[yField] === undefined) return;
     
-    // For simplicity, distribute points evenly across panel width
-    const pointIndex = dataset.data.indexOf(point);
-    const xPos = (pointIndex / (dataset.data.length - 1)) * panelWidth;
-    
+    // Use the actual scale to get the position
+    const xPos = xScale.scale(point[xField]);
     const distance = Math.abs(mouseX - xPos);
     
     if (distance < minDistance) {
@@ -1704,18 +1731,9 @@ updatePanelHoverPoints(panelIndex, mouseX, hoverPoints, panelWidth, panelHeight)
   
   // Update hover point position
   if (closestPoint && minDistance < 25) {
-    // Calculate position using panel-specific logic
-    const pointIndex = dataset.data.indexOf(closestPoint);
-    const x = (pointIndex / (dataset.data.length - 1)) * panelWidth;
-    
-    // For Y position, we need to use the panel's scale
-    // This is simplified - you'd want proper scale calculation
-    const yValues = dataset.data.map(d => d[yField]);
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-    const yRange = maxY - minY;
-    const normalizedY = yRange > 0 ? (closestPoint[yField] - minY) / yRange : 0;
-    const y = panelHeight - (normalizedY * panelHeight);
+    // Calculate position using actual panel scales
+    const x = xScale.scale(closestPoint[xField]);
+    const y = yScale.scale(closestPoint[yField]);
     
     hoverPoint.element.setAttribute('cx', x);
     hoverPoint.element.setAttribute('cy', y);
@@ -1730,26 +1748,32 @@ updatePanelHoverPoints(panelIndex, mouseX, hoverPoints, panelWidth, panelHeight)
 }
 
 /**
- * Find closest data for a specific panel
+ * Find closest data for a specific panel - FIXED version
  * @private
  */
 findPanelClosestData(panelIndex, mouseX, panelWidth) {
   const dataset = this.state.datasets[panelIndex];
   if (!dataset) return null;
   
+  // Get stored panel scales
+  const panelScales = this.state.panelScales && this.state.panelScales[panelIndex];
+  if (!panelScales) {
+    console.warn('Panel scales not found for panel', panelIndex);
+    return null;
+  }
+  
+  const { xScale } = panelScales;
   const { xField, yField } = this.options;
   
-  // Find closest data point (simplified)
+  // Find closest data point using actual scales
   let closestPoint = null;
   let minDistance = Infinity;
   
   dataset.data.forEach(point => {
     if (point[xField] === undefined || point[yField] === undefined) return;
     
-    // For simplicity, distribute points evenly across panel width
-    const pointIndex = dataset.data.indexOf(point);
-    const xPos = (pointIndex / (dataset.data.length - 1)) * panelWidth;
-    
+    // Use the actual scale to get the position
+    const xPos = xScale.scale(point[xField]);
     const distance = Math.abs(mouseX - xPos);
     
     if (distance < minDistance) {
