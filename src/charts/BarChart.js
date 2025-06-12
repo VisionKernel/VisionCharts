@@ -972,92 +972,89 @@ export default class BarChart extends Chart {
         panelGroup.appendChild(panelBg);
         
         // Create local scales for this panel
-        const { xField, yField, xType, isLogarithmic } = this.options;
-        
         // Extract X values from this dataset only
+        const { xField, yField, xType, isLogarithmic } = this.options;
         const xValues = dataset.data.map(d => d[xField]);
         
-        // Calculate domain based on dataset values
-        let xMin, xMax;
-        if (xType === 'time') {
-          // For time type, handle date objects
-          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
-          xMin = dates.length ? new Date(Math.min(...dates.map(d => d.getTime()))) : new Date();
-          xMax = dates.length ? new Date(Math.max(...dates.map(d => d.getTime()))) : new Date();
-          if (xMin.getTime() === xMax.getTime()) { // Handle single data point case for time
-            xMax = new Date(xMin.getTime() + 86400000); // Add one day
-          }
-        } else {
-          xMin = xValues.length ? Math.min(...xValues) : 0;
-          xMax = xValues.length ? Math.max(...xValues) : 1;
-          if (xMin === xMax) { // Handle single data point case for numbers
-            xMax = xMin + 1;
-          }
-        }
-        
-        // Create appropriate scale type
+        // Create a custom X scale for this panel
         let xScale;
-        if (xType === 'time') {
+        
+        // For category data, we need to set up a special domain
+        if (xType === 'category') {
+          // Get unique values
+          const uniqueXValues = Array.from(new Set(xValues));
+          
+          // Setup a linear scale with domain that creates even spacing
+          xScale = new LinearScale(
+            [-0.5, uniqueXValues.length - 0.5],
+            [0, innerWidth]
+          );
+          
+          // Store unique values for bar positioning
+          panelGroup._uniqueXValues = uniqueXValues;
+        } else if (xType === 'time') {
+          // For time, handle date objects
+          const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+          const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+          const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
           xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
-        } else if (isLogarithmic && xType !== 'category') { // Log scale typically not for x-axis categories
-          xScale = new LogScale([Math.max(0.01, xMin), xMax], [0, innerWidth]);
         } else {
+          // For numeric data
+          const xMin = Math.min(...xValues);
+          const xMax = Math.max(...xValues);
           xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
         }
         
         // Create Y scale for this panel
         let yScale;
-        if (this.options.isLogarithmic) { // Use the chart-wide isLogarithmic option for Y-axis
-          yScale = new LogScale([0.1, 1], [effectivePanelHeight, 0]); // Range inverted for Y
+        if (isLogarithmic) {
+          yScale = new LogScale([0.1, 1], [0, 1]);
         } else {
-          yScale = new LinearScale([0, 1], [effectivePanelHeight, 0]); // Range inverted for Y
+          yScale = new LinearScale([0, 1], [0, 1]);
         }
+        
+        // Update Y scale range to panel height
+        yScale.setRange([effectivePanelHeight, 0]);
         
         // Calculate Y domain for this dataset
         const yValues = dataset.data.map(d => d[yField]);
         if (yValues.length) {
-          const yDataMin = Math.min(...yValues);
-          const yDataMax = Math.max(...yValues);
-          let yDomainMin = this.options.isLogarithmic ? Math.max(0.01, yDataMin * 0.9) : 0; // Bar charts often start at 0
-          let yDomainMax = yDataMax * 1.1; // Add 10% padding
-
-          if (yDomainMin === yDomainMax) { // Handle single y-value or all same y-values
-            yDomainMax = yDomainMin > 0 ? yDomainMin * 1.1 : 1;
-            if (this.options.isLogarithmic && yDomainMin <= 0.01) yDomainMin = 0.01;
-          }
-          if (this.options.isLogarithmic) {
-             yScale.setDomain([Math.max(yDomainMin, 0.01), yDomainMax]);
+          const yMin = 0; // Bar charts start at 0
+          const yMax = Math.max(...yValues);
+          const yPadding = yMax * 0.1;
+          
+          // Set domain based on scale type
+          if (isLogarithmic) {
+            yScale.setDomain([Math.max(0.01, yMin), yMax + yPadding]);
           } else {
-             yScale.setDomain([yDomainMin, yDomainMax]);
+            yScale.setDomain([yMin, yMax + yPadding]);
           }
-        } else {
-            // Default domain if no yValues
-            if (this.options.isLogarithmic) {
-                yScale.setDomain([0.01, 1]);
-            } else {
-                yScale.setDomain([0, 1]);
-            }
         }
         
         // Render panel axes
         this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
         
+        // Render zero line for this panel if enabled
+        if (this.options.showZeroLine) {
+          this.renderPanelZeroLine(panelGroup, yScale, innerWidth);
+        }
+        
         // Render recession lines for this panel if enabled
-        if (typeof this.renderPanelRecessionLines === 'function') {
-            this.renderPanelRecessionLines(panelGroup, xScale, effectivePanelHeight);
+        if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
+          this.renderPanelRecessionLines(panelGroup, xScale, effectivePanelHeight, innerWidth);
         }
         
         // Render panel data
-        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight, index); // Pass index for color assignment
+        this.renderPanelData(panelGroup, dataset, xScale, yScale, effectivePanelHeight);
         
         // Render panel label
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.textContent = dataset.name || `Dataset ${index + 1}`;
+        label.textContent = dataset.name;
         label.setAttribute('x', 5);
-        label.setAttribute('y', 15); // Positioned from the top of the panelGroup
+        label.setAttribute('y', 15);
         label.setAttribute('font-size', '12px');
         label.setAttribute('font-weight', 'bold');
-        label.setAttribute('fill', dataset.color || this.options.colors[index % this.options.colors.length]);
+        label.setAttribute('fill', dataset.color);
         panelGroup.appendChild(label);
         
         // Add panel to chart
@@ -1068,6 +1065,138 @@ export default class BarChart extends Chart {
     } catch (error) {
       console.error('Error rendering panels:', error);
     }
+  }
+  
+  /**
+   * Render zero line for a specific panel
+   * @private
+   */
+  renderPanelZeroLine(panel, yScale, width) {
+    const zeroY = yScale.scale(0);
+    
+    // Only render if zero is within the visible range
+    if (zeroY >= 0 && zeroY <= yScale.range()[0]) {
+      const zeroLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      zeroLine.setAttribute('x1', 0);
+      zeroLine.setAttribute('y1', zeroY);
+      zeroLine.setAttribute('x2', width);
+      zeroLine.setAttribute('y2', zeroY);
+      zeroLine.setAttribute('stroke', '#666');
+      zeroLine.setAttribute('stroke-width', 1);
+      zeroLine.setAttribute('stroke-dasharray', '4,4');
+      zeroLine.setAttribute('class', 'visioncharts-panel-zero-line');
+      
+      panel.appendChild(zeroLine);
+    }
+  }
+  
+  /**
+   * Render recession lines for a specific panel
+   * @private
+   */
+  renderPanelRecessionLines(panel, xScale, height, width) {
+    const { recessions } = this.options;
+    
+    // Create recession lines group for this panel
+    const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    recessionsGroup.setAttribute('class', 'visioncharts-panel-recession-lines');
+    
+    // Process each recession period
+    recessions.forEach((recession, index) => {
+      // Extract dates
+      const startDate = recession.start instanceof Date ? 
+                      recession.start : new Date(recession.start);
+      const endDate = recession.end instanceof Date ? 
+                      recession.end : (recession.end ? new Date(recession.end) : new Date());
+      
+      // Validate dates
+      if (!startDate || isNaN(startDate.getTime())) {
+        console.warn('Invalid recession start date:', recession.start);
+        return;
+      }
+      
+      if (!endDate || isNaN(endDate.getTime())) {
+        console.warn('Invalid recession end date:', recession.end);
+        return;
+      }
+      
+      try {
+        // For bar charts with category data, we need special handling
+        if (this.options.xType === 'category') {
+          // For category scale, recession areas should span the full width
+          // since categories don't necessarily correspond to dates
+          const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          recessionArea.setAttribute('x', 0);
+          recessionArea.setAttribute('y', 0);
+          recessionArea.setAttribute('width', width);
+          recessionArea.setAttribute('height', height);
+          recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
+          recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
+          recessionArea.setAttribute('stroke-width', 1);
+          recessionArea.setAttribute('class', `visioncharts-panel-recession-area recession-${index}`);
+          
+          recessionsGroup.appendChild(recessionArea);
+          
+          // Add label
+          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
+          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          label.textContent = labelText;
+          label.setAttribute('x', width / 2);
+          label.setAttribute('y', 15);
+          label.setAttribute('text-anchor', 'middle');
+          label.setAttribute('font-size', '10px');
+          label.setAttribute('fill', '#888');
+          label.setAttribute('class', 'visioncharts-panel-recession-label');
+          
+          recessionsGroup.appendChild(label);
+        } else {
+          // For time/numeric scales, use normal recession rendering
+          const startX = xScale.scale(startDate);
+          const endX = xScale.scale(endDate);
+          
+          // Only render if the recession overlaps with this panel's time range
+          if (startX < width && endX > 0) {
+            // Clamp to panel bounds
+            const clampedStartX = Math.max(0, startX);
+            const clampedEndX = Math.min(width, endX);
+            
+            // Create recession area
+            const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            recessionArea.setAttribute('x', clampedStartX);
+            recessionArea.setAttribute('y', 0);
+            recessionArea.setAttribute('width', clampedEndX - clampedStartX);
+            recessionArea.setAttribute('height', height);
+            recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
+            recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
+            recessionArea.setAttribute('stroke-width', 1);
+            recessionArea.setAttribute('class', `visioncharts-panel-recession-area recession-${index}`);
+            
+            // Add to group
+            recessionsGroup.appendChild(recessionArea);
+            
+            // Add label if there's enough space
+            if (clampedEndX - clampedStartX > 30) {
+              const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
+              const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+              label.textContent = labelText;
+              label.setAttribute('x', clampedStartX + (clampedEndX - clampedStartX) / 2);
+              label.setAttribute('y', 15);
+              label.setAttribute('text-anchor', 'middle');
+              label.setAttribute('font-size', '10px');
+              label.setAttribute('fill', '#888');
+              label.setAttribute('class', 'visioncharts-panel-recession-label');
+              
+              recessionsGroup.appendChild(label);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error rendering panel recession area:', error);
+      }
+    });
+    
+    // Add to panel
+    panel.appendChild(recessionsGroup);
   }
   
   /**
