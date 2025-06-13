@@ -154,7 +154,7 @@ export default class ScaleManager {
   }
   
   /**
-   * Calculate Y domain for bar charts
+   * Calculate Y domain for bar charts - FIXED VERSION with proper negative value handling
    * @param {Chart} chart - Chart instance
    * @param {Array} allPoints - All data points
    * @returns {Array} Y domain [min, max]
@@ -163,41 +163,64 @@ export default class ScaleManager {
     const { xField, yField, stacked, isLogarithmic } = chart.options;
     
     if (stacked && chart.state.datasets.length > 1) {
-      // For stacked bars, calculate sum of Y values for each X value
+      // FIXED: For stacked bars with mixed positive/negative values
       const uniqueXValues = Array.from(new Set(allPoints.map(d => d[xField])));
-      const stackedYValues = [];
+      const stackedValues = { positive: [], negative: [] };
       
       uniqueXValues.forEach(xValue => {
-        let sum = 0;
+        let positiveSum = 0;
+        let negativeSum = 0;
+        
         chart.state.datasets.forEach(dataset => {
           const matchingPoint = dataset.data.find(d => d[xField] === xValue);
           if (matchingPoint) {
-            sum += matchingPoint[yField] || 0;
+            const value = matchingPoint[yField] || 0;
+            if (value > 0) {
+              positiveSum += value;
+            } else if (value < 0) {
+              negativeSum += value; // This will be negative
+            }
           }
         });
-        stackedYValues.push(sum);
+        
+        if (positiveSum > 0) stackedValues.positive.push(positiveSum);
+        if (negativeSum < 0) stackedValues.negative.push(negativeSum);
       });
       
-      const maxYValue = Math.max(...stackedYValues);
-      const yMax = maxYValue * 1.1; // Add 10% padding at the top
+      // Calculate domain bounds
+      const maxPositive = stackedValues.positive.length > 0 ? Math.max(...stackedValues.positive) : 0;
+      const minNegative = stackedValues.negative.length > 0 ? Math.min(...stackedValues.negative) : 0;
+      
+      // Add padding
+      const positivePadding = maxPositive * 0.1;
+      const negativePadding = Math.abs(minNegative) * 0.1;
       
       if (isLogarithmic) {
-        return [Math.max(0.01, 0), yMax];
+        // Logarithmic scale can't handle negative values
+        return [Math.max(0.01, 0), maxPositive + positivePadding];
       } else {
-        return [0, yMax]; // Bar charts start from 0
+        return [minNegative - negativePadding, maxPositive + positivePadding];
       }
     } else {
       // Non-stacked bars
       const yValues = allPoints.map(d => d[yField]);
       const yMin = Math.min(...yValues);
       const yMax = Math.max(...yValues);
-      const yPadding = yMax * 0.1;
       
       if (isLogarithmic) {
-        return [Math.max(0.01, yMin), yMax + yPadding];
+        // For logarithmic scale, ensure positive domain
+        const yPadding = yMax * 0.1;
+        return [Math.max(0.01, Math.max(0, yMin)), yMax + yPadding];
       } else {
-        // Start from 0 for bar charts, but handle negative values
-        return [Math.min(0, yMin), yMax + yPadding];
+        // Handle both positive and negative values
+        const range = yMax - yMin;
+        const padding = Math.max(range * 0.1, Math.abs(yMax) * 0.05, Math.abs(yMin) * 0.05);
+        
+        // Ensure zero is included for better bar chart appearance
+        const domainMin = yMin < 0 ? yMin - padding : Math.min(0, yMin);
+        const domainMax = yMax > 0 ? yMax + padding : Math.max(0, yMax);
+        
+        return [domainMin, domainMax];
       }
     }
   }
@@ -321,7 +344,7 @@ export default class ScaleManager {
   }
   
   /**
-   * Calculate Y domain for a single panel
+   * Calculate Y domain for a single panel - FIXED VERSION with proper negative value handling
    * @param {Array} yValues - Y values for this panel
    * @param {string} chartType - Chart type
    * @param {boolean} isLogarithmic - Whether to use logarithmic scale
@@ -330,16 +353,25 @@ export default class ScaleManager {
   static calculatePanelYDomain(yValues, chartType, isLogarithmic) {
     const yMin = Math.min(...yValues);
     const yMax = Math.max(...yValues);
-    const yPadding = (yMax - yMin) * 0.1;
     
     if (isLogarithmic) {
-      return [Math.max(0.01, yMin), yMax + yPadding];
+      // Logarithmic scale requires positive values
+      const yPadding = yMax * 0.1;
+      return [Math.max(0.01, Math.max(0, yMin)), yMax + yPadding];
     } else {
       if (chartType === 'bar') {
-        // Bar charts start from 0
-        return [0, yMax + yPadding];
+        // FIXED: Bar charts with negative values
+        const range = yMax - yMin;
+        const padding = Math.max(range * 0.1, Math.abs(yMax) * 0.05, Math.abs(yMin) * 0.05);
+        
+        // Include zero in the domain for better bar chart appearance
+        const domainMin = yMin < 0 ? yMin - padding : Math.min(0, yMin);
+        const domainMax = yMax > 0 ? yMax + padding : Math.max(0, yMax);
+        
+        return [domainMin, domainMax];
       } else {
-        // Line charts use padding
+        // Line charts use padding around actual data range
+        const yPadding = (yMax - yMin) * 0.1;
         return [yMin - yPadding, yMax + yPadding];
       }
     }
