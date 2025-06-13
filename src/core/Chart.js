@@ -2,6 +2,7 @@ import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
+import Legend from '../components/Legend.js';
 
 /**
  * Base Chart class that handles common chart functionality
@@ -549,6 +550,11 @@ export default class Chart {
     // Standard view mode
     this.renderAxes();
     this.renderData();
+
+    // Render legend if enabled
+    if (this.options.showLegend) {
+      this.renderLegend();
+    }
     
     // Render zero line if enabled
     if (this.options.showZeroLine) {
@@ -617,138 +623,100 @@ export default class Chart {
   }
 
   /**
- * Render chart legend - centered under title
- * @private
+ * Render chart legend using Legend component
  */
-  renderLegend() {
-    console.log('Chart.renderLegend called');
+renderLegend() {
+  console.log('renderLegend called');
+  
+  if (!this.options.showLegend || !this.config.data.length) {
+    return;
+  }
+  
+  // Clean up existing legend
+  if (this.state.components.legend) {
+    this.state.components.legend.destroy();
+    this.state.components.legend = null;
+  }
+  
+  // Prepare legend items from chart data
+  const legendItems = this.config.data.map(dataset => ({
+    id: dataset.id,
+    label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
+    color: dataset.color || '#1468a8',
+    visible: dataset.visible !== false,
+    type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
+  }));
+  
+  // Calculate title height offset
+  const titleHeight = this.options.title ? 35 : 0; // Title takes ~35px including spacing
+  
+  // Create legend with appropriate options
+  const legendOptions = Object.assign({
+    position: 'top', // Changed to 'top' to position under title
+    align: 'center',
+    orientation: 'horizontal',
+    itemMargin: 25, // Increased spacing between items
+    symbolSize: 12,
+    fontSize: 12,
+    fontFamily: 'sans-serif',
+    interactive: true,
+    padding: { top: 10, right: 15, bottom: 10, left: 15 }, // Better padding
+    titleOffset: titleHeight // Pass title offset to legend
+  }, this.options.legendOptions || {});
+  
+  // Create and configure legend
+  this.state.components.legend = new Legend(legendOptions);
+  this.state.components.legend.setItems(legendItems);
+  
+  // Render legend with correct dimensions
+  this.state.components.legend.render(
+    this.state.svg, 
+    this.state.dimensions.width,  // Fixed: was totalWidth
+    this.state.dimensions.height  // Fixed: was totalHeight
+  );
+  
+  // Add event listener for legend interactions
+  this.state.components.legend.element.addEventListener('legend-item-click', (event) => {
+    const { id, visible } = event.detail;
+    console.log(`Legend item ${id} clicked, visible: ${visible}`);
     
-    if (!this.state.svg) return;
-    
-    // Only render legend if we have multiple datasets
-    if (this.state.datasets.length <= 1) return;
-    
-    // Create legend group
-    const legendGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    legendGroup.setAttribute('class', 'visioncharts-legend');
-    
-    // Calculate legend position - explicitly below title with increased spacing
-    const titleHeight = 40; // Standard height for title across all charts
-    const legendY = titleHeight + 5; // Increased space between title and legend
-    
-    // Create legend items
-    const itemElements = [];
-    const itemSpacing = 40; // Spacing between items
-    const rowHeight = 25; // Height of each row for wrapping
-    let totalWidth = 0;
-    
-    // First pass - create all items and calculate total width
-    this.state.datasets.forEach(dataset => {
-      // Create item group
-      const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    // Find the dataset and update its visibility
+    const dataset = this.config.data.find(d => d.id === id);
+    if (dataset) {
+      dataset.visible = visible;
       
-      // Create symbol based on dataset type
-      if (dataset.type === 'line' || dataset.type === 'area') {
-        // Line symbol
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', 0);
-        line.setAttribute('y1', 10);
-        line.setAttribute('x2', 20);
-        line.setAttribute('y2', 10);
-        line.setAttribute('stroke', dataset.color);
-        line.setAttribute('stroke-width', 2);
-        itemGroup.appendChild(line);
-      } else {
-        // Rectangle symbol for bar or other types
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', 0);
-        rect.setAttribute('y', 5);
-        rect.setAttribute('width', 20);
-        rect.setAttribute('height', 10);
-        rect.setAttribute('fill', dataset.color);
-        itemGroup.appendChild(rect);
-      }
+      // Update the chart
+      this.update();
       
-      // Create label
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = dataset.name || 'Dataset';
-      label.setAttribute('x', 25);
-      label.setAttribute('y', 10);
-      label.setAttribute('dominant-baseline', 'middle');
-      label.setAttribute('font-size', '14px'); // Reduced font size slightly
-      label.setAttribute('font-family', this.options.fontFamily || 'sans-serif');
-      label.setAttribute('fill', this.options.textColor || '#333');
-      itemGroup.appendChild(label);
-      
-      // Calculate width more accurately
-      // Add a bit more space for each character
-      const labelWidth = dataset.name ? dataset.name.length * 8 : 70;
-      const itemWidth = 30 + labelWidth; // symbol + text + padding
-      
-      itemElements.push({
-        element: itemGroup,
-        width: itemWidth
+      // Dispatch custom event for external listeners
+      const chartEvent = new CustomEvent('dataset-visibility-changed', {
+        detail: { datasetId: id, visible: visible, dataset: dataset }
       });
-      
-      totalWidth += itemWidth + itemSpacing;
-    });
-    
-    // Account for last spacing
-    totalWidth -= itemSpacing;
-    
-    // Calculate if we need to wrap legends to multiple rows
-    const svgWidth = this.state.dimensions.width;
-    const maxWidthPerRow = svgWidth * 0.9; // Use 90% of available width
-    const needsWrapping = totalWidth > maxWidthPerRow;
-    
-    if (needsWrapping) {
-      // Wrap to multiple rows
-      let currentX = 0;
-      let currentY = 0;
-      let rowWidth = 0;
-      
-      itemElements.forEach(item => {
-        // Check if adding this item would exceed max width
-        if (rowWidth + item.width > maxWidthPerRow && rowWidth > 0) {
-          // Start new row
-          currentY += rowHeight;
-          currentX = 0;
-          rowWidth = 0;
-        }
-        
-        // Position item
-        item.element.setAttribute('transform', `translate(${currentX}, ${currentY})`);
-        legendGroup.appendChild(item.element);
-        
-        // Update for next item
-        currentX += item.width + itemSpacing;
-        rowWidth += item.width + itemSpacing;
-      });
-      
-      // Adjust legend Y to center it vertically if multiple rows
-      const totalHeight = currentY + rowHeight;
-      const centerY = legendY - totalHeight / 2 + rowHeight / 2;
-      
-      // Position the legend below the title, centered
-      legendGroup.setAttribute('transform', `translate(${(svgWidth - maxWidthPerRow) / 2}, ${legendY})`);
-    } else {
-      // Single row - center horizontally
-      const startX = Math.max(0, (svgWidth - totalWidth) / 2);
-      
-      // Position items horizontally
-      let currentX = 0;
-      itemElements.forEach(item => {
-        item.element.setAttribute('transform', `translate(${currentX}, 0)`);
-        legendGroup.appendChild(item.element);
-        currentX += item.width + itemSpacing;
-      });
-      
-      // Position the legend below the title, centered
-      legendGroup.setAttribute('transform', `translate(${startX}, ${legendY})`);
+      this.state.container.dispatchEvent(chartEvent);
+    }
+  });
+}
+
+  /**
+   * Update legend to reflect current chart state
+   */
+  updateLegend() {
+    if (!this.state.components.legend || !this.options.showLegend) {
+      return;
     }
     
-    // Add to SVG
-    this.state.svg.appendChild(legendGroup);
+    // Update legend items with current dataset state
+    const legendItems = this.config.data.map(dataset => ({
+      id: dataset.id,
+      label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
+      color: dataset.color || '#1468a8',
+      visible: dataset.visible !== false,
+      type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
+    }));
+    
+    // Update legend items and re-render
+    this.state.components.legend.setItems(legendItems);
+    this.state.components.legend.update();
   }
 
   /**
@@ -2120,6 +2088,12 @@ destroy() {
   
   // Clean up hover features
   this.cleanupHoverFeatures();
+
+  // Destroy legend
+  if (this.state.components.legend) {
+    this.state.components.legend.destroy();
+    this.state.components.legend = null;
+  }
   
   // Remove SVG
   if (this.state.svg && this.state.container) {
