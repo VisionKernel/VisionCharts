@@ -1,0 +1,456 @@
+import { LinearScale, TimeScale, LogScale, createNiceDomain, createTimeTickValues } from './Scale.js';
+
+/**
+ * ScaleManager handles all scale creation and management across chart types
+ * Centralizes scale logic to reduce duplication and provide consistent behavior
+ */
+export default class ScaleManager {
+  /**
+   * Create scales for a chart
+   * @param {Chart} chart - Chart instance
+   * @returns {Object} Created scales {x, y}
+   */
+  static createScales(chart) {
+    console.log('ScaleManager.createScales called for', chart.options.chartType);
+    
+    const { xType, yType, isLogarithmic } = chart.options;
+    
+    // Create X scale based on type
+    let xScale;
+    if (xType === 'time') {
+      xScale = new TimeScale([0, 1], [0, 1]);
+    } else {
+      xScale = new LinearScale([0, 1], [0, 1]);
+    }
+    
+    // Create Y scale based on type and logarithmic setting
+    let yScale;
+    if (isLogarithmic) {
+      yScale = new LogScale([0.1, 1], [0, 1]);
+    } else {
+      yScale = new LinearScale([0, 1], [0, 1]);
+    }
+    
+    const scales = { x: xScale, y: yScale };
+    
+    // Update scales with actual data
+    ScaleManager.updateScales(chart, scales);
+    
+    return scales;
+  }
+  
+  /**
+   * Update scales with chart data
+   * @param {Chart} chart - Chart instance
+   * @param {Object} scales - Scales to update {x, y}
+   */
+  static updateScales(chart, scales) {
+    console.log('ScaleManager.updateScales called for', chart.options.chartType);
+    
+    const { xField, yField, chartType, isLogarithmic } = chart.options;
+    
+    // Get all data points from all datasets
+    const allPoints = chart.state.datasets.reduce((acc, dataset) => {
+      return acc.concat(dataset.data || []);
+    }, []);
+    
+    if (!allPoints.length) {
+      // Set default domains if no data
+      scales.x.setDomain([0, 1]);
+      scales.y.setDomain(isLogarithmic ? [0.1, 1] : [0, 1]);
+      
+      // Set ranges based on dimensions
+      scales.x.setRange([0, chart.state.dimensions.innerWidth]);
+      scales.y.setRange([chart.state.dimensions.innerHeight, 0]);
+      console.log('No data points, using default domains');
+      return;
+    }
+    
+    // Calculate domains based on chart type
+    const domains = ScaleManager.calculateDomains(chart, allPoints);
+    
+    // Set domains
+    scales.x.setDomain(domains.x);
+    scales.y.setDomain(domains.y);
+    
+    // Set ranges based on dimensions
+    scales.x.setRange([0, chart.state.dimensions.innerWidth]);
+    scales.y.setRange([chart.state.dimensions.innerHeight, 0]);
+    
+    console.log('Scales updated with domains:', 'x:', domains.x, 'y:', domains.y);
+  }
+  
+  /**
+   * Calculate appropriate domains for chart data
+   * @param {Chart} chart - Chart instance
+   * @param {Array} allPoints - All data points
+   * @returns {Object} Calculated domains {x, y}
+   */
+  static calculateDomains(chart, allPoints) {
+    const { xField, yField, xType, chartType, isLogarithmic } = chart.options;
+    
+    // Extract values
+    const xValues = allPoints.map(d => d[xField]);
+    const yValues = allPoints.map(d => d[yField]);
+    
+    // Calculate X domain
+    const xDomain = ScaleManager.calculateXDomain(chart, xValues);
+    
+    // Calculate Y domain based on chart type
+    const yDomain = ScaleManager.calculateYDomain(chart, allPoints);
+    
+    return { x: xDomain, y: yDomain };
+  }
+  
+  /**
+   * Calculate X domain
+   * @param {Chart} chart - Chart instance
+   * @param {Array} xValues - X values
+   * @returns {Array} X domain [min, max]
+   */
+  static calculateXDomain(chart, xValues) {
+    const { xType, chartType } = chart.options;
+    
+    if (xType === 'time') {
+      // For time type, convert to Date objects if needed
+      const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+      const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+      const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
+      return [xMin, xMax];
+    } else if (xType === 'number') {
+      const xMin = Math.min(...xValues);
+      const xMax = Math.max(...xValues);
+      return [xMin, xMax];
+    } else if (xType === 'category') {
+      // For category type, create indexed domain
+      const uniqueXValues = Array.from(new Set(xValues));
+      
+      // Sort categories if possible (by timestamp or naturally)
+      const sortedCategories = ScaleManager.sortCategories(chart, uniqueXValues);
+      
+      // Create domain for category spacing
+      return [-0.5, sortedCategories.length - 0.5];
+    }
+    
+    return [0, 1];
+  }
+  
+  /**
+   * Calculate Y domain based on chart type
+   * @param {Chart} chart - Chart instance
+   * @param {Array} allPoints - All data points
+   * @returns {Array} Y domain [min, max]
+   */
+  static calculateYDomain(chart, allPoints) {
+    const { yField, chartType, isLogarithmic } = chart.options;
+    
+    if (chartType === 'bar') {
+      // Bar charts: handle stacking and start from 0
+      return ScaleManager.calculateBarYDomain(chart, allPoints);
+    } else {
+      // Line charts: use padding around data range
+      return ScaleManager.calculateLineYDomain(chart, allPoints);
+    }
+  }
+  
+  /**
+   * Calculate Y domain for bar charts
+   * @param {Chart} chart - Chart instance
+   * @param {Array} allPoints - All data points
+   * @returns {Array} Y domain [min, max]
+   */
+  static calculateBarYDomain(chart, allPoints) {
+    const { xField, yField, stacked, isLogarithmic } = chart.options;
+    
+    if (stacked && chart.state.datasets.length > 1) {
+      // For stacked bars, calculate sum of Y values for each X value
+      const uniqueXValues = Array.from(new Set(allPoints.map(d => d[xField])));
+      const stackedYValues = [];
+      
+      uniqueXValues.forEach(xValue => {
+        let sum = 0;
+        chart.state.datasets.forEach(dataset => {
+          const matchingPoint = dataset.data.find(d => d[xField] === xValue);
+          if (matchingPoint) {
+            sum += matchingPoint[yField] || 0;
+          }
+        });
+        stackedYValues.push(sum);
+      });
+      
+      const maxYValue = Math.max(...stackedYValues);
+      const yMax = maxYValue * 1.1; // Add 10% padding at the top
+      
+      if (isLogarithmic) {
+        return [Math.max(0.01, 0), yMax];
+      } else {
+        return [0, yMax]; // Bar charts start from 0
+      }
+    } else {
+      // Non-stacked bars
+      const yValues = allPoints.map(d => d[yField]);
+      const yMin = Math.min(...yValues);
+      const yMax = Math.max(...yValues);
+      const yPadding = yMax * 0.1;
+      
+      if (isLogarithmic) {
+        return [Math.max(0.01, yMin), yMax + yPadding];
+      } else {
+        // Start from 0 for bar charts, but handle negative values
+        return [Math.min(0, yMin), yMax + yPadding];
+      }
+    }
+  }
+  
+  /**
+   * Calculate Y domain for line charts
+   * @param {Chart} chart - Chart instance
+   * @param {Array} allPoints - All data points
+   * @returns {Array} Y domain [min, max]
+   */
+  static calculateLineYDomain(chart, allPoints) {
+    const { yField, isLogarithmic } = chart.options;
+    
+    const yValues = allPoints.map(d => d[yField]);
+    const yMin = Math.min(...yValues);
+    const yMax = Math.max(...yValues);
+    
+    // Add padding to Y domain
+    const yPadding = (yMax - yMin) * 0.1;
+    
+    if (isLogarithmic) {
+      // For logarithmic scale, ensure minimum is positive
+      return [Math.max(yMin, 0.01), yMax + yPadding];
+    } else {
+      return [yMin - yPadding, yMax + yPadding];
+    }
+  }
+  
+  /**
+   * Sort categories appropriately
+   * @param {Chart} chart - Chart instance
+   * @param {Array} categories - Category values
+   * @returns {Array} Sorted categories
+   */
+  static sortCategories(chart, categories) {
+    const { xField } = chart.options;
+    
+    // Try to sort by timestamp if available
+    const firstDataset = chart.state.datasets[0];
+    if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
+      // Create a map of category to timestamp
+      const categoryMap = new Map();
+      firstDataset.data.forEach(d => {
+        if (d.x && d[xField]) {
+          categoryMap.set(d[xField], d.x);
+        }
+      });
+      
+      // Sort by timestamp if available
+      if (categoryMap.size > 0) {
+        return categories.sort((a, b) => {
+          const timeA = categoryMap.get(a) || 0;
+          const timeB = categoryMap.get(b) || 0;
+          return timeA - timeB;
+        });
+      }
+    }
+    
+    // Default string sorting
+    return categories.sort();
+  }
+  
+  /**
+   * Create scales for panel mode
+   * @param {Object} dataset - Dataset for this panel
+   * @param {Object} chartOptions - Chart options
+   * @param {Object} dimensions - Panel dimensions
+   * @returns {Object} Created scales {xScale, yScale}
+   */
+  static createPanelScales(dataset, chartOptions, dimensions) {
+    console.log('ScaleManager.createPanelScales called');
+    
+    const { xField, yField, xType, isLogarithmic, chartType } = chartOptions;
+    const { innerWidth, effectivePanelHeight } = dimensions;
+    
+    const xValues = dataset.data.map(d => d[xField]);
+    const yValues = dataset.data.map(d => d[yField]);
+    
+    // Create X scale
+    let xScale;
+    if (xType === 'time') {
+      const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
+      const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
+      const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
+      xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
+    } else if (xType === 'number') {
+      const xMin = Math.min(...xValues);
+      const xMax = Math.max(...xValues);
+      xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
+    } else {
+      // Category type
+      const uniqueXValues = Array.from(new Set(xValues));
+      
+      // Sort based on original data order if possible
+      const sortedCategories = ScaleManager.sortCategoriesFromDataset(dataset, uniqueXValues, xField);
+      
+      xScale = new LinearScale(
+        [-0.5, sortedCategories.length - 0.5],
+        [0, innerWidth]
+      );
+      
+      // Store unique values for positioning
+      xScale._uniqueXValues = sortedCategories;
+    }
+    
+    // Create Y scale
+    let yScale;
+    if (isLogarithmic) {
+      yScale = new LogScale([0.1, 1], [effectivePanelHeight, 0]);
+    } else {
+      yScale = new LinearScale([0, 1], [effectivePanelHeight, 0]);
+    }
+    
+    // Calculate Y domain for this dataset
+    if (yValues.length) {
+      const yDomain = ScaleManager.calculatePanelYDomain(yValues, chartType, isLogarithmic);
+      yScale.setDomain(yDomain);
+    }
+    
+    return { xScale, yScale };
+  }
+  
+  /**
+   * Calculate Y domain for a single panel
+   * @param {Array} yValues - Y values for this panel
+   * @param {string} chartType - Chart type
+   * @param {boolean} isLogarithmic - Whether to use logarithmic scale
+   * @returns {Array} Y domain [min, max]
+   */
+  static calculatePanelYDomain(yValues, chartType, isLogarithmic) {
+    const yMin = Math.min(...yValues);
+    const yMax = Math.max(...yValues);
+    const yPadding = (yMax - yMin) * 0.1;
+    
+    if (isLogarithmic) {
+      return [Math.max(0.01, yMin), yMax + yPadding];
+    } else {
+      if (chartType === 'bar') {
+        // Bar charts start from 0
+        return [0, yMax + yPadding];
+      } else {
+        // Line charts use padding
+        return [yMin - yPadding, yMax + yPadding];
+      }
+    }
+  }
+  
+  /**
+   * Sort categories from dataset data
+   * @param {Object} dataset - Dataset
+   * @param {Array} categories - Categories to sort
+   * @param {string} xField - X field name
+   * @returns {Array} Sorted categories
+   */
+  static sortCategoriesFromDataset(dataset, categories, xField) {
+    if (dataset.data.length > 0 && dataset.data[0].x) {
+      const categoryMap = new Map();
+      dataset.data.forEach(d => {
+        if (d.x && d[xField]) {
+          categoryMap.set(d[xField], d.x);
+        }
+      });
+      
+      if (categoryMap.size > 0) {
+        return categories.sort((a, b) => {
+          const timeA = categoryMap.get(a) || 0;
+          const timeB = categoryMap.get(b) || 0;
+          return timeA - timeB;
+        });
+      }
+    }
+    
+    return categories.sort();
+  }
+  
+  /**
+   * Update scale ranges when dimensions change
+   * @param {Object} scales - Scales to update
+   * @param {Object} dimensions - New dimensions
+   */
+  static updateScaleRanges(scales, dimensions) {
+    const { innerWidth, innerHeight } = dimensions;
+    
+    if (scales.x) {
+      scales.x.setRange([0, innerWidth]);
+    }
+    
+    if (scales.y) {
+      scales.y.setRange([innerHeight, 0]);
+    }
+  }
+  
+  /**
+   * Create nice tick values for a scale
+   * @param {Scale} scale - Scale instance
+   * @param {number} tickCount - Desired number of ticks
+   * @param {string} type - Scale type ('time', 'number', 'category')
+   * @returns {Array} Tick values
+   */
+  static createTickValues(scale, tickCount = 5, type = 'number') {
+    const [min, max] = scale.domain;
+    
+    if (type === 'time') {
+      return createTimeTickValues(min, max, tickCount);
+    } else if (type === 'number') {
+      const niceDomain = createNiceDomain(min, max, tickCount);
+      const step = (niceDomain[1] - niceDomain[0]) / (tickCount - 1);
+      const ticks = [];
+      
+      for (let i = 0; i < tickCount; i++) {
+        ticks.push(niceDomain[0] + step * i);
+      }
+      
+      return ticks;
+    } else if (type === 'category') {
+      // For categories, return the stored unique values
+      return scale._uniqueXValues || [];
+    }
+    
+    return [];
+  }
+  
+  /**
+   * Clone a scale with the same configuration
+   * @param {Scale} scale - Scale to clone
+   * @returns {Scale} Cloned scale
+   */
+  static cloneScale(scale) {
+    if (scale instanceof TimeScale) {
+      return new TimeScale([...scale.domain], [...scale.range]);
+    } else if (scale instanceof LogScale) {
+      return new LogScale([...scale.domain], [...scale.range], scale.base);
+    } else if (scale instanceof LinearScale) {
+      const cloned = new LinearScale([...scale.domain], [...scale.range]);
+      // Copy any additional properties
+      if (scale._uniqueXValues) {
+        cloned._uniqueXValues = [...scale._uniqueXValues];
+      }
+      return cloned;
+    }
+    
+    return scale;
+  }
+  
+  /**
+   * Get scale type from scale instance
+   * @param {Scale} scale - Scale instance
+   * @returns {string} Scale type
+   */
+  static getScaleType(scale) {
+    if (scale instanceof TimeScale) return 'time';
+    if (scale instanceof LogScale) return 'log';
+    if (scale instanceof LinearScale) return 'linear';
+    return 'unknown';
+  }
+}

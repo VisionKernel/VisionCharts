@@ -1,5 +1,6 @@
 import Axis from '../core/Axis.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
+import ScaleManager from '../core/ScaleManager.js';
 import RecessionLines from './RecessionLines.js';
 import ZeroLine from './ZeroLine.js';
 import Grid from './Grid.js';
@@ -62,8 +63,8 @@ export default class Panel {
         panelBg.setAttribute('stroke', '#eee');
         panelGroup.appendChild(panelBg);
         
-        // Create scales for this panel
-        const scales = Panel.createPanelScales(dataset, chart.options, {
+        // Create scales for this panel using ScaleManager
+        const scales = ScaleManager.createPanelScales(dataset, chart.options, {
             innerWidth,
             effectivePanelHeight
         });
@@ -115,92 +116,6 @@ export default class Panel {
         return [];
     }
     }
-  
-  /**
-   * Create scales for a panel
-   * @param {Object} dataset - Dataset for this panel
-   * @param {Object} chartOptions - Chart options
-   * @param {Object} dimensions - Panel dimensions
-   * @returns {Object} Created scales
-   */
-  static createPanelScales(dataset, chartOptions, dimensions) {
-    const { xField, yField, xType, isLogarithmic } = chartOptions;
-    const { innerWidth, effectivePanelHeight } = dimensions;
-    
-    const xValues = dataset.data.map(d => d[xField]);
-    const yValues = dataset.data.map(d => d[yField]);
-    
-    // Create X scale for this panel
-    let xScale;
-    if (xType === 'time') {
-      // For time, handle date objects
-      const dates = xValues.map(x => x instanceof Date ? x : new Date(x));
-      const xMin = new Date(Math.min(...dates.map(d => d.getTime())));
-      const xMax = new Date(Math.max(...dates.map(d => d.getTime())));
-      xScale = new TimeScale([xMin, xMax], [0, innerWidth]);
-    } else if (xType === 'number') {
-      // For numeric data
-      const xMin = Math.min(...xValues);
-      const xMax = Math.max(...xValues);
-      xScale = new LinearScale([xMin, xMax], [0, innerWidth]);
-    } else {
-      // For category data, we need to set up a special domain
-      const uniqueXValues = Array.from(new Set(xValues));
-      
-      // Sort based on original data order if possible
-      if (dataset.data.length > 0 && dataset.data[0].x) {
-        const categoryMap = new Map();
-        dataset.data.forEach(d => {
-          if (d.x && d[xField]) {
-            categoryMap.set(d[xField], d.x);
-          }
-        });
-        
-        if (categoryMap.size > 0) {
-          uniqueXValues.sort((a, b) => {
-            const timeA = categoryMap.get(a) || 0;
-            const timeB = categoryMap.get(b) || 0;
-            return timeA - timeB;
-          });
-        }
-      }
-      
-      // Setup a linear scale with domain that creates even spacing
-      xScale = new LinearScale(
-        [-0.5, uniqueXValues.length - 0.5],
-        [0, innerWidth]
-      );
-      
-      // Store unique values for bar positioning
-      xScale._uniqueXValues = uniqueXValues;
-    }
-    
-    // Create Y scale for this panel
-    let yScale;
-    if (isLogarithmic) {
-      yScale = new LogScale([0.1, 1], [effectivePanelHeight, 0]);
-    } else {
-      yScale = new LinearScale([0, 1], [effectivePanelHeight, 0]);
-    }
-    
-    // Calculate Y domain for this dataset
-    if (yValues.length) {
-      const yMin = Math.min(...yValues);
-      const yMax = Math.max(...yValues);
-      const yPadding = (yMax - yMin) * 0.1;
-      
-      // Set domain based on scale type
-      if (isLogarithmic) {
-        yScale.setDomain([Math.max(0.01, yMin), yMax + yPadding]);
-      } else {
-        // For bar charts, start from 0; for line charts, use padding
-        const effectiveYMin = chartOptions.chartType === 'bar' ? 0 : yMin - yPadding;
-        yScale.setDomain([effectiveYMin, yMax + yPadding]);
-      }
-    }
-    
-    return { xScale, yScale };
-  }
   
   /**
    * Render panel components (axes, grid, zero line, recession lines)

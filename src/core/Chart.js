@@ -1,5 +1,6 @@
 import Axis from '../core/Axis.js';
 import InteractionManager from '../core/InteractionManager.js';
+import ScaleManager from '../core/ScaleManager.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
@@ -416,13 +417,19 @@ export default class Chart {
   }
 
   /**
-   * Create scales for the chart
+   * Create scales for the chart using ScaleManager
    * @private
-   * This should be implemented by subclasses
    */
   createScales() {
-    console.log('createScales called - to be implemented by subclass');
-    // To be implemented by subclasses
+    console.log('Chart.createScales called - using ScaleManager');
+    
+    // Use ScaleManager to create scales
+    const scales = ScaleManager.createScales(this);
+    
+    // Store scales in state
+    this.state.scales = scales;
+    
+    console.log('Chart scales created via ScaleManager');
   }
 
   /**
@@ -433,6 +440,11 @@ export default class Chart {
     console.log('updateDimensions called');
     
     this.setDimensionsWithoutUpdatingAxes();
+    
+    // Update scale ranges when dimensions change
+    if (this.state.scales && Object.keys(this.state.scales).length > 0) {
+      ScaleManager.updateScaleRanges(this.state.scales, this.state.dimensions);
+    }
     
     // IMPORTANT: Only update axes if the chart has already been rendered
     if (this.state.rendered && this.state.chart) {
@@ -1058,13 +1070,16 @@ cleanupAxes() {
   }
 
   /**
-   * Update scales
+   * Update scales using ScaleManager
    * @private
-   * This should be implemented by subclasses
    */
   updateScales() {
-    console.log('updateScales called - to be implemented by subclass');
-    // To be implemented by subclasses
+    console.log('Chart.updateScales called - using ScaleManager');
+    
+    // Use ScaleManager to update scales
+    ScaleManager.updateScales(this, this.state.scales);
+    
+    console.log('Chart scales updated via ScaleManager');
   }
 
   /**
