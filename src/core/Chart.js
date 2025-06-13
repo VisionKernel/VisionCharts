@@ -5,6 +5,7 @@ import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Legend from '../components/Legend.js';
+import { calculateIndicator } from '../utils/math.js';
 
 /**
  * Base Chart class that handles common chart functionality
@@ -320,11 +321,50 @@ export default class Chart {
   }
   
   /**
-   * Process studies/indicators
+   * Process studies/indicators - consolidated implementation
    * @private
    */
   processStudies() {
-    // To be implemented by subclasses
+    console.log('Chart.processStudies called');
+    
+    const { studies } = this.options;
+    
+    // Skip if no studies
+    if (!studies || !studies.length) {
+      console.log('No studies to process');
+      return;
+    }
+    
+    // Process each study
+    studies.forEach(study => {
+      // Find dataset to apply the study to
+      const dataset = this.state.datasets.find(d => d.id === study.datasetId);
+      if (!dataset || !dataset.data || !dataset.data.length) {
+        console.log('Dataset not found for study:', study.id);
+        return;
+      }
+      
+      console.log('Processing study:', study.type, 'for dataset:', dataset.id);
+      
+      try {
+        // Use the consolidated math function
+        const studyData = calculateIndicator(study.type, dataset.data, study.params);
+        
+        // Add study dataset
+        this.state.datasets.push({
+          id: study.id,
+          name: study.name || `${study.type.toUpperCase()}(${study.params?.period || 14})`,
+          color: study.color || '#888',
+          width: study.width || 1,
+          area: study.area || false,
+          data: studyData
+        });
+        
+        console.log('Study added as dataset:', study.id);
+      } catch (error) {
+        console.error(`Error calculating study ${study.type}:`, error);
+      }
+    });
   }
   
   /**
