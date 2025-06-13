@@ -7,6 +7,7 @@ import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
+import Grid from '../components/Grid.js';
 
 /**
  * LineChart class for rendering line charts with optional per-dataset area fills
@@ -638,6 +639,18 @@ export default class LineChart extends Chart {
         
         // Render panel axes
         this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, index === this.state.datasets.length - 1);
+
+        if (this.options.grid?.show) {
+          Grid.renderForPanel(
+            panelGroup,
+            xScale,
+            yScale,
+            innerWidth,
+            effectivePanelHeight,
+            this.options.grid,
+            this.options
+          );
+        }
         
         // Render zero line for this panel if enabled
         if (this.options.showZeroLine) {
@@ -825,16 +838,12 @@ renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, is
       yAxisName: this.options.yAxisName,
       isLogarithmic: this.options.isLogarithmic || false,
       
-      // Grid configuration
-      grid: this.options.grid?.show || false,
-      
       // Custom axis options
       xAxisOptions: {
         tickCount: this.options.xTickCount || 5,
         tickFormat: this.options.xTickFormat,
         formatType: this.options.xType === 'time' ? 'time' : 'number',
         formatOptions: this.options.xFormatOptions || {},
-        grid: false, // Usually no grid for individual panels
         tickRotation: this.options.xTickRotation || 0
       },
       
@@ -843,8 +852,6 @@ renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, is
         tickFormat: this.options.yTickFormat,
         formatType: 'number',
         formatOptions: this.options.yFormatOptions || {},
-        grid: this.options.grid?.show || false,
-        gridStyle: this.options.grid || {},
         tickRotation: this.options.yTickRotation || 0
       }
     }

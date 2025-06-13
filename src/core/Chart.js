@@ -6,6 +6,7 @@ import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Legend from '../components/Legend.js';
+import Grid from '../components/Grid.js';
 import { calculateIndicator } from '../utils/math.js';
 
 /**
@@ -110,7 +111,8 @@ export default class Chart {
         zeroLine: null,
         tooltip: null,
         legend: null,
-        panels: []
+        panels: [],
+        grid: null
       }
     };
 
@@ -571,11 +573,24 @@ export default class Chart {
    * Render chart in single-panel mode
    * @private
    */
-  renderSingleMode() {
-    console.log('renderSingleMode called');
-    
-    // Standard view mode
-    this.renderAxes();
+    renderSingleMode() {
+      console.log('renderSingleMode called');
+      
+      // Standard view mode
+      this.renderAxes();
+
+      if (this.options.grid?.show) {
+      this.state.components.grid = new Grid(this.options.grid);
+      this.state.components.grid.render(
+        this.state.chart,
+        this.state.scales.x,
+        this.state.scales.y,
+        this.state.dimensions.innerWidth,
+        this.state.dimensions.innerHeight,
+        this.options
+      );
+    }
+
     this.renderData();
 
     // Render legend if enabled
@@ -788,8 +803,6 @@ createAxes() {
       formatType: this.options.xType === 'time' ? 'time' : 'number', // FIXED: Proper format type
       formatOptions: this.options.xFormatOptions || {}, // FIXED: Pass format options
       label: this.options.xAxisName || '',
-      grid: this.options.grid?.show || false,
-      gridStyle: this.options.grid || {},
       isLogarithmic: false, // X-axis typically not logarithmic
       showTickLabels: this.options.showXLabels !== false,
       tickRotation: this.options.xTickRotation || 0,
@@ -809,8 +822,6 @@ createAxes() {
       formatType: this.options.yType === 'time' ? 'time' : 'number',
       formatOptions: this.options.yFormatOptions || {},
       label: this.options.yAxisName || '',
-      grid: this.options.grid?.show || false,
-      gridStyle: this.options.grid || {},
       isLogarithmic: this.options.isLogarithmic || false,
       showTickLabels: this.options.showYLabels !== false,
       tickRotation: this.options.yTickRotation || 0,
@@ -879,6 +890,26 @@ updateAxes() {
       formatOptions: this.options.yFormatOptions || {}
     });
     this.state.components.axes.y.update(innerWidth, innerHeight);
+  }
+
+  if (this.state.components.grid && this.options.grid?.show) {
+    this.state.components.grid.update(
+      this.state.scales.x,
+      this.state.scales.y,
+      innerWidth,
+      innerHeight,
+      this.options
+    );
+  } else if (this.options.grid?.show) {
+    this.state.components.grid = new Grid(this.options.grid);
+    this.state.components.grid.render(
+      this.state.chart,
+      this.state.scales.x,
+      this.state.scales.y,
+      innerWidth,
+      innerHeight,
+      this.options
+    );
   }
 }
 
@@ -2265,6 +2296,12 @@ destroy() {
 
   // Destroy axes
   this.cleanupAxes();
+
+  // Destroy grids
+  if (this.state.components.grid) {
+    this.state.components.grid.destroy();
+    this.state.components.grid = null;
+  }
 
   // Destroy legend
   if (this.state.components.legend) {
