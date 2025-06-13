@@ -1,4 +1,5 @@
 import Axis from '../core/Axis.js';
+import SvgRenderer from '../renderers/SvgRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -446,43 +447,37 @@ export default class Chart {
    * @private
    */
   createSvg() {
-      console.log('createSvg called');
-      
-      if (!this.state.container) {
-        console.error('Cannot create SVG: container is null');
-        return;
-      }
-      
-      // Create SVG element
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width', this.state.dimensions.width);
-      svg.setAttribute('height', this.state.dimensions.height);
-      svg.setAttribute('class', 'visioncharts-svg');
-      
-      // Apply background color from theme
-      svg.style.background = this.options.backgroundColor;
-      
-      // Add viewport
-      svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 40}`);
-      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-      
-      // Create chart group with transform for margins
-      const chart = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      chart.setAttribute('transform', `translate(${this.options.margins.left},${this.options.margins.top})`);
-      chart.setAttribute('class', 'visioncharts-chart');
-      
-      // Add chart group to SVG
-      svg.appendChild(chart);
-      
-      // Add SVG to container
-      this.state.container.appendChild(svg);
-      
-      // Update state
-      this.state.svg = svg;
-      this.state.chart = chart;
-      
-      console.log('SVG created and added to DOM, chart reference stored');
+    console.log('createSvg called');
+    
+    if (!this.state.container) {
+      console.error('Cannot create SVG: container is null');
+      return;
     }
+    
+    // Create SVG element using SvgRenderer
+    const svg = SvgRenderer.createSvg(this.state.dimensions.width, this.state.dimensions.height);
+    
+    // Apply background color from theme
+    SvgRenderer.applyStyles(svg, { background: this.options.backgroundColor });
+    
+    // Create chart group with transform for margins
+    const chart = SvgRenderer.createGroup({
+      transform: `translate(${this.options.margins.left},${this.options.margins.top})`,
+      class: 'visioncharts-chart'
+    });
+    
+    // Add chart group to SVG
+    svg.appendChild(chart);
+    
+    // Add SVG to container
+    this.state.container.appendChild(svg);
+    
+    // Update state
+    this.state.svg = svg;
+    this.state.chart = chart;
+    
+    console.log('SVG created and added to DOM, chart reference stored');
+  }
 
   /**
    * Modified render method to enforce strict panel mode
@@ -710,21 +705,23 @@ renderLegend() {
     if (!this.state.svg) return;
     
     if (this.options.title) {
-      const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      title.textContent = this.options.title;
-      title.setAttribute('x', this.state.dimensions.width / 2);
-      title.setAttribute('y', 25); // Increased from 15 to 25
-      title.setAttribute('text-anchor', 'middle');
-      title.setAttribute('font-size', '16px');
-      title.setAttribute('font-weight', 'bold');
-      title.setAttribute('font-family', this.options.fontFamily);
-      title.setAttribute('fill', this.options.textColor);
-      title.setAttribute('class', 'visioncharts-title');
+      const title = SvgRenderer.createText(
+        this.options.title,
+        this.state.dimensions.width / 2,
+        25,
+        {
+          'text-anchor': 'middle',
+          'font-size': '16px',
+          'font-weight': 'bold',
+          'font-family': this.options.fontFamily,
+          fill: this.options.textColor,
+          class: 'visioncharts-title'
+        }
+      );
       
       this.state.svg.appendChild(title);
     }
     
-    // Render axis names if provided
     this.renderAxisNames();
   }
 
@@ -900,35 +897,41 @@ cleanupAxes() {
     
     const { xAxisName, yAxisName } = this.options;
     const { width, height, innerWidth, innerHeight } = this.state.dimensions;
-    const { left, top, right, bottom } = this.options.margins;
+    const { left, top } = this.options.margins;
     
-    // X-axis name - position it lower
+    // X-axis name
     if (xAxisName) {
-      const xAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      xAxisNameElement.textContent = xAxisName;
-      xAxisNameElement.setAttribute('x', left + innerWidth / 2);
-      xAxisNameElement.setAttribute('y', height + 5); // Position it below the chart
-      xAxisNameElement.setAttribute('text-anchor', 'middle');
-      xAxisNameElement.setAttribute('font-size', '14px');
-      xAxisNameElement.setAttribute('font-family', this.options.fontFamily);
-      xAxisNameElement.setAttribute('fill', this.options.textColor);
-      xAxisNameElement.setAttribute('class', 'visioncharts-axis-name x-axis-name');
+      const xAxisNameElement = SvgRenderer.createText(
+        xAxisName,
+        left + innerWidth / 2,
+        height + 5,
+        {
+          'text-anchor': 'middle',
+          'font-size': '14px',
+          'font-family': this.options.fontFamily,
+          fill: this.options.textColor,
+          class: 'visioncharts-axis-name x-axis-name'
+        }
+      );
       
       this.state.svg.appendChild(xAxisNameElement);
     }
     
-    // Y-axis name - position it further left
+    // Y-axis name
     if (yAxisName) {
-      const yAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      yAxisNameElement.textContent = yAxisName;
-      yAxisNameElement.setAttribute('x', 10); // Move further left from 15
-      yAxisNameElement.setAttribute('y', top + innerHeight / 2);
-      yAxisNameElement.setAttribute('text-anchor', 'middle');
-      yAxisNameElement.setAttribute('transform', `rotate(-90, 10, ${top + innerHeight / 2})`);
-      yAxisNameElement.setAttribute('font-size', '14px');
-      yAxisNameElement.setAttribute('font-family', this.options.fontFamily);
-      yAxisNameElement.setAttribute('fill', this.options.textColor);
-      yAxisNameElement.setAttribute('class', 'visioncharts-axis-name y-axis-name');
+      const yAxisNameElement = SvgRenderer.createText(
+        yAxisName,
+        10,
+        top + innerHeight / 2,
+        {
+          'text-anchor': 'middle',
+          transform: `rotate(-90, 10, ${top + innerHeight / 2})`,
+          'font-size': '14px',
+          'font-family': this.options.fontFamily,
+          fill: this.options.textColor,
+          class: 'visioncharts-axis-name y-axis-name'
+        }
+      );
       
       this.state.svg.appendChild(yAxisNameElement);
     }

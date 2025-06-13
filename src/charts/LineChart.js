@@ -1,5 +1,6 @@
 import Chart from '../core/Chart.js';
 import Axis from '../core/Axis.js';
+import SvgRenderer from '../renderers/SvgRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -180,17 +181,17 @@ export default class LineChart extends Chart {
     
     if (points.length === 0) return '';
     
-    // Generate path definition based on curve type
+    // Generate path definition using SvgRenderer methods
     switch (curve) {
       case 'step':
-        return this.generateStepPath(points);
+        return SvgRenderer.stepPathDefinition(points);
       case 'cardinal':
-        return this.generateCardinalPath(points);
+        return SvgRenderer.cardinalPathDefinition(points, 0.5); // Default tension
       case 'monotone':
-        return this.generateMonotonePath(points);
+        return this.generateMonotonePath(points); // Keep custom implementation
       case 'linear':
       default:
-        return this.generateLinearPath(points);
+        return SvgRenderer.linePathDefinition(points);
     }
   }
   
@@ -364,51 +365,14 @@ export default class LineChart extends Chart {
    * @returns {string} Path definition
    */
   generateAreaPath(data) {
-    const { xField, yField, curve } = this.options;
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    // Map data points to coordinates
-    const points = data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
+    const { curve } = this.options;
+    const points = this.getDataPoints(data);
     
     if (points.length === 0) return '';
     
-    // Baseline Y coordinate (bottom of chart)
+    // Use SvgRenderer for area path generation
     const baselineY = this.state.dimensions.innerHeight;
-    
-    // Get line path
-    let linePath;
-    switch (curve) {
-      case 'step':
-        linePath = this.generateStepPath(points);
-        break;
-      case 'cardinal':
-        linePath = this.generateCardinalPath(points);
-        break;
-      case 'monotone':
-        linePath = this.generateMonotonePath(points);
-        break;
-      case 'linear':
-      default:
-        linePath = this.generateLinearPath(points);
-        break;
-    }
-    
-    if (!linePath) return '';
-    
-    // Add area path
-    const [firstPoint] = points;
-    const [firstX] = firstPoint;
-    
-    const [lastPoint] = [...points].reverse();
-    const [lastX] = lastPoint;
-    
-    return `${linePath} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
+    return SvgRenderer.curvedAreaPathDefinition(points, baselineY, curve);
   }
   
   /**
@@ -416,52 +380,35 @@ export default class LineChart extends Chart {
    * @private
    */
   createGradients() {
-    // Create defs element if it doesn't exist
-    let defs = this.state.svg.querySelector('defs');
-    if (!defs) {
-      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      this.state.svg.insertBefore(defs, this.state.svg.firstChild);
-    }
-    
-    // Create gradient for each dataset that has area enabled
-    this.state.datasets.forEach(dataset => {
-      if (!dataset.area) return; // Skip if area is not enabled for this dataset
-      
-      const gradientId = `area-gradient-${dataset.id}`;
-      
-      // Check if gradient already exists
-      if (defs.querySelector(`#${gradientId}`)) return;
-      
-      // Create linear gradient
-      const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-      gradient.setAttribute('id', gradientId);
-      gradient.setAttribute('x1', '0');
-      gradient.setAttribute('y1', '0');
-      gradient.setAttribute('x2', '0');
-      gradient.setAttribute('y2', '1');
-      
-      // Create stops
-      const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-      stop1.setAttribute('offset', '0%');
-      stop1.setAttribute('stop-color', dataset.color);
-      stop1.setAttribute('stop-opacity', '0.8');
-      
-      const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
-      stop2.setAttribute('offset', '100%');
-      stop2.setAttribute('stop-color', dataset.color);
-      stop2.setAttribute('stop-opacity', '0.1');
-      
-      // Add stops to gradient
-      gradient.appendChild(stop1);
-      gradient.appendChild(stop2);
-      
-      // Add gradient to defs
-      defs.appendChild(gradient);
-    });
+  // Create defs element if it doesn't exist
+  let defs = this.state.svg.querySelector('defs');
+  if (!defs) {
+    defs = SvgRenderer.createDefs();
+    this.state.svg.insertBefore(defs, this.state.svg.firstChild);
   }
   
+  // Create gradient for each dataset that has area enabled
+  this.state.datasets.forEach(dataset => {
+    if (!dataset.area) return; // Skip if area is not enabled for this dataset
+    
+    const gradientId = `area-gradient-${dataset.id}`;
+    
+    // Check if gradient already exists
+    if (defs.querySelector(`#${gradientId}`)) return;
+    
+    // Create linear gradient with stops using SvgRenderer
+    const gradient = SvgRenderer.createLinearGradient(gradientId, [
+      { offset: '0%', color: dataset.color, opacity: 0.8 },
+      { offset: '100%', color: dataset.color, opacity: 0.1 }
+    ]);
+    
+    // Add gradient to defs
+    defs.appendChild(gradient);
+  });
+}
+  
   /**
-   * Render chart data - FIXED VERSION
+   * Render chart data - REFACTORED VERSION using SvgRenderer
    * @private
    */
   renderData() {
@@ -482,9 +429,8 @@ export default class LineChart extends Chart {
         gradient
       } = this.options;
       
-      // Create data group
-      const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      dataGroup.setAttribute('class', 'visioncharts-data');
+      // Create data group using SvgRenderer
+      const dataGroup = SvgRenderer.createGroup({ class: 'visioncharts-data' });
       
       // No data to render
       if (!this.state.datasets.length) {
@@ -508,48 +454,52 @@ export default class LineChart extends Chart {
         }
         
         console.log('Rendering dataset', index, 'with', dataset.data.length, 'points', 
-                   'area enabled:', Boolean(dataset.area));
+                  'area enabled:', Boolean(dataset.area));
         
-        // Create dataset group
-        const datasetGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        datasetGroup.setAttribute('class', `visioncharts-dataset-${dataset.id}`);
+        // Create dataset group using SvgRenderer
+        const datasetGroup = SvgRenderer.createGroup({ 
+          class: `visioncharts-dataset-${dataset.id}` 
+        });
         
         // Render area if enabled for this dataset
         if (dataset.area) {
           const areaPath = this.generateAreaPath(dataset.data);
-          const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          areaElement.setAttribute('d', areaPath);
-          
-          // Apply fill (either gradient or color)
-          if (gradient) {
-            const gradientId = `area-gradient-${dataset.id}`;
-            areaElement.setAttribute('fill', `url(#${gradientId})`);
-          } else {
-            areaElement.setAttribute('fill', dataset.color);
-            areaElement.setAttribute('fill-opacity', dataset.areaOpacity || areaOpacity);
+          if (areaPath) {
+            const areaAttributes = {
+              d: areaPath,
+              stroke: 'none',
+              class: 'visioncharts-area'
+            };
+            
+            // Apply fill (either gradient or color)
+            if (gradient) {
+              areaAttributes.fill = `url(#area-gradient-${dataset.id})`;
+            } else {
+              areaAttributes.fill = dataset.color;
+              areaAttributes['fill-opacity'] = dataset.areaOpacity || areaOpacity;
+            }
+            
+            const areaElement = SvgRenderer.createPath(areaPath, areaAttributes);
+            datasetGroup.appendChild(areaElement);
           }
-          
-          areaElement.setAttribute('stroke', 'none');
-          areaElement.setAttribute('class', 'visioncharts-area');
-          
-          datasetGroup.appendChild(areaElement);
         }
         
-        // Render line - FIXED: Use correct scales
+        // Render line using SvgRenderer
         const linePath = this.generateLinePath(dataset.data);
-        const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        lineElement.setAttribute('d', linePath);
-        lineElement.setAttribute('stroke', dataset.color);
-        lineElement.setAttribute('stroke-width', dataset.width);
-        lineElement.setAttribute('fill', 'none');
-        lineElement.setAttribute('class', 'visioncharts-line');
-        
-        datasetGroup.appendChild(lineElement);
+        if (linePath) {
+          const lineElement = SvgRenderer.createPath(linePath, {
+            stroke: dataset.color,
+            'stroke-width': dataset.width,
+            fill: 'none',
+            class: 'visioncharts-line'
+          });
+          
+          datasetGroup.appendChild(lineElement);
+        }
         
         // Render points if enabled
         if (showPoints) {
-          const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          pointsGroup.setAttribute('class', 'visioncharts-points');
+          const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-points' });
           
           dataset.data.forEach(d => {
             if (d[xField] === undefined || d[yField] === undefined) return;
@@ -557,14 +507,13 @@ export default class LineChart extends Chart {
             const x = this.state.scales.x.scale(d[xField]);
             const y = this.state.scales.y.scale(d[yField]);
             
-            const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            point.setAttribute('cx', x);
-            point.setAttribute('cy', y);
-            point.setAttribute('r', pointRadius);
-            point.setAttribute('fill', '#fff');
-            point.setAttribute('stroke', dataset.color);
-            point.setAttribute('stroke-width', dataset.width / 2);
-            point.setAttribute('class', 'visioncharts-point');
+            // Use SvgRenderer to create circle
+            const point = SvgRenderer.createCircle(x, y, pointRadius, {
+              fill: '#fff',
+              stroke: dataset.color,
+              'stroke-width': dataset.width / 2,
+              class: 'visioncharts-point'
+            });
             
             pointsGroup.appendChild(point);
           });
