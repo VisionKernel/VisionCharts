@@ -1,6 +1,7 @@
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
+import ZeroLine from '../components/ZeroLine.js';
 
 /**
  * Base Chart class that handles common chart functionality
@@ -551,7 +552,14 @@ export default class Chart {
     
     // Render zero line if enabled
     if (this.options.showZeroLine) {
-      this.renderZeroLine();
+      this.state.components.zeroLine = new ZeroLine(this.options.zeroLineOptions || {});
+      if (this.state.scales.y) {
+        this.state.components.zeroLine.render(
+          this.state.chart, 
+          this.state.scales.y, 
+          this.state.dimensions.innerWidth
+        );
+      }
     }
     
     // Render recession lines if enabled
@@ -596,36 +604,6 @@ export default class Chart {
   renderPanels() {
     console.log('renderPanels called');
     // To be implemented by subclasses
-  }
-  
-  /**
-   * Render zero line
-   * @private
-   */
-  renderZeroLine() {
-    console.log('renderZeroLine called');
-    
-    if (!this.state.chart) return;
-    
-    const yScale = this.state.scales.y;
-    if (!yScale) return;
-    
-    const zeroY = yScale.scale(0);
-    
-    // Only render if zero is within the visible range
-    if (zeroY >= 0 && zeroY <= this.state.dimensions.innerHeight) {
-      const zeroLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      zeroLine.setAttribute('x1', 0);
-      zeroLine.setAttribute('y1', zeroY);
-      zeroLine.setAttribute('x2', this.state.dimensions.innerWidth);
-      zeroLine.setAttribute('y2', zeroY);
-      zeroLine.setAttribute('stroke', '#666');
-      zeroLine.setAttribute('stroke-width', 1);
-      zeroLine.setAttribute('stroke-dasharray', '4,4');
-      zeroLine.setAttribute('class', 'visioncharts-zero-line');
-      
-      this.state.chart.appendChild(zeroLine);
-    }
   }
 
   /**
@@ -936,14 +914,19 @@ export default class Chart {
     if (!this.state.chart) return;
     
     // Remove existing zero line
-    const existingZeroLine = this.state.chart.querySelector('.visioncharts-zero-line');
-    if (existingZeroLine) {
-      existingZeroLine.parentNode.removeChild(existingZeroLine);
+    if (this.state.components.zeroLine) {
+      this.state.components.zeroLine.destroy();
+      this.state.components.zeroLine = null;
     }
     
-    // Re-render zero line
-    if (this.options.showZeroLine) {
-      this.renderZeroLine();
+    // Re-render zero line if enabled
+    if (this.options.showZeroLine && this.state.scales.y) {
+      this.state.components.zeroLine = new ZeroLine(this.options.zeroLineOptions || {});
+      this.state.components.zeroLine.render(
+        this.state.chart, 
+        this.state.scales.y, 
+        this.state.dimensions.innerWidth
+      );
     }
   }
   
@@ -2021,6 +2004,11 @@ export default class Chart {
     if (this.state.components.recessionLines) {
       this.state.components.recessionLines.destroy();
       this.state.components.recessionLines = null;
+    }
+
+    if (this.state.components.zeroLine) {
+      this.state.components.zeroLine.destroy();
+      this.state.components.zeroLine = null;
     }
     
     // Clean up panel mode hover features

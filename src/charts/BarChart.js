@@ -3,6 +3,7 @@ import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import RecessionLines from '../components/RecessionLines.js';
+import ZeroLine from '../components/ZeroLine.js';
 
 /**
  * BarChart class for rendering bar charts with time series data
@@ -1054,7 +1055,7 @@ export default class BarChart extends Chart {
         
         // Render zero line for this panel if enabled
         if (this.options.showZeroLine) {
-          this.renderPanelZeroLine(panelGroup, yScale, innerWidth);
+          ZeroLine.renderForPanel(panelGroup, yScale, innerWidth, this.options.zeroLineOptions);
         }
         
         // Render recession lines for this panel if enabled
@@ -1090,29 +1091,6 @@ export default class BarChart extends Chart {
       console.log('Panels rendered successfully');
     } catch (error) {
       console.error('Error rendering panels:', error);
-    }
-  }
-  
-  /**
-   * Render zero line for a specific panel
-   * @private
-   */
-  renderPanelZeroLine(panel, yScale, width) {
-    const zeroY = yScale.scale(0);
-    
-    // Only render if zero is within the visible range
-    if (zeroY >= 0 && zeroY <= yScale.range()[0]) {
-      const zeroLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      zeroLine.setAttribute('x1', 0);
-      zeroLine.setAttribute('y1', zeroY);
-      zeroLine.setAttribute('x2', width);
-      zeroLine.setAttribute('y2', zeroY);
-      zeroLine.setAttribute('stroke', '#666');
-      zeroLine.setAttribute('stroke-width', 1);
-      zeroLine.setAttribute('stroke-dasharray', '4,4');
-      zeroLine.setAttribute('class', 'visioncharts-panel-zero-line');
-      
-      panel.appendChild(zeroLine);
     }
   }
   
