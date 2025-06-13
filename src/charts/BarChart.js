@@ -1,4 +1,5 @@
 import Chart from '../core/Chart.js';
+import Axis from '../core/Axis.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
@@ -29,7 +30,15 @@ export default class BarChart extends Chart {
       valuePosition: 'top', 
       colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
       stacked: true, 
-      dateFormat: { year: 'numeric', month: 'short' }, 
+      dateFormat: { year: 'numeric', month: 'short' },
+      xFormatOptions: {
+        year: 'numeric',
+        month: 'short'
+      },
+      yFormatOptions: {
+        maximumFractionDigits: 1,
+        minimumFractionDigits: 0
+      },
       skipLabels: 3, 
       grid: { 
         show: true,
@@ -88,294 +97,6 @@ export default class BarChart extends Chart {
     this.updateScales();
     
     console.log('BarChart scales created');
-  }
-  
-  /**
-   * Create axes for the chart - consistent with Line and Area charts
-   * @private
-   */
-  createAxes() {
-    console.log('BarChart.createAxes called');
-    
-    // Create X axis
-    this.state.axes.x = {
-      render: (container, width, height) => {
-        const { xType, xField, dateFormat, skipLabels } = this.options;
-        const scale = this.state.scales.x;
-        
-        // Create axis group
-        const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        axisGroup.setAttribute('class', 'visioncharts-x-axis');
-        
-        // Draw axis line
-        const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        axisLine.setAttribute('x1', 0);
-        axisLine.setAttribute('y1', height);
-        axisLine.setAttribute('x2', width);
-        axisLine.setAttribute('y2', height);
-        axisLine.setAttribute('stroke', '#ccc');
-        axisLine.setAttribute('stroke-width', 1);
-        axisGroup.appendChild(axisLine);
-        
-        // Get unique x values for bar charts
-        let tickValues = [];
-        
-        if (this.state.datasets.length > 0) {
-          // Collect all unique x values across datasets
-          const uniqueXValues = new Set();
-          this.state.datasets.forEach(dataset => {
-            dataset.data.forEach(d => {
-              if (d[xField] !== undefined) {
-                uniqueXValues.add(d[xField]);
-              }
-            });
-          });
-          
-          // Convert to array and sort
-          tickValues = Array.from(uniqueXValues);
-          
-          // Sort based on type
-          if (xType === 'time') {
-            tickValues.sort((a, b) => {
-              const dateA = a instanceof Date ? a : new Date(a);
-              const dateB = b instanceof Date ? b : new Date(b);
-              return dateA - dateB;
-            });
-          } else if (xType === 'number') {
-            tickValues.sort((a, b) => a - b);
-          } else {
-            // For category, try to sort based on timestamp if available
-            const firstDataset = this.state.datasets[0];
-            if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
-              // Create a map of category to timestamp
-              const categoryMap = new Map();
-              firstDataset.data.forEach(d => {
-                if (d.x && d[xField]) {
-                  categoryMap.set(d[xField], d.x);
-                }
-              });
-              
-              // Sort by timestamp if available
-              if (categoryMap.size > 0) {
-                tickValues.sort((a, b) => {
-                  const timeA = categoryMap.get(a) || 0;
-                  const timeB = categoryMap.get(b) || 0;
-                  return timeA - timeB;
-                });
-              } else {
-                // Default string sorting
-                tickValues.sort();
-              }
-            } else {
-              // Default string sorting
-              tickValues.sort();
-            }
-          }
-        }
-        
-        // Calculate if labels need rotation (if there are many or if container is small)
-        const needsRotation = tickValues.length > 4 || width < 400;
-        
-        // For large datasets, skip some labels for readability
-        const labelInterval = skipLabels || 1;
-        
-        // Draw ticks and labels
-        tickValues.forEach((value, index) => {
-          // Skip some labels for readability
-          const showLabel = index % labelInterval === 0;
-          
-          // For bar charts, position tick in the middle of the bar
-          const barWidth = width / tickValues.length;
-          const x = index * barWidth + barWidth / 2;
-          
-          // Draw tick
-          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          tick.setAttribute('x1', x);
-          tick.setAttribute('y1', height);
-          tick.setAttribute('x2', x);
-          tick.setAttribute('y2', height + (showLabel ? 6 : 3)); // Shorter ticks for skipped labels
-          tick.setAttribute('stroke', '#ccc');
-          tick.setAttribute('stroke-width', 1);
-          axisGroup.appendChild(tick);
-          
-          // Only show some labels for readability
-          if (showLabel) {
-            // Format label text
-            let labelText;
-            if (xType === 'time') {
-              const date = value instanceof Date ? value : new Date(value);
-              labelText = new Intl.DateTimeFormat('en-US', dateFormat).format(date);
-            } else {
-              labelText = String(value);
-            }
-            
-            // Draw label with rotation if needed
-            const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            label.textContent = labelText;
-            
-            if (needsRotation) {
-              // For rotated labels, position them further below
-              label.setAttribute('x', x);
-              label.setAttribute('y', height + 20); // Increased from 16 to 20
-              label.setAttribute('transform', `rotate(-45, ${x}, ${height + 20})`);
-              label.setAttribute('text-anchor', 'end');
-            } else {
-              label.setAttribute('x', x);
-              label.setAttribute('y', height + 25); // Increased from 20 to 25
-              label.setAttribute('text-anchor', 'middle');
-            }
-            
-            label.setAttribute('font-size', '13px');
-            label.setAttribute('font-family', this.options.fontFamily);
-            label.setAttribute('fill', this.options.textColor);
-            axisGroup.appendChild(label);
-          }
-          
-          // Draw grid line if needed
-          if (this.options.grid && this.options.grid.show) {
-            const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            gridLine.setAttribute('x1', x);
-            gridLine.setAttribute('y1', 0); // Top of the plotting area
-            gridLine.setAttribute('x2', x);
-            gridLine.setAttribute('y2', height); // Bottom of the plotting area
-            gridLine.setAttribute('stroke', this.options.grid.color);
-            gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
-            if (this.options.grid.dashArray) {
-              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
-            }
-            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-x');
-            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
-            if (axisGroup.firstChild) {
-              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
-            } else {
-              axisGroup.appendChild(gridLine);
-            }
-          }
-        });
-        
-        // Add to container
-        container.appendChild(axisGroup);
-        
-        return axisGroup;
-      }
-    };
-    
-    // Create Y axis
-    this.state.axes.y = {
-      render: (container, width, height) => {
-        const { yType, isLogarithmic } = this.options;
-        const scale = this.state.scales.y;
-        
-        // Create axis group
-        const axisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        axisGroup.setAttribute('class', 'visioncharts-y-axis');
-        
-        // Draw axis line
-        const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        axisLine.setAttribute('x1', 0);
-        axisLine.setAttribute('y1', 0);
-        axisLine.setAttribute('x2', 0);
-        axisLine.setAttribute('y2', height);
-        axisLine.setAttribute('stroke', '#ccc');
-        axisLine.setAttribute('stroke-width', 1);
-        axisGroup.appendChild(axisLine);
-        
-        // Generate ticks
-        const tickCount = 5;
-        const domain = scale.domain;
-        
-        // Create tick values based on domain and scale type
-        let tickValues = [];
-        
-        if (isLogarithmic) {
-          // Logarithmic scale ticks
-          const minExp = Math.floor(Math.log10(domain[0]));
-          const maxExp = Math.ceil(Math.log10(domain[1]));
-          
-          for (let exp = minExp; exp <= maxExp; exp++) {
-            tickValues.push(Math.pow(10, exp));
-          }
-        } else {
-          // Linear scale ticks
-          const start = domain[0];
-          const end = domain[1];
-          const step = (end - start) / tickCount;
-          
-          for (let i = 0; i <= tickCount; i++) {
-            tickValues.push(start + step * i);
-          }
-        }
-        
-        // Draw ticks and labels
-        tickValues.forEach(value => {
-          const y = scale.scale(value);
-          
-          // Skip if out of range
-          if (y < 0 || y > height) return;
-          
-          // Draw tick
-          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          tick.setAttribute('x1', 0);
-          tick.setAttribute('y1', y);
-          tick.setAttribute('x2', -6);
-          tick.setAttribute('y2', y);
-          tick.setAttribute('stroke', '#ccc');
-          tick.setAttribute('stroke-width', 1);
-          axisGroup.appendChild(tick);
-          
-          // Format label text - use K/M suffix for large numbers
-          let labelText;
-          if (yType === 'percent') {
-            labelText = (value * 100).toFixed(0) + '%';
-          } else if (yType === 'currency') {
-            labelText = '$' + this.formatLargeNumber(value);
-          } else {
-            // Format large numbers with K/M suffix
-            labelText = this.formatLargeNumber(value);
-          }
-          
-          // Draw label
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', -10);
-          label.setAttribute('y', y);
-          label.setAttribute('text-anchor', 'end');
-          label.setAttribute('dominant-baseline', 'middle');
-          label.setAttribute('font-size', '12px');
-          label.setAttribute('font-family', this.options.fontFamily);
-          label.setAttribute('fill', this.options.textColor);
-          axisGroup.appendChild(label);
-          
-          // Draw grid line if needed
-          if (this.options.grid && this.options.grid.show) {
-            const gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            gridLine.setAttribute('x1', 0); // Left of the plotting area
-            gridLine.setAttribute('y1', y);
-            gridLine.setAttribute('x2', width); // Right of the plotting area
-            gridLine.setAttribute('y2', y);
-            gridLine.setAttribute('stroke', this.options.grid.color);
-            gridLine.setAttribute('stroke-width', this.options.grid.strokeWidth);
-            if (this.options.grid.dashArray) {
-              gridLine.setAttribute('stroke-dasharray', this.options.grid.dashArray);
-            }
-            gridLine.setAttribute('class', 'visioncharts-grid-line visioncharts-grid-line-y');
-            // Prepend gridLine to axisGroup so it's drawn behind ticks/labels
-            if (axisGroup.firstChild) {
-              axisGroup.insertBefore(gridLine, axisGroup.firstChild);
-            } else {
-              axisGroup.appendChild(gridLine);
-            }
-          }
-        });
-        
-        // Add to container
-        container.appendChild(axisGroup);
-        
-        return axisGroup;
-      }
-    };
-    
-    console.log('BarChart axes created (render functions defined)');
   }
   
   /**
@@ -739,48 +460,86 @@ export default class BarChart extends Chart {
     
     return this;
   }
-  
+
   /**
-   * Render axes
-   * @private
-   */
-  renderAxes() {
-    if (this.options.isPanelView) { // Changed from panelView
-      console.log('Panel view enabled, skipping main axes rendering.');
-      // Ensure axis groups exist, even if empty, if other parts expect them
-      const xAxisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      xAxisGroup.setAttribute('class', 'visioncharts-x-axis');
-      const yAxisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      yAxisGroup.setAttribute('class', 'visioncharts-y-axis');
-      if (this.state.chart) {
-        if (!this.state.chart.querySelector('.visioncharts-x-axis')) this.state.chart.appendChild(xAxisGroup);
-        if (!this.state.chart.querySelector('.visioncharts-y-axis')) this.state.chart.appendChild(yAxisGroup);
+ * Render axes for each panel in panel view
+ * @param {SVGElement} panelGroup - Panel container
+ * @param {Object} xScale - X scale for this panel
+ * @param {Object} yScale - Y scale for this panel
+ * @param {number} innerWidth - Panel width
+ * @param {number} effectivePanelHeight - Panel height
+ * @param {boolean} isLastPanel - Whether this is the last panel
+ */
+renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, isLastPanel = false) {
+  console.log('renderPanelAxes called for panel, isLastPanel:', isLastPanel);
+  
+  // Render axes using the static Axis method
+  Axis.renderForPanel(
+    panelGroup, 
+    xScale, 
+    yScale, 
+    innerWidth, 
+    effectivePanelHeight,
+    {
+      // Axis configuration
+      showXAxis: isLastPanel, // Only show X axis on bottom panel
+      showYAxis: true,
+      showXLabels: isLastPanel, // Only show X labels on bottom panel
+      showYLabels: true,
+      xAxisName: isLastPanel ? this.options.xAxisName : '',
+      yAxisName: this.options.yAxisName,
+      isLogarithmic: this.options.isLogarithmic || false,
+      
+      // Grid configuration
+      grid: this.options.grid?.show || false,
+      
+      // Custom axis options
+      xAxisOptions: {
+        tickCount: this.options.xTickCount || 5,
+        tickFormat: this.options.xTickFormat,
+        formatType: this.options.xType === 'time' ? 'time' : 'number',
+        formatOptions: this.options.xFormatOptions || {},
+        grid: false, // Usually no grid for individual panels
+        tickRotation: this.options.xTickRotation || 0
+      },
+      
+      yAxisOptions: {
+        tickCount: this.options.yTickCount || 4, // Fewer ticks for panels
+        tickFormat: this.options.yTickFormat,
+        formatType: 'number',
+        formatOptions: this.options.yFormatOptions || {},
+        grid: this.options.grid?.show || false,
+        gridStyle: this.options.grid || {},
+        tickRotation: this.options.yTickRotation || 0
       }
-      return;
     }
-    console.log('BarChart.renderAxes called');
+  );
+}
+
+  /**
+   * Create individual axes for single-panel mode (override parent method if needed)
+   */
+  createAxes() {
+    console.log('createAxes called for LineChart/BarChart');
     
-    try {
-      if (!this.state.chart) {
-        console.error('Cannot render axes: chart element is null');
-        return;
-      }
-      
-      const { innerWidth, innerHeight } = this.state.dimensions;
-      
-      // Render X axis
-      if (this.state.axes.x && this.state.axes.x.render) {
-        this.state.axes.x.render(this.state.chart, innerWidth, innerHeight);
-      }
-      
-      // Render Y axis
-      if (this.state.axes.y && this.state.axes.y.render) {
-        this.state.axes.y.render(this.state.chart, innerWidth, innerHeight);
-      }
-      
-      console.log('Axes rendered successfully');
-    } catch (error) {
-      console.error('Error rendering axes:', error);
+    // Call parent method
+    super.createAxes();
+    
+    // Add any chart-type specific axis configuration
+    if (this.state.components.axes?.x) {
+      // LineChart/BarChart specific X-axis options
+      this.state.components.axes.x.setOptions({
+        tickCount: this.options.xTickCount || (this.options.xType === 'time' ? 6 : 5),
+        formatType: this.options.xType === 'time' ? 'time' : 'number'
+      });
+    }
+    
+    if (this.state.components.axes?.y) {
+      // LineChart/BarChart specific Y-axis options  
+      this.state.components.axes.y.setOptions({
+        tickCount: this.options.yTickCount || 5,
+        isLogarithmic: this.options.isLogarithmic || false
+      });
     }
   }
   
@@ -1048,10 +807,16 @@ export default class BarChart extends Chart {
         }
         
         // Store scales for hover functionality
-        this.state.panelScales[index] = { xScale, yScale };
+        this.state.panelScales[index] = { 
+          xScale, 
+          yScale, 
+          panelHeight: effectivePanelHeight,
+          panelWidth: innerWidth,
+          yPos: yPos
+        };
         
         // Render panel axes
-        this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight);
+        this.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, index === this.state.datasets.length - 1);
         
         // Render zero line for this panel if enabled
         if (this.options.showZeroLine) {
@@ -1091,123 +856,6 @@ export default class BarChart extends Chart {
       console.log('Panels rendered successfully');
     } catch (error) {
       console.error('Error rendering panels:', error);
-    }
-  }
-  
-  /**
-   * Render axes for a panel
-   * @private
-   */
-  renderPanelAxes(panel, xScale, yScale, width, height) {
-    const { xType, dateFormat } = this.options; // Removed yType, tickLabelFontSize as they weren't used as per prompt
-    
-    // X-axis (simplified for panels)
-    const xAxisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    xAxisLine.setAttribute('x1', 0);
-    xAxisLine.setAttribute('y1', height);
-    xAxisLine.setAttribute('x2', width);
-    xAxisLine.setAttribute('y2', height);
-    xAxisLine.setAttribute('stroke', '#ccc');
-    xAxisLine.setAttribute('stroke-width', 1);
-    panel.appendChild(xAxisLine);
-    
-    // Generate X ticks - simplified for space
-    const xTickCount = Math.min(5, Math.floor(width / 80)); // Ensure at least 1 tick if xTickCount is 0
-    const xDomain = xScale.domain;
-    
-    if (xDomain && xDomain.length === 2 && xTickCount > 0) {
-        for (let i = 0; i <= xTickCount; i++) {
-          let tickValue;
-          if (xType === 'time') {
-            const start = (xDomain[0] instanceof Date ? xDomain[0] : new Date(xDomain[0])).getTime();
-            const end = (xDomain[1] instanceof Date ? xDomain[1] : new Date(xDomain[1])).getTime();
-            if (start === end && i > 0) continue; // Avoid multiple ticks at same spot for single point
-            const tickTime = start + (end - start) * i / xTickCount;
-            tickValue = new Date(tickTime);
-          } else {
-            if (xDomain[0] === xDomain[1] && i > 0) continue; // Avoid multiple ticks at same spot
-            tickValue = xDomain[0] + (xDomain[1] - xDomain[0]) * i / xTickCount;
-          }
-          
-          const x = xScale.scale(tickValue);
-          
-          // Draw tick
-          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          tick.setAttribute('x1', x);
-          tick.setAttribute('y1', height);
-          tick.setAttribute('x2', x);
-          tick.setAttribute('y2', height + 4);
-          tick.setAttribute('stroke', '#ccc');
-          tick.setAttribute('stroke-width', 1);
-          panel.appendChild(tick);
-          
-          // Format label
-          let labelText;
-          if (xType === 'time') {
-            labelText = new Intl.DateTimeFormat('en-US', dateFormat || { year: 'numeric', month: 'short' }).format(tickValue);
-          } else {
-            labelText = typeof tickValue === 'number' ? tickValue.toFixed(1) : String(tickValue);
-          }
-          
-          // Add label
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', x);
-          label.setAttribute('y', height + 16);
-          label.setAttribute('text-anchor', 'middle');
-          label.setAttribute('font-size', '10px'); // As per prompt's code
-          label.setAttribute('fill', '#666');    // As per prompt's code
-          panel.appendChild(label);
-        }
-    }
-    
-    // Y-axis
-    const yAxisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    yAxisLine.setAttribute('x1', 0);
-    yAxisLine.setAttribute('y1', 0);
-    yAxisLine.setAttribute('x2', 0);
-    yAxisLine.setAttribute('y2', height);
-    yAxisLine.setAttribute('stroke', '#ccc');
-    yAxisLine.setAttribute('stroke-width', 1);
-    panel.appendChild(yAxisLine);
-    
-    // Y-axis ticks (only show 3 for panels, as per prompt)
-    const yDomain = yScale.domain;
-    if (yDomain && yDomain.length === 2) {
-        const tickValues = [
-          yDomain[0], 
-          yDomain[0] + (yDomain[1] - yDomain[0]) / 2, 
-          yDomain[1]
-        ];
-        
-        tickValues.forEach(value => {
-          const y = yScale.scale(value);
-          if (isNaN(y) || y < 0 || y > height + 1) return; // Add small tolerance for y > height
-          
-          // Draw tick
-          const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          tick.setAttribute('x1', 0);
-          tick.setAttribute('y1', y);
-          tick.setAttribute('x2', -4);
-          tick.setAttribute('y2', y);
-          tick.setAttribute('stroke', '#ccc');
-          tick.setAttribute('stroke-width', 1);
-          panel.appendChild(tick);
-          
-          // Format label
-          const labelText = this.formatLargeNumber(value); // Assumes formatLargeNumber method exists
-          
-          // Draw label
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', -8);
-          label.setAttribute('y', y);
-          label.setAttribute('text-anchor', 'end');
-          label.setAttribute('dominant-baseline', 'middle');
-          label.setAttribute('font-size', '10px'); // As per prompt's code
-          label.setAttribute('fill', '#666');    // As per prompt's code
-          panel.appendChild(label);
-        });
     }
   }
   

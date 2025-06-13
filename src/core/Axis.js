@@ -26,7 +26,21 @@ export default class Axis {
         stroke: '#e0e0e0',
         'stroke-width': 1,
         'stroke-dasharray': '4,4'
-      }
+      },
+      // Advanced options
+      showDomain: true, // Show axis line
+      showTicks: true,
+      showTickLabels: true,
+      tickRotation: 0, // Rotation angle for tick labels
+      labelOffset: 15, // Distance of axis label from ticks
+      className: '', // Additional CSS class
+      isLogarithmic: false,
+      // Panel-specific options
+      isPanelAxis: false,
+      panelWidth: null,
+      panelHeight: null,
+      // FIXED: Add option to disable axis labels to prevent duplicates
+      showAxisLabel: false // Disabled by default since Chart.js handles axis names
     }, options);
     
     this.element = null;
@@ -69,6 +83,11 @@ export default class Axis {
       return createTimeTickValues(domain[0], domain[1], this.options.tickCount);
     }
     
+    // Handle logarithmic scale
+    if (this.options.isLogarithmic) {
+      return this.generateLogTickValues(domain);
+    }
+    
     // Handle numeric domain
     const [min, max] = createNiceDomain(domain[0], domain[1], this.options.tickCount);
     
@@ -84,7 +103,39 @@ export default class Axis {
   }
   
   /**
-   * Format tick value
+   * Generate tick values for logarithmic scale
+   * @param {Array} domain - Scale domain [min, max]
+   * @returns {Array} Array of logarithmic tick values
+   */
+  generateLogTickValues(domain) {
+    const [min, max] = domain;
+    const tickValues = [];
+    
+    // Find the order of magnitude range
+    const minLog = Math.floor(Math.log10(Math.max(min, 0.001)));
+    const maxLog = Math.ceil(Math.log10(max));
+    
+    // Generate ticks at powers of 10
+    for (let i = minLog; i <= maxLog; i++) {
+      const value = Math.pow(10, i);
+      if (value >= min && value <= max) {
+        tickValues.push(value);
+      }
+      
+      // Add intermediate values (2, 3, 4, 5, 6, 7, 8, 9) * 10^i
+      for (let j = 2; j <= 9; j++) {
+        const intermediateValue = j * Math.pow(10, i);
+        if (intermediateValue >= min && intermediateValue <= max && intermediateValue < Math.pow(10, i + 1)) {
+          tickValues.push(intermediateValue);
+        }
+      }
+    }
+    
+    return tickValues.sort((a, b) => a - b);
+  }
+  
+  /**
+   * Format tick value - FIXED: Improved time formatting
    * @param {number|Date} value - Tick value
    * @returns {string} Formatted tick value
    */
@@ -94,7 +145,23 @@ export default class Axis {
       return this.options.tickFormat(value);
     }
     
-    // Use built-in formatters
+    // FIXED: Better time formatting without timestamps
+    if (this.options.formatType === 'time') {
+      const date = value instanceof Date ? value : new Date(value);
+      
+      // Use format options if provided, otherwise use clean defaults
+      const formatOptions = this.options.formatOptions && Object.keys(this.options.formatOptions).length > 0 
+        ? this.options.formatOptions 
+        : {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          };
+      
+      return date.toLocaleDateString(undefined, formatOptions);
+    }
+    
+    // Use built-in formatters for other types
     return SvgRenderer.formatTickValue(
       value,
       this.options.formatType,
@@ -117,9 +184,14 @@ export default class Axis {
       return null;
     }
     
+    // Use panel dimensions if provided
+    const effectiveWidth = this.options.panelWidth || width;
+    const effectiveHeight = this.options.panelHeight || height;
+    
     // Create axis group
+    const axisClass = `visioncharts-axis visioncharts-${this.options.orientation}-axis`;
     this.element = SvgRenderer.createGroup({
-      class: `visioncharts-axis visioncharts-${this.options.orientation}-axis`
+      class: this.options.className ? `${axisClass} ${this.options.className}` : axisClass
     });
     
     // Create grid group if needed
@@ -138,75 +210,96 @@ export default class Axis {
     const isBottom = this.options.orientation === 'bottom';
     const isLeft = this.options.orientation === 'left';
     
-    // Draw axis line
-    let line;
-    if (isHorizontal) {
-      const y = isBottom ? 0 : height;
-      line = SvgRenderer.createLine(0, y, width, y, {
-        class: 'visioncharts-axis-line',
-        stroke: '#000',
-        'stroke-width': 1
-      });
-    } else {
-      const x = isLeft ? 0 : width;
-      line = SvgRenderer.createLine(x, 0, x, height, {
-        class: 'visioncharts-axis-line',
-        stroke: '#000',
-        'stroke-width': 1
-      });
+    // FIXED: Draw axis line (domain) with correct positioning
+    if (this.options.showDomain) {
+      let line;
+      if (isHorizontal) {
+        // FIXED: Bottom axis should be at effectiveHeight, top axis at 0
+        const y = isBottom ? effectiveHeight : 0;
+        line = SvgRenderer.createLine(0, y, effectiveWidth, y, {
+          class: 'visioncharts-axis-line',
+          stroke: '#000',
+          'stroke-width': 1
+        });
+      } else {
+        const x = isLeft ? 0 : effectiveWidth;
+        line = SvgRenderer.createLine(x, 0, x, effectiveHeight, {
+          class: 'visioncharts-axis-line',
+          stroke: '#000',
+          'stroke-width': 1
+        });
+      }
+      this.element.appendChild(line);
     }
-    
-    this.element.appendChild(line);
     
     // Draw ticks and labels
     tickValues.forEach(value => {
-      let x, y, textX, textY, gridX1, gridY1, gridX2, gridY2;
       const formattedValue = this.formatTickValue(value);
       
       // Scale the value to get the position
       const pos = scale.scale(value);
       
+      // Skip if position is out of bounds
+      if (isHorizontal && (pos < 0 || pos > effectiveWidth)) return;
+      if (!isHorizontal && (pos < 0 || pos > effectiveHeight)) return;
+      
+      let x, y, textX, textY, gridX1, gridY1, gridX2, gridY2;
+      
       if (isHorizontal) {
         x = pos;
-        y = isBottom ? 0 : height;
+        // FIXED: Bottom axis should be at effectiveHeight, top axis at 0
+        y = isBottom ? effectiveHeight : 0;
         textX = x;
         textY = isBottom ? y + this.options.tickSize + this.options.tickPadding : y - this.options.tickSize - this.options.tickPadding;
         gridX1 = x;
         gridY1 = 0;
         gridX2 = x;
-        gridY2 = height;
+        gridY2 = effectiveHeight;
       } else {
-        x = isLeft ? 0 : width;
+        x = isLeft ? 0 : effectiveWidth;
         y = pos;
         textX = isLeft ? x - this.options.tickSize - this.options.tickPadding : x + this.options.tickSize + this.options.tickPadding;
         textY = y;
         gridX1 = 0;
         gridY1 = y;
-        gridX2 = width;
+        gridX2 = effectiveWidth;
         gridY2 = y;
       }
       
       // Create tick
-      const tick = SvgRenderer.createLine(
-        x,
-        y,
-        isHorizontal ? x : (isLeft ? x - this.options.tickSize : x + this.options.tickSize),
-        isHorizontal ? (isBottom ? y + this.options.tickSize : y - this.options.tickSize) : y,
-        {
-          class: 'visioncharts-tick',
-          stroke: '#000',
-          'stroke-width': 1
-        }
-      );
+      if (this.options.showTicks) {
+        const tick = SvgRenderer.createLine(
+          x,
+          y,
+          isHorizontal ? x : (isLeft ? x - this.options.tickSize : x + this.options.tickSize),
+          isHorizontal ? (isBottom ? y + this.options.tickSize : y - this.options.tickSize) : y,
+          {
+            class: 'visioncharts-tick',
+            stroke: '#000',
+            'stroke-width': 1
+          }
+        );
+        this.element.appendChild(tick);
+      }
       
       // Create label
-      const label = SvgRenderer.createText(formattedValue, textX, textY, {
-        class: 'visioncharts-tick-label',
-        'text-anchor': isHorizontal ? 'middle' : (isLeft ? 'end' : 'start'),
-        'dominant-baseline': isHorizontal ? (isBottom ? 'hanging' : 'auto') : 'central',
-        'font-size': '12px',
-        'font-family': 'sans-serif'
-      });
+      if (this.options.showTickLabels) {
+        const labelAttrs = {
+          class: 'visioncharts-tick-label',
+          'text-anchor': isHorizontal ? 'middle' : (isLeft ? 'end' : 'start'),
+          'dominant-baseline': isHorizontal ? (isBottom ? 'hanging' : 'auto') : 'central',
+          'font-size': '12px',
+          'font-family': 'sans-serif'
+        };
+        
+        // Add rotation if specified
+        if (this.options.tickRotation !== 0) {
+          labelAttrs.transform = `rotate(${this.options.tickRotation} ${textX} ${textY})`;
+        }
+        
+        const label = SvgRenderer.createText(formattedValue, textX, textY, labelAttrs);
+        this.element.appendChild(label);
+      }
       
       // Create grid line if needed
       if (this.options.grid) {
@@ -216,21 +309,18 @@ export default class Axis {
         });
         this.gridElement.appendChild(gridLine);
       }
-      
-      this.element.appendChild(tick);
-      this.element.appendChild(label);
     });
     
-    // Add axis label if provided
-    if (this.options.label) {
+    // FIXED: Add axis label only if showAxisLabel is true and label is provided
+    if (this.options.showAxisLabel && this.options.label) {
       let labelX, labelY, rotate = false;
       
       if (isHorizontal) {
-        labelX = width / 2;
-        labelY = isBottom ? 40 : -40;
+        labelX = effectiveWidth / 2;
+        labelY = isBottom ? this.options.labelOffset + 25 : -this.options.labelOffset - 10;
       } else {
-        labelX = isLeft ? -40 : 40;
-        labelY = height / 2;
+        labelX = isLeft ? -this.options.labelOffset - 25 : this.options.labelOffset + 25;
+        labelY = effectiveHeight / 2;
         rotate = true;
       }
       
@@ -253,15 +343,90 @@ export default class Axis {
   }
   
   /**
+   * Static method to render axes for a panel (used in panel view)
+   * @param {SVGElement} panel - Panel container
+   * @param {Object} xScale - X scale
+   * @param {Object} yScale - Y scale  
+   * @param {number} width - Panel width
+   * @param {number} height - Panel height
+   * @param {Object} options - Axis options
+   */
+  static renderForPanel(panel, xScale, yScale, width, height, options = {}) {
+    console.log('Axis.renderForPanel called with options:', options);
+    
+    // Create X axis if enabled
+    if (xScale && options.showXAxis !== false) {
+      try {
+        const xAxisOptions = Object.assign({
+          orientation: 'bottom',
+          scale: xScale,
+          tickCount: 5,
+          grid: false,
+          isPanelAxis: true,
+          panelWidth: width,
+          panelHeight: height,
+          showTickLabels: options.showXLabels !== false,
+          label: options.xAxisName || '',
+          showAxisLabel: false, // Disable axis labels for panels
+          formatType: options.xAxisOptions?.formatType || 'number',
+          formatOptions: options.xAxisOptions?.formatOptions || {}
+        }, options.xAxisOptions || {});
+        
+        console.log('Creating X axis with options:', xAxisOptions);
+        const xAxis = new Axis(xAxisOptions);
+        xAxis.render(panel, width, height);
+      } catch (error) {
+        console.error('Error creating X axis for panel:', error);
+      }
+    }
+    
+    // Create Y axis if enabled
+    if (yScale && options.showYAxis !== false) {
+      try {
+        const yAxisOptions = Object.assign({
+          orientation: 'left',
+          scale: yScale,
+          tickCount: 4, // Fewer ticks for panels
+          grid: options.yAxisOptions?.grid || false,
+          gridStyle: options.yAxisOptions?.gridStyle || {
+            stroke: '#e0e0e0',
+            'stroke-width': 1,
+            'stroke-dasharray': '4,4'
+          },
+          isPanelAxis: true,
+          panelWidth: width,
+          panelHeight: height,
+          showTickLabels: options.showYLabels !== false,
+          label: options.yAxisName || '',
+          isLogarithmic: options.isLogarithmic || false,
+          showAxisLabel: false, // Disable axis labels for panels
+          formatType: options.yAxisOptions?.formatType || 'number',
+          formatOptions: options.yAxisOptions?.formatOptions || {}
+        }, options.yAxisOptions || {});
+        
+        console.log('Creating Y axis with options:', yAxisOptions);
+        const yAxis = new Axis(yAxisOptions);
+        yAxis.render(panel, width, height);
+      } catch (error) {
+        console.error('Error creating Y axis for panel:', error);
+      }
+    }
+  }
+  
+  /**
    * Update the axis
+   * @param {number} width - New width
+   * @param {number} height - New height
    * @returns {SVGElement} Updated axis element
    */
-  update() {
-    const parent = this.element.parentNode;
+  update(width, height) {
+    const parent = this.element?.parentNode;
+    if (!parent) return null;
+    
     const nextSibling = this.element.nextSibling;
     
     // Remove old elements
-    if (parent && this.element) {
+    if (this.element) {
       parent.removeChild(this.element);
     }
     
@@ -269,11 +434,8 @@ export default class Axis {
       this.gridElement.parentNode.removeChild(this.gridElement);
     }
     
-    // Re-render
-    const width = parseInt(parent.getAttribute('width'), 10);
-    const height = parseInt(parent.getAttribute('height'), 10);
-    
-    this.render(parent, width, height);
+    // Re-render with new dimensions
+    this.render(parent, width || parseInt(parent.getAttribute('width'), 10), height || parseInt(parent.getAttribute('height'), 10));
     
     // Restore original position in DOM
     if (nextSibling) {

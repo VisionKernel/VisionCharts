@@ -1,3 +1,4 @@
+import Axis from '../core/Axis.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -379,16 +380,6 @@ export default class Chart {
   }
 
   /**
-   * Create axes for the chart
-   * @private
-   * This should be implemented by subclasses
-   */
-  createAxes() {
-    console.log('createAxes called - to be implemented by subclass');
-    // To be implemented by subclasses
-  }
-
-  /**
    * Update the chart dimensions - but don't call updateAxes unless the chart is rendered
    * @private
    */
@@ -613,16 +604,6 @@ export default class Chart {
   }
 
   /**
-   * Render axes
-   * @private
-   * This should be implemented by subclasses
-   */
-  renderAxes() {
-    console.log('renderAxes called - to be implemented by subclass');
-    // To be implemented by subclasses
-  }
-
-  /**
  * Render chart legend using Legend component
  */
 renderLegend() {
@@ -746,6 +727,167 @@ renderLegend() {
     // Render axis names if provided
     this.renderAxisNames();
   }
+
+  /**
+ * Create and configure axes using Axis component - FIXED VERSION
+ */
+createAxes() {
+  console.log('createAxes called');
+  
+  // Initialize axes storage
+  this.state.components.axes = {
+    x: null,
+    y: null
+  };
+  
+  // Create X axis
+  if (this.state.scales.x) {
+    const xAxisOptions = {
+      orientation: 'bottom', // FIXED: Ensure bottom orientation
+      scale: this.state.scales.x,
+      tickCount: this.options.xTickCount || 5,
+      tickFormat: this.options.xTickFormat,
+      formatType: this.options.xType === 'time' ? 'time' : 'number', // FIXED: Proper format type
+      formatOptions: this.options.xFormatOptions || {}, // FIXED: Pass format options
+      label: this.options.xAxisName || '',
+      grid: this.options.grid?.show || false,
+      gridStyle: this.options.grid || {},
+      isLogarithmic: false, // X-axis typically not logarithmic
+      showTickLabels: this.options.showXLabels !== false,
+      tickRotation: this.options.xTickRotation || 0,
+      showAxisLabel: false // FIXED: Disable to prevent duplicate with Chart.renderAxisNames()
+    };
+    
+    this.state.components.axes.x = new Axis(xAxisOptions);
+  }
+  
+  // Create Y axis  
+  if (this.state.scales.y) {
+    const yAxisOptions = {
+      orientation: 'left',
+      scale: this.state.scales.y,
+      tickCount: this.options.yTickCount || 5,
+      tickFormat: this.options.yTickFormat,
+      formatType: this.options.yType === 'time' ? 'time' : 'number',
+      formatOptions: this.options.yFormatOptions || {},
+      label: this.options.yAxisName || '',
+      grid: this.options.grid?.show || false,
+      gridStyle: this.options.grid || {},
+      isLogarithmic: this.options.isLogarithmic || false,
+      showTickLabels: this.options.showYLabels !== false,
+      tickRotation: this.options.yTickRotation || 0,
+      showAxisLabel: false // FIXED: Disable to prevent duplicate with Chart.renderAxisNames()
+    };
+    
+    this.state.components.axes.y = new Axis(yAxisOptions);
+  }
+}
+
+
+/**
+ * Render axes using Axis component - FIXED VERSION
+ */
+renderAxes() {
+  console.log('renderAxes called');
+  
+  if (!this.state.chart) return;
+  
+  const { innerWidth, innerHeight } = this.state.dimensions;
+  
+  // Render X axis
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.render(
+      this.state.chart, 
+      innerWidth, 
+      innerHeight
+    );
+  }
+  
+  // Render Y axis
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.render(
+      this.state.chart, 
+      innerWidth, 
+      innerHeight
+    );
+  }
+}
+
+/**
+ * Update axes with new scales or dimensions - FIXED VERSION
+ */
+updateAxes() {
+  console.log('updateAxes called');
+  
+  const { innerWidth, innerHeight } = this.state.dimensions;
+  
+  // Update X axis
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.setScale(this.state.scales.x);
+    // FIXED: Update format type based on current options
+    this.state.components.axes.x.setOptions({ 
+      formatType: this.options.xType === 'time' ? 'time' : 'number',
+      formatOptions: this.options.xFormatOptions || {}
+    });
+    this.state.components.axes.x.update(innerWidth, innerHeight);
+  }
+  
+  // Update Y axis
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.setScale(this.state.scales.y);
+    this.state.components.axes.y.setOptions({ 
+      isLogarithmic: this.options.isLogarithmic || false,
+      formatType: this.options.yType === 'time' ? 'time' : 'number',
+      formatOptions: this.options.yFormatOptions || {}
+    });
+    this.state.components.axes.y.update(innerWidth, innerHeight);
+  }
+}
+
+/**
+ * Set X axis name
+ * @param {string} name - X axis name
+ */
+setXAxisName(name) {
+  this.options.xAxisName = name;
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.setOptions({ label: name });
+    this.state.components.axes.x.update(
+      this.state.dimensions.innerWidth, 
+      this.state.dimensions.innerHeight
+    );
+  }
+}
+
+/**
+ * Set Y axis name  
+ * @param {string} name - Y axis name
+ */
+setYAxisName(name) {
+  this.options.yAxisName = name;
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.setOptions({ label: name });
+    this.state.components.axes.y.update(
+      this.state.dimensions.innerWidth, 
+      this.state.dimensions.innerHeight
+    );
+  }
+}
+
+/**
+ * Clean up axes components
+ */
+cleanupAxes() {
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.destroy();
+    this.state.components.axes.x = null;
+  }
+  
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.destroy();
+    this.state.components.axes.y = null;
+  }
+}
   
   /**
    * Render axis names
@@ -2088,6 +2230,9 @@ destroy() {
   
   // Clean up hover features
   this.cleanupHoverFeatures();
+
+  // Destroy axes
+  this.cleanupAxes();
 
   // Destroy legend
   if (this.state.components.legend) {
