@@ -1,9 +1,10 @@
 import Chart from '../core/Chart.js';
 import Axis from '../core/Axis.js';
+import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
+import { formatLargeNumber } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
-import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
 
@@ -98,22 +99,6 @@ export default class BarChart extends Chart {
     this.updateScales();
     
     console.log('BarChart scales created');
-  }
-  
-  /**
-   * Format large numbers with K/M suffix
-   * @private
-   * @param {number} value - The number to format
-   * @returns {string} Formatted number
-   */
-  formatLargeNumber(value) {
-    if (value >= 1000000) {
-      return (value / 1000000).toFixed(1) + 'M';
-    } else if (value >= 1000) {
-      return (value / 1000).toFixed(1) + 'K';
-    } else {
-      return value.toFixed(isNaN(value) || Math.floor(value) === value ? 0 : 1);
-    }
   }
   
   /**
@@ -364,7 +349,7 @@ renderData() {
           
           // Create value text using SvgRenderer
           const valueText = SvgRenderer.createText(
-            this.formatLargeNumber(value),
+            formatLargeNumber(value),
             valueX,
             valueY,
             {

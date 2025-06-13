@@ -1,11 +1,12 @@
 import Chart from '../core/Chart.js';
 import Axis from '../core/Axis.js';
+import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
+import { formatLargeNumber } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
-import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 
 /**
  * LineChart class for rendering line charts with optional per-dataset area fills

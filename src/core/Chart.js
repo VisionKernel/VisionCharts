@@ -1,5 +1,6 @@
 import Axis from '../core/Axis.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
+import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -1993,60 +1994,48 @@ cleanupAxes() {
   }
 
   /**
-   * Format tooltip content for your existing Tooltip component
-   * @private
-   * @param {Object} data - Data point information
-   * @returns {string} Formatted HTML content
-   */
-  formatTooltip(data) {
-    if (!data || !data.point) return '';
-    
-    const { xField, yField, xType, yType } = this.options;
-    const point = data.point;
-    const dataset = data.dataset;
-    
-    // Format X value
-    let xValue = point[xField];
-    let xLabel = '';
-    
-    if (xType === 'time') {
-      const date = xValue instanceof Date ? xValue : new Date(xValue);
-      xLabel = date.toLocaleDateString(undefined, { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
-      });
-    } else {
-      xLabel = typeof xValue === 'number' ? xValue.toFixed(2) : xValue;
-    }
-    
-    // Format Y value
-    let yValue = point[yField];
-    let yLabel = '';
-    
-    if (yType === 'percent') {
-      yLabel = (yValue * 100).toFixed(1) + '%';
-    } else if (yType === 'currency') {
-      yLabel = '$' + yValue.toLocaleString(undefined, { minimumFractionDigits: 2 });
-    } else {
-      yLabel = typeof yValue === 'number' ? yValue.toLocaleString(undefined, { maximumFractionDigits: 2 }) : yValue;
-    }
-    
-    // Return formatted HTML for your Tooltip component
-    return `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; line-height: 1.4;">
-        <div style="font-weight: 600; color: ${dataset.color}; margin-bottom: 4px;">
-          ${dataset.name || 'Series'}
-        </div>
-        <div style="color: #666; margin-bottom: 2px;">
-          <strong>Date:</strong> ${xLabel}
-        </div>
-        <div style="color: #333;">
-          <strong>Value:</strong> ${yLabel}
-        </div>
-      </div>
-    `;
+ * Format tooltip content for the Tooltip component
+ * @private
+ * @param {Object} data - Data point information
+ * @returns {string} Formatted text content (NOT HTML)
+ */
+formatTooltip(data) {
+  if (!data || !data.point) return '';
+  
+  const { xField, yField, xType, yType } = this.options;
+  const point = data.point;
+  const dataset = data.dataset;
+  
+  // Format X value
+  let xLabel = '';
+  const xValue = point[xField];
+  
+  if (xType === 'time') {
+    const date = xValue instanceof Date ? xValue : new Date(xValue);
+    xLabel = formatDateValue(date, 'MMM dd, yyyy');
+  } else {
+    xLabel = typeof xValue === 'number' ? formatLargeNumber(xValue) : xValue;
   }
+  
+  // Format Y value
+  const yValue = point[yField];
+  let yLabel = '';
+  
+  if (yType === 'percent' || yType === 'percentage') {
+    yLabel = (yValue * 100).toFixed(1) + '%';
+  } else if (yType === 'currency') {
+    yLabel = '$' + formatLargeNumber(yValue);
+  } else {
+    yLabel = formatLargeNumber(yValue);
+  }
+  
+  // Return simple text lines (your Tooltip handles the formatting)
+  return [
+    dataset.name || 'Series',
+    `Date: ${xLabel}`,
+    `Value: ${yLabel}`
+  ];
+}
 
   /**
    * Hide hover elements for single mode
