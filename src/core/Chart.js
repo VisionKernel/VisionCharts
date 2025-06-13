@@ -1,4 +1,5 @@
 import Axis from '../core/Axis.js';
+import InteractionManager from '../core/InteractionManager.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
@@ -7,6 +8,7 @@ import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Legend from '../components/Legend.js';
 import Grid from '../components/Grid.js';
+import Panel from '../components/Panel.js';
 import { calculateIndicator } from '../utils/math.js';
 
 /**
@@ -570,16 +572,16 @@ export default class Chart {
   }
   
   /**
-   * Render chart in single-panel mode
-   * @private
-   */
-    renderSingleMode() {
-      console.log('renderSingleMode called');
-      
-      // Standard view mode
-      this.renderAxes();
+ * Render chart in single-panel mode
+ * @private
+ */
+  renderSingleMode() {
+    console.log('renderSingleMode called');
+    
+    // Standard view mode
+    this.renderAxes();
 
-      if (this.options.grid?.show) {
+    if (this.options.grid?.show) {
       this.state.components.grid = new Grid(this.options.grid);
       this.state.components.grid.render(
         this.state.chart,
@@ -621,11 +623,8 @@ export default class Chart {
       );
     }
     
-    // Initialize hover features for single mode
-    this.initSingleModeHoverFeatures();
-    
-    // Apply flickering fix
-    this.fixCrosshairFlickering();
+    // Initialize hover features using InteractionManager
+    InteractionManager.initSingleMode(this);
   }
   
   /**
@@ -636,15 +635,11 @@ export default class Chart {
     console.log('renderPanelMode called');
     
     // Render panels using the Panel component
-    // Pass a chart-specific renderer function
     const chartSpecificRenderer = this.renderPanelData ? this.renderPanelData.bind(this) : null;
     Panel.renderForChart(this, chartSpecificRenderer);
     
-    // Initialize hover features for panel mode
-    this.initPanelModeHoverFeatures();
-    
-    // Apply flickering fix
-    this.fixCrosshairFlickering();
+    // Initialize hover features using InteractionManager
+    InteractionManager.initPanelMode(this);
   }
 
   
@@ -1554,564 +1549,13 @@ cleanupAxes() {
   }
 
   /**
-   * Initialize hover functionality for single-panel mode using existing Tooltip component
-   * @private
-   */
-  initSingleModeHoverFeatures() {
-    console.log('initSingleModeHoverFeatures called');
-    
-    // Skip if no SVG or chart present
-    if (!this.state.svg || !this.state.chart) return;
-    
-    // Create crosshair component
-    this.state.components.crosshair = new Crosshair({
-      showX: true,
-      showY: false, // Only show vertical line
-      stroke: '#666',
-      strokeWidth: 1,
-      strokeDasharray: '4,4',
-      snapToData: true
-    });
-    
-    // Create tooltip component using your existing Tooltip.js
-    this.state.components.tooltip = new Tooltip({
-      followCursor: true,
-      offset: { x: 15, y: 10 },
-      background: '#fff',
-      border: '#ccc',
-      borderRadius: 4,
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      formatter: this.formatTooltip.bind(this)
-    });
-    
-    // Render components
-    this.state.components.crosshair.render(this.state.chart, 
-      this.state.dimensions.innerWidth, 
-      this.state.dimensions.innerHeight);
-    
-    this.state.components.tooltip.render(this.state.chart);
-    
-    // Hide by default
-    this.state.components.crosshair.hide();
-    this.state.components.tooltip.hide();
-    
-    // Create hover points for each dataset
-    this.createSingleModeHoverPoints();
-    
-    // Bind mouse events for single mode
-    this.bindSingleModeHoverEvents();
-  }
-
-  /**
-   * Initialize hover functionality for panel mode using Panel component
-   * @private
-   */
-  initPanelModeHoverFeatures() {
-    console.log('initPanelModeHoverFeatures called');
-    
-    // Use Panel component to initialize hover features
-    Panel.initHoverFeatures(this, this.formatTooltip.bind(this));
-  }
-
-  /**
-   * Bind hover events for a specific panel using existing Tooltip component
-   * @private
-   * @param {Element} panel - Panel element
-   * @param {number} panelIndex - Panel index
-   */
-  bindPanelHoverEvents(panel, panelIndex) {
-    const panelFeatures = this.state.components.panelHoverFeatures[panelIndex];
-    if (!panelFeatures) return;
-    
-    const { panelScale, dataset, crosshair, hoverPointsGroup } = panelFeatures;
-    const { xField, yField } = this.options;
-    
-    // Mouse move handler for panel
-    const mouseMoveHandler = (e) => {
-      const panelRect = panel.getBoundingClientRect();
-      const mouseX = e.clientX - panelRect.left;
-      const mouseY = e.clientY - panelRect.top;
-      
-      // Check if within panel bounds
-      if (mouseX < 0 || mouseX > panelScale.panelWidth || 
-          mouseY < 0 || mouseY > panelScale.panelHeight) {
-        crosshair.hide();
-        hoverPointsGroup.style.display = 'none';
-        if (this.state.components.tooltip) {
-          this.state.components.tooltip.hide();
-        }
-        return;
-      }
-      
-      // Show crosshair
-      crosshair.update(mouseX, 0);
-      crosshair.show();
-      
-      // Find closest data point in this panel's dataset
-      let closestPoint = null;
-      let minDistance = Infinity;
-      
-      if (dataset && dataset.data) {
-        dataset.data.forEach(point => {
-          if (point[xField] === undefined || point[yField] === undefined) return;
-          
-          const pointX = panelScale.xScale.scale(point[xField]);
-          const distance = Math.abs(mouseX - pointX);
-          
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestPoint = point;
-          }
-        });
-      }
-      
-      // Show hover point and tooltip if close enough
-      if (closestPoint && minDistance < 50) {
-        const pointX = panelScale.xScale.scale(closestPoint[xField]);
-        const pointY = panelScale.yScale.scale(closestPoint[yField]);
-        
-        // Update hover point
-        const hoverPoint = hoverPointsGroup.querySelector('.visioncharts-panel-hover-point');
-        if (hoverPoint) {
-          hoverPoint.setAttribute('cx', pointX);
-          hoverPoint.setAttribute('cy', pointY);
-          hoverPoint.style.display = 'block';
-        }
-        hoverPointsGroup.style.display = 'block';
-        
-        // Show tooltip using existing component
-        const closestData = {
-          dataset: dataset,
-          point: closestPoint,
-          x: pointX,
-          y: pointY,
-          distance: minDistance
-        };
-        
-        if (this.state.components.tooltip) {
-          // Calculate tooltip position relative to the main chart container
-          const containerRect = this.state.container.getBoundingClientRect();
-          const chartRect = this.state.chart.getBoundingClientRect();
-          const tooltipX = (chartRect.left - containerRect.left) + mouseX;
-          const tooltipY = (chartRect.top - containerRect.top) + mouseY + panelScale.yPos;
-          
-          this.state.components.tooltip.show(closestData, tooltipX, tooltipY, {
-            width: this.state.dimensions.width,
-            height: this.state.dimensions.height
-          });
-        }
-      } else {
-        hoverPointsGroup.style.display = 'none';
-        if (this.state.components.tooltip) {
-          this.state.components.tooltip.hide();
-        }
-      }
-    };
-    
-    // Mouse leave handler for panel
-    const mouseLeaveHandler = (e) => {
-      crosshair.hide();
-      hoverPointsGroup.style.display = 'none';
-      if (this.state.components.tooltip) {
-        this.state.components.tooltip.hide();
-      }
-    };
-    
-    // Add event listeners
-    panel.addEventListener('mousemove', mouseMoveHandler);
-    panel.addEventListener('mouseleave', mouseLeaveHandler);
-    
-    // Store handlers for cleanup
-    this.state.eventHandlers = this.state.eventHandlers || {};
-    this.state.eventHandlers[`panel-${panelIndex}`] = {
-      move: mouseMoveHandler,
-      leave: mouseLeaveHandler,
-      panel: panel
-    };
-  }
-
-  /**
-   * Bind hover events for single mode using existing Tooltip component
-   * @private
-   */
-  bindSingleModeHoverEvents() {
-    // Only bind if chart is rendered
-    if (!this.state.chart || !this.state.svg) return;
-    
-    console.log('Binding single mode hover events with existing Tooltip component');
-    
-    // Use SVG as the main event target for more reliable event handling
-    const eventTarget = this.state.svg;
-    
-    // Mouse move handler - USING EXISTING TOOLTIP COMPONENT
-    const mouseMoveHandler = (e) => {
-      // Get mouse position relative to the SVG
-      const svgRect = this.state.svg.getBoundingClientRect();
-      const mouseX = e.clientX - svgRect.left - this.options.margins.left; // Account for margins
-      const mouseY = e.clientY - svgRect.top - this.options.margins.top;   // Account for margins
-      
-      // Check if within chart bounds (inner chart area)
-      if (mouseX < 0 || mouseX > this.state.dimensions.innerWidth || 
-          mouseY < 0 || mouseY > this.state.dimensions.innerHeight) {
-        this.hideSingleModeHoverElements();
-        if (this.state.components.tooltip) {
-          this.state.components.tooltip.hide();
-        }
-        return;
-      }
-      
-      // Always show crosshair for line charts when in bounds
-      if (this.options.chartType === 'line' || this.options.chartType === 'area') {
-        if (this.state.components.crosshair) {
-          this.state.components.crosshair.update(mouseX, 0);
-          this.state.components.crosshair.show();
-        }
-      }
-      
-      // Update hover points
-      this.updateSingleModeHoverPoints(mouseX);
-      
-      // Show tooltip with closest data using existing Tooltip component
-      const closestData = this.findClosestData(mouseX);
-      if (closestData && this.state.components.tooltip) {
-        // Convert back to SVG coordinates for tooltip positioning
-        const tooltipX = mouseX + this.options.margins.left;
-        const tooltipY = mouseY + this.options.margins.top;
-        
-        // Use your existing Tooltip component's show method
-        this.state.components.tooltip.show(closestData, tooltipX, tooltipY, {
-          width: this.state.dimensions.width,
-          height: this.state.dimensions.height
-        });
-      } else if (this.state.components.tooltip) {
-        this.state.components.tooltip.hide();
-      }
-    };
-    
-    // Mouse leave handler
-    const mouseLeaveHandler = (e) => {
-      // Only hide if we're actually leaving the SVG area
-      const svgRect = this.state.svg.getBoundingClientRect();
-      const mouseX = e.clientX - svgRect.left;
-      const mouseY = e.clientY - svgRect.top;
-      
-      // Check if mouse is outside SVG bounds
-      if (mouseX < 0 || mouseX > this.state.dimensions.width || 
-          mouseY < 0 || mouseY > this.state.dimensions.height) {
-        this.hideSingleModeHoverElements();
-        if (this.state.components.tooltip) {
-          this.state.components.tooltip.hide();
-        }
-      }
-    };
-    
-    // Add event listeners to SVG for more reliable event handling
-    eventTarget.addEventListener('mousemove', mouseMoveHandler);
-    eventTarget.addEventListener('mouseleave', mouseLeaveHandler);
-    
-    // Store handlers for cleanup
-    this.state.eventHandlers = this.state.eventHandlers || {};
-    this.state.eventHandlers.hover = {
-      move: mouseMoveHandler,
-      leave: mouseLeaveHandler,
-      target: eventTarget // Store target for cleanup
-    };
-    
-    console.log('Single mode hover events bound to SVG element with existing Tooltip component');
-  }
-
-  /**
-   * Create hover points for single mode
-   * @private
-   */
-  createSingleModeHoverPoints() {
-    // Create a group for hover points
-    this.state.components.hoverPointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    this.state.components.hoverPointsGroup.setAttribute('class', 'visioncharts-hover-points');
-    this.state.components.hoverPointsGroup.style.display = 'none';
-    this.state.chart.appendChild(this.state.components.hoverPointsGroup);
-    
-    // Create hover points for each dataset
-    this.state.components.hoverPoints = this.state.datasets.map(dataset => {
-      const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      point.setAttribute('r', 4); // Slightly larger than normal points
-      point.setAttribute('fill', '#fff');
-      point.setAttribute('stroke', dataset.color);
-      point.setAttribute('stroke-width', 2);
-      point.setAttribute('class', `visioncharts-hover-point-${dataset.id}`);
-      point.style.display = 'none';
-      
-      this.state.components.hoverPointsGroup.appendChild(point);
-      
-      return {
-        element: point,
-        dataset: dataset
-      };
-    });
-  }
-
-  /**
-   * Update hover points for single mode
-   * @private
-   * @param {number} mouseX - Mouse X position (relative to chart area)
-   */
-  updateSingleModeHoverPoints(mouseX) {
-    // Skip if no hover points
-    if (!this.state.components.hoverPoints) return;
-    
-    // Show hover points group
-    if (this.state.components.hoverPointsGroup) {
-      this.state.components.hoverPointsGroup.style.display = 'block';
-    }
-    
-    // Use the correct scales
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    if (!xScale || !yScale) {
-      console.warn('Scales not available for hover points');
-      return;
-    }
-    
-    // Find closest data points for each dataset
-    this.state.components.hoverPoints.forEach(hoverPoint => {
-      const dataset = hoverPoint.dataset;
-      const { xField, yField } = this.options;
-      
-      // Find closest data point
-      let closestPoint = null;
-      let minDistance = Infinity;
-      
-      dataset.data.forEach(point => {
-        if (point[xField] === undefined || point[yField] === undefined) return;
-        
-        const xPos = xScale.scale(point[xField]);
-        const distance = Math.abs(mouseX - xPos);
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestPoint = point;
-        }
-      });
-      
-      // Show hover point if we found a close point
-      // For line charts, be more generous with the threshold
-      const proximityThreshold = (this.options.chartType === 'line' || this.options.chartType === 'area') ? 100 : 25;
-      
-      if (closestPoint && minDistance < proximityThreshold) {
-        const x = xScale.scale(closestPoint[xField]);
-        const y = yScale.scale(closestPoint[yField]);
-        
-        hoverPoint.element.setAttribute('cx', x);
-        hoverPoint.element.setAttribute('cy', y);
-        hoverPoint.element.style.display = 'block';
-        
-        // Store data for tooltip
-        hoverPoint.data = closestPoint;
-      } else {
-        // Hide hover point if too far
-        hoverPoint.element.style.display = 'none';
-        hoverPoint.data = null;
-      }
-    });
-  }
-
-  /**
-   * Find closest data point to mouse position
-   * @private
-   * @param {number} mouseX - Mouse X position
-   * @returns {Object|null} Closest data point info
-   */
-  findClosestData(mouseX) {
-    if (!this.state.datasets || !this.state.datasets.length) return null;
-    
-    const { xField, yField } = this.options;
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    if (!xScale || !yScale) return null;
-    
-    let closestData = null;
-    let minDistance = Infinity;
-    
-    // Check all datasets
-    this.state.datasets.forEach(dataset => {
-      if (!dataset.data || !dataset.data.length) return;
-      
-      dataset.data.forEach(point => {
-        if (point[xField] === undefined || point[yField] === undefined) return;
-        
-        const pointX = xScale.scale(point[xField]);
-        const distance = Math.abs(mouseX - pointX);
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestData = {
-            dataset: dataset,
-            point: point,
-            x: pointX,
-            y: yScale.scale(point[yField]),
-            distance: distance
-          };
-        }
-      });
-    });
-    
-    // Only return if reasonably close (within 50 pixels for line charts)
-    const threshold = this.options.chartType === 'line' ? 50 : 25;
-    return (closestData && minDistance < threshold) ? closestData : null;
-  }
-
-  /**
- * Format tooltip content for the Tooltip component
- * @private
- * @param {Object} data - Data point information
- * @returns {string} Formatted text content (NOT HTML)
- */
-formatTooltip(data) {
-  if (!data || !data.point) return '';
-  
-  const { xField, yField, xType, yType } = this.options;
-  const point = data.point;
-  const dataset = data.dataset;
-  
-  // Format X value
-  let xLabel = '';
-  const xValue = point[xField];
-  
-  if (xType === 'time') {
-    const date = xValue instanceof Date ? xValue : new Date(xValue);
-    xLabel = formatDateValue(date, 'MMM dd, yyyy');
-  } else {
-    xLabel = typeof xValue === 'number' ? formatLargeNumber(xValue) : xValue;
-  }
-  
-  // Format Y value
-  const yValue = point[yField];
-  let yLabel = '';
-  
-  if (yType === 'percent' || yType === 'percentage') {
-    yLabel = (yValue * 100).toFixed(1) + '%';
-  } else if (yType === 'currency') {
-    yLabel = '$' + formatLargeNumber(yValue);
-  } else {
-    yLabel = formatLargeNumber(yValue);
-  }
-  
-  // Return simple text lines (your Tooltip handles the formatting)
-  return [
-    dataset.name || 'Series',
-    `Date: ${xLabel}`,
-    `Value: ${yLabel}`
-  ];
-}
-
-  /**
-   * Hide hover elements for single mode
-   * @private
-   */
-  hideSingleModeHoverElements() {
-    if (this.state.components.crosshair) {
-      this.state.components.crosshair.hide();
-    }
-    
-    if (this.state.components.tooltip) {
-      this.state.components.tooltip.hide();
-    }
-    
-    if (this.state.components.hoverPointsGroup) {
-      this.state.components.hoverPointsGroup.style.display = 'none';
-    }
-  }
-
-  /**
-   * Fix crosshair flickering by making hover elements non-interactive
-   * @private
-   */
-  fixCrosshairFlickering() {
-    console.log('Applying crosshair flickering fix');
-    
-    // Single mode fixes
-    if (this.state.components.crosshair && this.state.components.crosshair.elements.group) {
-      this.state.components.crosshair.elements.group.style.pointerEvents = 'none';
-      this.state.components.crosshair.elements.group.style.userSelect = 'none';
-    }
-    
-    // Fix existing Tooltip component
-    if (this.state.components.tooltip && this.state.components.tooltip.elements) {
-      // Make tooltip container non-interactive
-      if (this.state.components.tooltip.elements.tooltip) {
-        this.state.components.tooltip.elements.tooltip.style.pointerEvents = 'none';
-        this.state.components.tooltip.elements.tooltip.style.userSelect = 'none';
-      }
-      
-      // Also check for other tooltip elements your component might have
-      Object.keys(this.state.components.tooltip.elements).forEach(key => {
-        const element = this.state.components.tooltip.elements[key];
-        if (element && element.style) {
-          element.style.pointerEvents = 'none';
-          element.style.userSelect = 'none';
-        }
-      });
-    }
-    
-    if (this.state.components.hoverPointsGroup) {
-      this.state.components.hoverPointsGroup.style.pointerEvents = 'none';
-      this.state.components.hoverPointsGroup.style.userSelect = 'none';
-    }
-    
-    if (this.state.components.hoverPoints) {
-      this.state.components.hoverPoints.forEach(hoverPoint => {
-        if (hoverPoint.element) {
-          hoverPoint.element.style.pointerEvents = 'none';
-          hoverPoint.element.style.userSelect = 'none';
-        }
-      });
-    }
-    
-    // Panel mode fixes
-    if (this.state.components.panelHoverFeatures) {
-      this.state.components.panelHoverFeatures.forEach(panelFeatures => {
-        if (panelFeatures.crosshair && panelFeatures.crosshair.elements.group) {
-          panelFeatures.crosshair.elements.group.style.pointerEvents = 'none';
-          panelFeatures.crosshair.elements.group.style.userSelect = 'none';
-        }
-        
-        if (panelFeatures.hoverPointsGroup) {
-          panelFeatures.hoverPointsGroup.style.pointerEvents = 'none';
-          panelFeatures.hoverPointsGroup.style.userSelect = 'none';
-        }
-      });
-    }
-    
-    console.log('Crosshair flickering fix applied');
-  }
-
-  /**
-   * Clean up hover features
+   * Clean up hover features using InteractionManager
    * @private
    */
   cleanupHoverFeatures() {
     console.log('cleanupHoverFeatures called');
     
-    // Clean up single mode hover features
-    if (this.state.components.crosshair) {
-      this.state.components.crosshair.destroy();
-      this.state.components.crosshair = null;
-    }
-    
-    if (this.state.components.tooltip) {
-      this.state.components.tooltip.destroy();
-      this.state.components.tooltip = null;
-    }
-    
-    if (this.state.components.hoverPointsGroup) {
-      if (this.state.components.hoverPointsGroup.parentNode) {
-        this.state.components.hoverPointsGroup.parentNode.removeChild(this.state.components.hoverPointsGroup);
-      }
-      this.state.components.hoverPointsGroup = null;
-    }
-
+    // Clean up recession lines and zero lines (not handled by InteractionManager)
     if (this.state.components.recessionLines) {
       this.state.components.recessionLines.destroy();
       this.state.components.recessionLines = null;
@@ -2122,49 +1566,10 @@ formatTooltip(data) {
       this.state.components.zeroLine = null;
     }
     
-    // Clean up panel mode hover features (created by Panel component)
-    if (this.state.components.panelHoverFeatures) {
-      this.state.components.panelHoverFeatures.forEach(panelFeatures => {
-        if (panelFeatures.crosshair) {
-          panelFeatures.crosshair.destroy();
-        }
-        if (panelFeatures.tooltip) {
-          panelFeatures.tooltip.destroy();
-        }
-      });
-      this.state.components.panelHoverFeatures = null;
-    }
-    
-    // Clean up event handlers (including Panel-created ones)
-    if (this.state.eventHandlers) {
-      Object.keys(this.state.eventHandlers).forEach(key => {
-        const handler = this.state.eventHandlers[key];
-        
-        if (key.startsWith('panel-')) {
-          const panelIndex = key.split('-')[1];
-          const panel = this.state.chart && this.state.chart.querySelector(`.panel-${panelIndex}`);
-          if (panel && handler) {
-            if (handler.move) panel.removeEventListener('mousemove', handler.move);
-            if (handler.leave) panel.removeEventListener('mouseleave', handler.leave);
-          }
-        } else if (key === 'hover' && handler) {
-          // Clean up single mode hover events
-          const target = handler.target || this.state.svg;
-          if (target && handler.move) {
-            target.removeEventListener('mousemove', handler.move);
-          }
-          if (target && handler.leave) {
-            target.removeEventListener('mouseleave', handler.leave);
-          }
-        }
-      });
-      
-      this.state.eventHandlers = {};
-    }
-    
-    console.log('Hover features cleaned up');
+    // Use InteractionManager for all interaction cleanup
+    InteractionManager.cleanup(this);
   }
-  
+
   /**
    * Get chart configuration for saving
    * @public

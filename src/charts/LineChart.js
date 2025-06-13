@@ -8,6 +8,7 @@ import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Grid from '../components/Grid.js';
+import Panel from '../components/Panel.js';
 
 /**
  * LineChart class for rendering line charts with optional per-dataset area fills

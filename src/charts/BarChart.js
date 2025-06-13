@@ -8,6 +8,7 @@ import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Grid from '../components/Grid.js';
+import Panel from '../components/Panel.js';
 
 /**
  * BarChart class for rendering bar charts with time series data
@@ -449,7 +450,7 @@ renderData() {
     
     return this;
   }
-  
+
   /**
    * Create individual axes for single-panel mode (override parent method if needed)
    */
