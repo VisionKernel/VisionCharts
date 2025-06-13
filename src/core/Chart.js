@@ -635,8 +635,10 @@ export default class Chart {
   renderPanelMode() {
     console.log('renderPanelMode called');
     
-    // Render ONLY panels - no single-chart components
-    this.renderPanels();
+    // Render panels using the Panel component
+    // Pass a chart-specific renderer function
+    const chartSpecificRenderer = this.renderPanelData ? this.renderPanelData.bind(this) : null;
+    Panel.renderForChart(this, chartSpecificRenderer);
     
     // Initialize hover features for panel mode
     this.initPanelModeHoverFeatures();
@@ -644,6 +646,7 @@ export default class Chart {
     // Apply flickering fix
     this.fixCrosshairFlickering();
   }
+
   
   /**
    * Render panels for multi-panel view
@@ -1600,79 +1603,14 @@ cleanupAxes() {
   }
 
   /**
-   * Initialize hover functionality for panel mode using existing Tooltip component
+   * Initialize hover functionality for panel mode using Panel component
    * @private
    */
   initPanelModeHoverFeatures() {
     console.log('initPanelModeHoverFeatures called');
     
-    if (!this.state.chart || !this.state.panelScales) return;
-    
-    // Create single tooltip for all panels using your existing component
-    this.state.components.tooltip = new Tooltip({
-      followCursor: true,
-      offset: { x: 15, y: 10 },
-      background: '#fff',
-      border: '#ccc',
-      borderRadius: 4,
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      formatter: this.formatTooltip.bind(this)
-    });
-    
-    // Render tooltip
-    this.state.components.tooltip.render(this.state.chart);
-    this.state.components.tooltip.hide();
-    
-    // Initialize hover features for each panel
-    this.state.components.panelHoverFeatures = [];
-    
-    this.state.panelScales.forEach((panelScale, index) => {
-      const panel = this.state.chart.querySelector(`.panel-${index}`);
-      if (!panel) return;
-      
-      // Create crosshair for this panel
-      const crosshair = new Crosshair({
-        showX: true,
-        showY: false,
-        stroke: '#666',
-        strokeWidth: 1,
-        strokeDasharray: '4,4'
-      });
-      
-      // Render crosshair
-      crosshair.render(panel, panelScale.panelWidth, panelScale.panelHeight);
-      crosshair.hide();
-      
-      // Create hover points for this panel
-      const hoverPointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      hoverPointsGroup.setAttribute('class', 'visioncharts-panel-hover-points');
-      hoverPointsGroup.style.display = 'none';
-      panel.appendChild(hoverPointsGroup);
-      
-      // Create hover point for the dataset in this panel
-      const dataset = this.state.datasets[index];
-      if (dataset) {
-        const hoverPoint = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        hoverPoint.setAttribute('r', 4);
-        hoverPoint.setAttribute('fill', '#fff');
-        hoverPoint.setAttribute('stroke', dataset.color);
-        hoverPoint.setAttribute('stroke-width', 2);
-        hoverPoint.setAttribute('class', 'visioncharts-panel-hover-point');
-        hoverPoint.style.display = 'none';
-        hoverPointsGroup.appendChild(hoverPoint);
-      }
-      
-      // Store panel hover features
-      this.state.components.panelHoverFeatures[index] = {
-        crosshair: crosshair,
-        hoverPointsGroup: hoverPointsGroup,
-        dataset: dataset,
-        panelScale: panelScale
-      };
-      
-      // Bind events for this panel
-      this.bindPanelHoverEvents(panel, index);
-    });
+    // Use Panel component to initialize hover features
+    Panel.initHoverFeatures(this, this.formatTooltip.bind(this));
   }
 
   /**
@@ -2184,7 +2122,7 @@ formatTooltip(data) {
       this.state.components.zeroLine = null;
     }
     
-    // Clean up panel mode hover features
+    // Clean up panel mode hover features (created by Panel component)
     if (this.state.components.panelHoverFeatures) {
       this.state.components.panelHoverFeatures.forEach(panelFeatures => {
         if (panelFeatures.crosshair) {
@@ -2197,7 +2135,7 @@ formatTooltip(data) {
       this.state.components.panelHoverFeatures = null;
     }
     
-    // Clean up event handlers
+    // Clean up event handlers (including Panel-created ones)
     if (this.state.eventHandlers) {
       Object.keys(this.state.eventHandlers).forEach(key => {
         const handler = this.state.eventHandlers[key];
