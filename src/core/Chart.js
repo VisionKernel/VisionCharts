@@ -1,5 +1,6 @@
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
+import RecessionLines from '../components/RecessionLines.js';
 
 /**
  * Base Chart class that handles common chart functionality
@@ -555,7 +556,13 @@ export default class Chart {
     
     // Render recession lines if enabled
     if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-      this.renderRecessionLines();
+      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+      this.state.components.recessionLines.render(
+        this.state.chart, 
+        this.options.recessions, 
+        this.state.scales.x, 
+        this.state.dimensions.innerHeight
+      );
     }
     
     // Initialize hover features for single mode
@@ -619,86 +626,6 @@ export default class Chart {
       
       this.state.chart.appendChild(zeroLine);
     }
-  }
-  
-  /**
-   * Render recession lines
-   * @private
-   */
-  renderRecessionLines() {
-    console.log('renderRecessionLines called');
-    
-    if (!this.state.chart) return;
-    
-    const { recessions } = this.options;
-    const { innerHeight, innerWidth } = this.state.dimensions;
-    const xScale = this.state.scales.x;
-    
-    if (!xScale) return;
-    
-    // Create recession lines group
-    const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    recessionsGroup.setAttribute('class', 'visioncharts-recession-lines');
-    
-    // Process each recession period
-    recessions.forEach((recession, index) => {
-      // Extract dates
-      const startDate = recession.start instanceof Date ? 
-                      recession.start : new Date(recession.start);
-      const endDate = recession.end instanceof Date ? 
-                      recession.end : (recession.end ? new Date(recession.end) : new Date());
-      
-      // Validate dates
-      if (!startDate || isNaN(startDate.getTime())) {
-        console.warn('Invalid recession start date:', recession.start);
-        return;
-      }
-      
-      if (!endDate || isNaN(endDate.getTime())) {
-        console.warn('Invalid recession end date:', recession.end);
-        return;
-      }
-      
-      try {
-        // Get x coordinates using the scale
-        const startX = xScale.scale(startDate);
-        const endX = xScale.scale(endDate);
-        
-        // Create recession area
-        const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        recessionArea.setAttribute('x', startX);
-        recessionArea.setAttribute('y', 0);
-        recessionArea.setAttribute('width', endX - startX);
-        recessionArea.setAttribute('height', innerHeight);
-        recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
-        recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
-        recessionArea.setAttribute('stroke-width', 1);
-        recessionArea.setAttribute('class', `visioncharts-recession-area recession-${index}`);
-        
-        // Add to group
-        recessionsGroup.appendChild(recessionArea);
-        
-        // Add label if there's enough space
-        if (endX - startX > 30) {
-          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', startX + (endX - startX) / 2);
-          label.setAttribute('y', 15);
-          label.setAttribute('text-anchor', 'middle');
-          label.setAttribute('font-size', '10px');
-          label.setAttribute('fill', '#888');
-          label.setAttribute('class', 'visioncharts-recession-label');
-          
-          recessionsGroup.appendChild(label);
-        }
-      } catch (error) {
-        console.error('Error rendering recession area:', error);
-      }
-    });
-    
-    // Add to chart
-    this.state.chart.appendChild(recessionsGroup);
   }
 
   /**
@@ -1024,20 +951,26 @@ export default class Chart {
    * Update recession lines
    * @private
    */
-  updateRecessionLines() {
+    updateRecessionLines() {
     console.log('updateRecessionLines called');
     
     if (!this.state.chart) return;
     
     // Remove existing recession lines
-    const existingRecessionLines = this.state.chart.querySelector('.visioncharts-recession-lines');
-    if (existingRecessionLines) {
-      existingRecessionLines.parentNode.removeChild(existingRecessionLines);
+    if (this.state.components.recessionLines) {
+      this.state.components.recessionLines.destroy();
+      this.state.components.recessionLines = null;
     }
     
     // Re-render recession lines if enabled
     if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-      this.renderRecessionLines();
+      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+      this.state.components.recessionLines.render(
+        this.state.chart, 
+        this.options.recessions, 
+        this.state.scales.x, 
+        this.state.dimensions.innerHeight
+      );
     }
   }
 
@@ -2083,6 +2016,11 @@ export default class Chart {
         this.state.components.hoverPointsGroup.parentNode.removeChild(this.state.components.hoverPointsGroup);
       }
       this.state.components.hoverPointsGroup = null;
+    }
+
+    if (this.state.components.recessionLines) {
+      this.state.components.recessionLines.destroy();
+      this.state.components.recessionLines = null;
     }
     
     // Clean up panel mode hover features

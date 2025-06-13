@@ -1,6 +1,7 @@
 import Chart from '../core/Chart.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
+import RecessionLines from '../components/RecessionLines.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 
 /**
@@ -966,7 +967,15 @@ export default class LineChart extends Chart {
         
         // Render recession lines for this panel if enabled
         if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-          this.renderPanelRecessionLines(panelGroup, xScale, effectivePanelHeight, innerWidth);
+          RecessionLines.renderForPanel(
+            panelGroup, 
+            this.options.recessions, 
+            xScale, 
+            effectivePanelHeight, 
+            innerWidth,
+            this.options.xType,
+            this.options.recessionLinesOptions || {}
+          );
         }
         
         // Render panel data
@@ -1013,115 +1022,6 @@ export default class LineChart extends Chart {
       
       panel.appendChild(zeroLine);
     }
-  }
-  
-  /**
-   * Render recession lines for a specific panel
-   * @private
-   */
-  renderPanelRecessionLines(panel, xScale, height, width) {
-    const { recessions } = this.options;
-    
-    // Create recession lines group for this panel
-    const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    recessionsGroup.setAttribute('class', 'visioncharts-panel-recession-lines');
-    
-    // Process each recession period
-    recessions.forEach((recession, index) => {
-      // Extract dates
-      const startDate = recession.start instanceof Date ? 
-                      recession.start : new Date(recession.start);
-      const endDate = recession.end instanceof Date ? 
-                      recession.end : (recession.end ? new Date(recession.end) : new Date());
-      
-      // Validate dates
-      if (!startDate || isNaN(startDate.getTime())) {
-        console.warn('Invalid recession start date:', recession.start);
-        return;
-      }
-      
-      if (!endDate || isNaN(endDate.getTime())) {
-        console.warn('Invalid recession end date:', recession.end);
-        return;
-      }
-      
-      try {
-        // For bar charts with category data, we need special handling
-        if (this.options.xType === 'category') {
-          // For category scale, recession areas should span the full width
-          // since categories don't necessarily correspond to dates
-          const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-          recessionArea.setAttribute('x', 0);
-          recessionArea.setAttribute('y', 0);
-          recessionArea.setAttribute('width', width);
-          recessionArea.setAttribute('height', height);
-          recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
-          recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
-          recessionArea.setAttribute('stroke-width', 1);
-          recessionArea.setAttribute('class', `visioncharts-panel-recession-area recession-${index}`);
-          
-          recessionsGroup.appendChild(recessionArea);
-          
-          // Add label
-          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', width / 2);
-          label.setAttribute('y', 15);
-          label.setAttribute('text-anchor', 'middle');
-          label.setAttribute('font-size', '10px');
-          label.setAttribute('fill', '#888');
-          label.setAttribute('class', 'visioncharts-panel-recession-label');
-          
-          recessionsGroup.appendChild(label);
-        } else {
-          // For time/numeric scales, use normal recession rendering
-          const startX = xScale.scale(startDate);
-          const endX = xScale.scale(endDate);
-          
-          // Only render if the recession overlaps with this panel's time range
-          if (startX < width && endX > 0) {
-            // Clamp to panel bounds
-            const clampedStartX = Math.max(0, startX);
-            const clampedEndX = Math.min(width, endX);
-            
-            // Create recession area
-            const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            recessionArea.setAttribute('x', clampedStartX);
-            recessionArea.setAttribute('y', 0);
-            recessionArea.setAttribute('width', clampedEndX - clampedStartX);
-            recessionArea.setAttribute('height', height);
-            recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
-            recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
-            recessionArea.setAttribute('stroke-width', 1);
-            recessionArea.setAttribute('class', `visioncharts-panel-recession-area recession-${index}`);
-            
-            // Add to group
-            recessionsGroup.appendChild(recessionArea);
-            
-            // Add label if there's enough space
-            if (clampedEndX - clampedStartX > 30) {
-              const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
-              const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-              label.textContent = labelText;
-              label.setAttribute('x', clampedStartX + (clampedEndX - clampedStartX) / 2);
-              label.setAttribute('y', 15);
-              label.setAttribute('text-anchor', 'middle');
-              label.setAttribute('font-size', '10px');
-              label.setAttribute('fill', '#888');
-              label.setAttribute('class', 'visioncharts-panel-recession-label');
-              
-              recessionsGroup.appendChild(label);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error rendering panel recession area:', error);
-      }
-    });
-    
-    // Add to panel
-    panel.appendChild(recessionsGroup);
   }
   
   /**
