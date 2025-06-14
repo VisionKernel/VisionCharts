@@ -3,6 +3,8 @@
  * Renders a horizontal line representing the median value of the dataset
  */
 
+import SvgRenderer from '../renderers/SvgRenderer.js';
+
 export class MedianLine {
   constructor(config = {}) {
     this.config = {
@@ -69,7 +71,7 @@ export class MedianLine {
    * @param {string} valueField - Field name for values
    */
   render(chart, data, valueField = 'y') {
-    if (!chart || !chart.state || !chart.state.svg) {
+    if (!chart || !chart.state || !chart.state.chart) {
       console.warn('MedianLine: Invalid chart instance provided');
       return;
     }
@@ -93,45 +95,51 @@ export class MedianLine {
       return;
     }
 
-    // Get chart plotting area
-    const chartWidth = dimensions.width - dimensions.margin.left - dimensions.margin.right;
-    const chartHeight = dimensions.height - dimensions.margin.top - dimensions.margin.bottom;
+    // Get chart plotting area dimensions
+    const chartWidth = dimensions.innerWidth;
+    const chartHeight = dimensions.innerHeight;
     
-    // Convert median value to y coordinate
-    const yPosition = yScale(this.medianValue);
+    // Convert median value to y coordinate using the scale
+    const yPosition = yScale.scale(this.medianValue);
     
     // Check if the median line is within the visible chart area
     if (yPosition < 0 || yPosition > chartHeight) {
-      console.warn('MedianLine: Median value is outside chart bounds');
+      console.warn('MedianLine: Median value is outside chart bounds', {
+        yPosition,
+        chartHeight,
+        medianValue: this.medianValue
+      });
       return;
     }
 
-    // Create or select the median line group
-    const chartGroup = chart.state.svg.select('.chart-content') || chart.state.svg;
-    
-    // Create the median line
-    this.element = chartGroup
-      .append('g')
-      .attr('class', this.config.className);
+    // Create the median line group using SvgRenderer
+    this.element = SvgRenderer.createGroup({
+      class: this.config.className
+    });
 
-    // Add the horizontal line
-    this.element
-      .append('line')
-      .attr('class', `${this.config.className}-line`)
-      .attr('x1', 0)
-      .attr('y1', yPosition)
-      .attr('x2', chartWidth)
-      .attr('y2', yPosition)
-      .style('stroke', this.config.color)
-      .style('stroke-width', this.config.width)
-      .style('stroke-opacity', this.config.opacity)
-      .style('stroke-dasharray', this.config.strokeDasharray)
-      .style('pointer-events', 'none');
+    // Add the horizontal line using SvgRenderer
+    const lineElement = SvgRenderer.createLine(
+      0, yPosition,
+      chartWidth, yPosition,
+      {
+        class: `${this.config.className}-line`,
+        stroke: this.config.color,
+        'stroke-width': this.config.width,
+        'stroke-opacity': this.config.opacity,
+        'stroke-dasharray': this.config.strokeDasharray,
+        'pointer-events': 'none'
+      }
+    );
+    
+    this.element.appendChild(lineElement);
 
     // Add label if enabled
     if (this.config.showLabel) {
       this.renderLabel(chartWidth, yPosition);
     }
+
+    // Add to chart
+    chart.state.chart.appendChild(this.element);
 
     return this;
   }
@@ -165,18 +173,22 @@ export class MedianLine {
 
     const labelY = yPosition + this.config.labelOffset.y;
 
-    this.labelElement = this.element
-      .append('text')
-      .attr('class', `${this.config.className}-label`)
-      .attr('x', labelX)
-      .attr('y', labelY)
-      .attr('text-anchor', labelAnchor)
-      .style('font-size', this.config.labelStyle.fontSize)
-      .style('font-family', this.config.labelStyle.fontFamily)
-      .style('fill', this.config.labelStyle.fill)
-      .style('font-weight', this.config.labelStyle.fontWeight)
-      .style('pointer-events', 'none')
-      .text(`${this.config.labelText}: ${this.medianValue.toFixed(2)}`);
+    this.labelElement = SvgRenderer.createText(
+      `${this.config.labelText}: ${this.medianValue.toFixed(2)}`,
+      labelX,
+      labelY,
+      {
+        class: `${this.config.className}-label`,
+        'text-anchor': labelAnchor,
+        'font-size': this.config.labelStyle.fontSize,
+        'font-family': this.config.labelStyle.fontFamily,
+        fill: this.config.labelStyle.fill,
+        'font-weight': this.config.labelStyle.fontWeight,
+        'pointer-events': 'none'
+      }
+    );
+
+    this.element.appendChild(this.labelElement);
   }
 
   /**
@@ -193,8 +205,8 @@ export class MedianLine {
    * Remove the median line from the chart
    */
   remove() {
-    if (this.element) {
-      this.element.remove();
+    if (this.element && this.element.parentNode) {
+      this.element.parentNode.removeChild(this.element);
       this.element = null;
       this.labelElement = null;
     }
@@ -205,7 +217,7 @@ export class MedianLine {
    */
   show() {
     if (this.element) {
-      this.element.style('display', 'block');
+      this.element.style.display = 'block';
     }
   }
 
@@ -214,7 +226,7 @@ export class MedianLine {
    */
   hide() {
     if (this.element) {
-      this.element.style('display', 'none');
+      this.element.style.display = 'none';
     }
   }
 
@@ -223,8 +235,8 @@ export class MedianLine {
    */
   toggle() {
     if (this.element) {
-      const currentDisplay = this.element.style('display');
-      this.element.style('display', currentDisplay === 'none' ? 'block' : 'none');
+      const currentDisplay = this.element.style.display;
+      this.element.style.display = currentDisplay === 'none' ? 'block' : 'none';
     }
   }
 
@@ -254,7 +266,7 @@ export class MedianLine {
    * @returns {boolean} - True if visible, false otherwise
    */
   isVisible() {
-    return this.element && this.element.style('display') !== 'none';
+    return this.element && this.element.style.display !== 'none';
   }
 
   /**

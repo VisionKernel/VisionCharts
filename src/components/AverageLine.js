@@ -1,7 +1,9 @@
 /**
- * AverageLine Component
+ * AverageLine Component 
  * Renders a horizontal line representing the average (mean) value of the dataset
  */
+
+import SvgRenderer from '../renderers/SvgRenderer.js';
 
 export class AverageLine {
   constructor(config = {}) {
@@ -61,7 +63,7 @@ export class AverageLine {
    * @param {string} valueField - Field name for values
    */
   render(chart, data, valueField = 'y') {
-    if (!chart || !chart.state || !chart.state.svg) {
+    if (!chart || !chart.state || !chart.state.chart) {
       console.warn('AverageLine: Invalid chart instance provided');
       return;
     }
@@ -85,45 +87,51 @@ export class AverageLine {
       return;
     }
 
-    // Get chart plotting area
-    const chartWidth = dimensions.width - dimensions.margin.left - dimensions.margin.right;
-    const chartHeight = dimensions.height - dimensions.margin.top - dimensions.margin.bottom;
+    // Get chart plotting area dimensions
+    const chartWidth = dimensions.innerWidth;
+    const chartHeight = dimensions.innerHeight;
     
-    // Convert average value to y coordinate
-    const yPosition = yScale(this.averageValue);
+    // Convert average value to y coordinate using the scale
+    const yPosition = yScale.scale(this.averageValue);
     
     // Check if the average line is within the visible chart area
     if (yPosition < 0 || yPosition > chartHeight) {
-      console.warn('AverageLine: Average value is outside chart bounds');
+      console.warn('AverageLine: Average value is outside chart bounds', {
+        yPosition,
+        chartHeight,
+        averageValue: this.averageValue
+      });
       return;
     }
 
-    // Create or select the average line group
-    const chartGroup = chart.state.svg.select('.chart-content') || chart.state.svg;
-    
-    // Create the average line
-    this.element = chartGroup
-      .append('g')
-      .attr('class', this.config.className);
+    // Create the average line group using SvgRenderer
+    this.element = SvgRenderer.createGroup({
+      class: this.config.className
+    });
 
-    // Add the horizontal line
-    this.element
-      .append('line')
-      .attr('class', `${this.config.className}-line`)
-      .attr('x1', 0)
-      .attr('y1', yPosition)
-      .attr('x2', chartWidth)
-      .attr('y2', yPosition)
-      .style('stroke', this.config.color)
-      .style('stroke-width', this.config.width)
-      .style('stroke-opacity', this.config.opacity)
-      .style('stroke-dasharray', this.config.strokeDasharray)
-      .style('pointer-events', 'none');
+    // Add the horizontal line using SvgRenderer
+    const lineElement = SvgRenderer.createLine(
+      0, yPosition,
+      chartWidth, yPosition,
+      {
+        class: `${this.config.className}-line`,
+        stroke: this.config.color,
+        'stroke-width': this.config.width,
+        'stroke-opacity': this.config.opacity,
+        'stroke-dasharray': this.config.strokeDasharray,
+        'pointer-events': 'none'
+      }
+    );
+    
+    this.element.appendChild(lineElement);
 
     // Add label if enabled
     if (this.config.showLabel) {
       this.renderLabel(chartWidth, yPosition);
     }
+
+    // Add to chart
+    chart.state.chart.appendChild(this.element);
 
     return this;
   }
@@ -157,18 +165,22 @@ export class AverageLine {
 
     const labelY = yPosition + this.config.labelOffset.y;
 
-    this.labelElement = this.element
-      .append('text')
-      .attr('class', `${this.config.className}-label`)
-      .attr('x', labelX)
-      .attr('y', labelY)
-      .attr('text-anchor', labelAnchor)
-      .style('font-size', this.config.labelStyle.fontSize)
-      .style('font-family', this.config.labelStyle.fontFamily)
-      .style('fill', this.config.labelStyle.fill)
-      .style('font-weight', this.config.labelStyle.fontWeight)
-      .style('pointer-events', 'none')
-      .text(`${this.config.labelText}: ${this.averageValue.toFixed(2)}`);
+    this.labelElement = SvgRenderer.createText(
+      `${this.config.labelText}: ${this.averageValue.toFixed(2)}`,
+      labelX,
+      labelY,
+      {
+        class: `${this.config.className}-label`,
+        'text-anchor': labelAnchor,
+        'font-size': this.config.labelStyle.fontSize,
+        'font-family': this.config.labelStyle.fontFamily,
+        fill: this.config.labelStyle.fill,
+        'font-weight': this.config.labelStyle.fontWeight,
+        'pointer-events': 'none'
+      }
+    );
+
+    this.element.appendChild(this.labelElement);
   }
 
   /**
@@ -185,8 +197,8 @@ export class AverageLine {
    * Remove the average line from the chart
    */
   remove() {
-    if (this.element) {
-      this.element.remove();
+    if (this.element && this.element.parentNode) {
+      this.element.parentNode.removeChild(this.element);
       this.element = null;
       this.labelElement = null;
     }
@@ -197,7 +209,7 @@ export class AverageLine {
    */
   show() {
     if (this.element) {
-      this.element.style('display', 'block');
+      this.element.style.display = 'block';
     }
   }
 
@@ -206,7 +218,7 @@ export class AverageLine {
    */
   hide() {
     if (this.element) {
-      this.element.style('display', 'none');
+      this.element.style.display = 'none';
     }
   }
 
@@ -215,8 +227,8 @@ export class AverageLine {
    */
   toggle() {
     if (this.element) {
-      const currentDisplay = this.element.style('display');
-      this.element.style('display', currentDisplay === 'none' ? 'block' : 'none');
+      const currentDisplay = this.element.style.display;
+      this.element.style.display = currentDisplay === 'none' ? 'block' : 'none';
     }
   }
 
@@ -246,6 +258,6 @@ export class AverageLine {
    * @returns {boolean} - True if visible, false otherwise
    */
   isVisible() {
-    return this.element && this.element.style('display') !== 'none';
+    return this.element && this.element.style.display !== 'none';
   }
 }

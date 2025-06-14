@@ -632,65 +632,54 @@ export default class Chart {
   }
 
   /**
-   * Modified render method to enforce strict panel mode
-   * @public
-   */
-  render() {
-    console.log('render called with isPanelView =', this.options.isPanelView);
-    
-    // Clear the container
-    if (!this.state.container) {
-      console.error('Cannot render chart: container is null');
-      return this;
-    }
-    
-    this.state.container.innerHTML = '';
-    
-    // Create SVG
-    this.createSvg();
-    
-    if (!this.state.chart) {
-      console.error('Failed to create SVG chart element');
-      return this;
-    }
-    
-    console.log('About to render chart content');
-    
-    // Completely separate rendering modes
-    if (this.options.isPanelView) {
-      console.log('PANEL MODE: Rendering panel-only content');
-      this.renderPanelMode();
-    } else {
-      console.log('SINGLE MODE: Rendering single-panel content');
-      this.renderSingleMode();
-    }
-
-
-    if (this.options.showAverageLine && this.averageLine) {
-      const data = this.getDataForStatistics();
-      const valueField = this.getValueField();
-      this.averageLine.render(this, data, valueField);
-    }
-    
-    // Render median line if enabled
-    if (this.options.showMedianLine && this.medianLine) {
-      const data = this.getDataForStatistics();
-      const valueField = this.getValueField();
-      this.medianLine.render(this, data, valueField);
-    }
-      
-    // Common components for both modes
-    this.renderLegend();
-    this.renderTitle();
-    this.renderAxisNames();
-    
-    // Update state
-    this.state.rendered = true;
-    
-    console.log('Chart rendering completed, rendered=true');
-    
+ * Modified render method to enforce proper rendering order
+ */
+render() {
+  console.log('render called with isPanelView =', this.options.isPanelView);
+  
+  // Clear the container
+  if (!this.state.container) {
+    console.error('Cannot render chart: container is null');
     return this;
   }
+  
+  this.state.container.innerHTML = '';
+  
+  // Create SVG
+  this.createSvg();
+  
+  if (!this.state.chart) {
+    console.error('Failed to create SVG chart element');
+    return this;
+  }
+  
+  console.log('About to render chart content');
+  
+  // Completely separate rendering modes
+  if (this.options.isPanelView) {
+    console.log('PANEL MODE: Rendering panel-only content');
+    this.renderPanelMode();
+  } else {
+    console.log('SINGLE MODE: Rendering single-panel content');
+    this.renderSingleMode();
+  }
+
+  // Common components for both modes
+  this.renderLegend();
+  this.renderTitle();
+  this.renderAxisNames();
+
+  // FIXED: Render statistical lines AFTER everything else is set up
+  this.renderStatisticalLines();
+  
+  // Update state
+  this.state.rendered = true;
+  
+  console.log('Chart rendering completed, rendered=true');
+  
+  return this;
+}
+
   
   /**
  * Render chart in single-panel mode
@@ -1129,54 +1118,56 @@ cleanupAxes() {
   }
 
   /**
-   * Update the chart
-   * @public
-   */
-  update() {
-    console.log('update called with isPanelView =', this.options.isPanelView);
-    
-    if (!this.state.rendered) {
-      console.log('Chart not rendered yet, calling render instead');
-      return this.render();
-    }
-    
-    if (!this.state.chart) {
-      console.error('Cannot update chart: chart element is null');
-      return this;
-    }
-    
-    // Process datasets
-    this.processDatasets();
-    
-    // Update scales
-    this.updateScales();
-    
-    // Clear existing chart content completely
-    if (this.state.chart) {
-      this.state.chart.innerHTML = '';
-    }
-    
-    // Clean up any existing hover components
-    this.cleanupHoverFeatures();
-    
-    // Re-render based on current mode
-    if (this.options.isPanelView) {
-      console.log('UPDATE: Re-rendering in panel mode');
-      this.renderPanelMode();
-    } else {
-      console.log('UPDATE: Re-rendering in single mode');
-      this.renderSingleMode();
-    }
-    
-    // Update common elements
-    const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
-    if (oldLegend) {
-      oldLegend.parentNode.removeChild(oldLegend);
-    }
-    this.renderLegend();
-    
+ * FIXED: Update method to include statistical lines
+ */
+update() {
+  console.log('update called with isPanelView =', this.options.isPanelView);
+  
+  if (!this.state.rendered) {
+    console.log('Chart not rendered yet, calling render instead');
+    return this.render();
+  }
+  
+  if (!this.state.chart) {
+    console.error('Cannot update chart: chart element is null');
     return this;
   }
+  
+  // Process datasets
+  this.processDatasets();
+  
+  // Update scales
+  this.updateScales();
+  
+  // Clear existing chart content completely
+  if (this.state.chart) {
+    this.state.chart.innerHTML = '';
+  }
+  
+  // Clean up any existing hover components
+  this.cleanupHoverFeatures();
+  
+  // Re-render based on current mode
+  if (this.options.isPanelView) {
+    console.log('UPDATE: Re-rendering in panel mode');
+    this.renderPanelMode();
+  } else {
+    console.log('UPDATE: Re-rendering in single mode');
+    this.renderSingleMode();
+  }
+  
+  // Update common elements
+  const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
+  if (oldLegend) {
+    oldLegend.parentNode.removeChild(oldLegend);
+  }
+  this.renderLegend();
+  
+  // FIXED: Update statistical lines after main chart update
+  this.updateStatisticalLines();
+  
+  return this;
+}
 
   /**
    * Update scales using ScaleManager
@@ -1394,118 +1385,221 @@ cleanupAxes() {
   }
 
   /**
-   * Toggle average line visibility
-   * @param {boolean} show - Whether to show the average line
-   * @param {string} datasetId - Optional: specific dataset to calculate average from
-   */
-  toggleAverageLine(show = null, datasetId = null) {
-    if (show === null) {
-      show = !this.options.showAverageLine;
-    }
-    
-    this.options.showAverageLine = show;
-    
-    if (show) {
-      if (!this.averageLine) {
-        this.averageLine = new AverageLine(this.options.averageLineConfig || {});
-      }
-      
-      // Get data for calculation
-      const data = this.getDataForStatistics(datasetId);
-      const valueField = this.getValueField();
-      
-      if (data && data.length > 0) {
-        this.averageLine.render(this, data, valueField);
-      }
-    } else if (this.averageLine) {
-      this.averageLine.remove();
-    }
-    
-    return this;
+ * FIXED: Toggle average line visibility
+ * @param {boolean} show - Whether to show the average line
+ * @param {string} datasetId - Optional: specific dataset to calculate average from
+ */
+toggleAverageLine(show = null, datasetId = null) {
+  console.log('toggleAverageLine called:', show, datasetId);
+  
+  if (show === null) {
+    show = !this.options.showAverageLine;
   }
+  
+  this.options.showAverageLine = show;
+  
+  if (show) {
+    // Create instance if it doesn't exist
+    if (!this.averageLine) {
+      this.averageLine = new AverageLine(this.options.averageLineConfig || {});
+    }
+    
+    // Get data for calculation
+    const data = this.getDataForStatistics(datasetId);
+    const valueField = this.getValueField();
+    
+    console.log('Rendering average line with:', {
+      dataLength: data.length,
+      valueField: valueField,
+      hasScales: Boolean(this.state.scales.y),
+      hasChart: Boolean(this.state.chart)
+    });
+    
+    if (data && data.length > 0 && this.state.rendered) {
+      this.averageLine.render(this, data, valueField);
+    }
+  } else if (this.averageLine) {
+    console.log('Removing average line');
+    this.averageLine.remove();
+  }
+  
+  return this;
+}
 
   /**
-   * Toggle median line visibility
-   * @param {boolean} show - Whether to show the median line
-   * @param {string} datasetId - Optional: specific dataset to calculate median from
-   */
-  toggleMedianLine(show = null, datasetId = null) {
-    if (show === null) {
-      show = !this.options.showMedianLine;
-    }
-    
-    this.options.showMedianLine = show;
-    
-    if (show) {
-      if (!this.medianLine) {
-        this.medianLine = new MedianLine(this.options.medianLineConfig || {});
-      }
-      
-      // Get data for calculation
-      const data = this.getDataForStatistics(datasetId);
-      const valueField = this.getValueField();
-      
-      if (data && data.length > 0) {
-        this.medianLine.render(this, data, valueField);
-      }
-    } else if (this.medianLine) {
-      this.medianLine.remove();
-    }
-    
-    return this;
+ * FIXED: Toggle median line visibility
+ * @param {boolean} show - Whether to show the median line
+ * @param {string} datasetId - Optional: specific dataset to calculate median from
+ */
+toggleMedianLine(show = null, datasetId = null) {
+  console.log('toggleMedianLine called:', show, datasetId);
+  
+  if (show === null) {
+    show = !this.options.showMedianLine;
   }
+  
+  this.options.showMedianLine = show;
+  
+  if (show) {
+    // Create instance if it doesn't exist
+    if (!this.medianLine) {
+      this.medianLine = new MedianLine(this.options.medianLineConfig || {});
+    }
+    
+    // Get data for calculation
+    const data = this.getDataForStatistics(datasetId);
+    const valueField = this.getValueField();
+    
+    console.log('Rendering median line with:', {
+      dataLength: data.length,
+      valueField: valueField,
+      hasScales: Boolean(this.state.scales.y),
+      hasChart: Boolean(this.state.chart)
+    });
+    
+    if (data && data.length > 0 && this.state.rendered) {
+      this.medianLine.render(this, data, valueField);
+    }
+  } else if (this.medianLine) {
+    console.log('Removing median line');
+    this.medianLine.remove();
+  }
+  
+  return this;
+}
+
 
   /**
- * Get data for statistical calculations
+ * FIXED: Get data for statistical calculations
  * @param {string} datasetId - Optional: specific dataset ID
  * @returns {Array} - Data array for calculations
  */
 getDataForStatistics(datasetId = null) {
-  if (!this.config.data || this.config.data.length === 0) {
-    return [];
+  console.log('getDataForStatistics called with datasetId:', datasetId);
+  
+  // Check if we have data in the new config format
+  if (this.config.data && this.config.data.length > 0) {
+    if (datasetId) {
+      // Find specific dataset
+      const dataset = this.config.data.find(d => d.id === datasetId);
+      console.log('Found specific dataset:', Boolean(dataset));
+      return dataset ? dataset.data : [];
+    } else {
+      // Use first dataset by default
+      const firstDataset = this.config.data[0];
+      console.log('Using first dataset, data length:', firstDataset.data?.length || 0);
+      return firstDataset.data || [];
+    }
   }
   
-  if (datasetId) {
-    // Find specific dataset
-    const dataset = this.config.data.find(d => d.id === datasetId);
-    return dataset ? dataset.data : [];
-  } else {
-    // Use first dataset by default
-    return this.config.data[0].data;
+  // Fallback to state.datasets if config.data is not available
+  if (this.state.datasets && this.state.datasets.length > 0) {
+    if (datasetId) {
+      const dataset = this.state.datasets.find(d => d.id === datasetId);
+      console.log('Found dataset in state:', Boolean(dataset));
+      return dataset ? dataset.data : [];
+    } else {
+      const firstDataset = this.state.datasets[0];
+      console.log('Using first state dataset, data length:', firstDataset.data?.length || 0);
+      return firstDataset.data || [];
+    }
   }
+  
+  console.warn('No data found for statistics');
+  return [];
 }
 
 /**
- * Get the appropriate value field name for the chart type
+ * FIXED: Get the appropriate value field name for the chart type
  * @returns {string} - Field name for values
  */
 getValueField() {
+  // First check if explicitly set in options
   if (this.options.yField) {
+    console.log('Using yField from options:', this.options.yField);
     return this.options.yField;
   }
   
   // Try to detect field name from data
-  if (this.config.data && this.config.data.length > 0 && this.config.data[0].data && this.config.data[0].data.length > 0) {
-    const samplePoint = this.config.data[0].data[0];
+  const data = this.getDataForStatistics();
+  if (data && data.length > 0) {
+    const samplePoint = data[0];
     
     // Common field names in order of preference
     const possibleFields = ['price', 'value', 'y', 'amount', 'count'];
     
     for (const field of possibleFields) {
       if (samplePoint.hasOwnProperty(field) && typeof samplePoint[field] === 'number') {
+        console.log('Detected value field:', field);
         return field;
       }
     }
+    
+    console.log('Sample data point keys:', Object.keys(samplePoint));
   }
   
   // Default fallback
+  console.log('Using default value field: y');
   return 'y';
 }
 
 /**
- * Update statistical lines when data changes
+ * NEW METHOD: Render statistical lines separately to ensure proper timing
+ */
+renderStatisticalLines() {
+  console.log('renderStatisticalLines called');
+  
+  // Only render in single mode (not panel mode)
+  if (this.options.isPanelView) {
+    console.log('Panel mode detected, skipping statistical lines');
+    return;
+  }
+  
+  // Ensure we have valid scales and chart
+  if (!this.state.scales.y || !this.state.chart) {
+    console.warn('Scales or chart not ready for statistical lines');
+    return;
+  }
+  
+  // Render average line if enabled
+  if (this.options.showAverageLine) {
+    if (!this.averageLine) {
+      this.averageLine = new AverageLine(this.options.averageLineConfig || {});
+    }
+    
+    const data = this.getDataForStatistics();
+    const valueField = this.getValueField();
+    
+    console.log('Rendering average line with data:', data.length, 'points');
+    this.averageLine.render(this, data, valueField);
+  }
+  
+  // Render median line if enabled
+  if (this.options.showMedianLine) {
+    if (!this.medianLine) {
+      this.medianLine = new MedianLine(this.options.medianLineConfig || {});
+    }
+    
+    const data = this.getDataForStatistics();
+    const valueField = this.getValueField();
+    
+    console.log('Rendering median line with data:', data.length, 'points');
+    this.medianLine.render(this, data, valueField);
+  }
+}
+
+
+/**
+ * FIXED: Update statistical lines when data changes
  */
 updateStatisticalLines() {
+  console.log('updateStatisticalLines called');
+  
+  // Only update in single mode
+  if (this.options.isPanelView) {
+    return;
+  }
+  
   if (this.options.showAverageLine && this.averageLine) {
     const data = this.getDataForStatistics();
     const valueField = this.getValueField();
