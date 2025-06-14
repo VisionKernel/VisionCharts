@@ -523,7 +523,7 @@
   </footer>
   
   <script type="module">
-    // Import the VisionCharts library
+   // Import the VisionCharts library
 import { LineChart, BarChart, calculateIndicator } from '../src/index.js';
 
 // Debug helper function - logs to console only
@@ -602,6 +602,12 @@ function formatDate(timestamp) {
 // Chart instances
 let lineChart = null;
 let barChart = null;
+
+// Event listener management - prevent duplicate listeners
+const eventListenerState = {
+  lineStatisticalListenersAttached: false,
+  barStatisticalListenersAttached: false
+};
 
 // Define recession data for charts
 const recessions = [
@@ -1395,6 +1401,8 @@ function setupLineChartControls() {
       updateStudyDatasetOptions();
     });
   }
+  
+  // FIXED: Setup statistical controls only once for line chart
   setupLineStatisticalControls();
 }
 
@@ -1460,8 +1468,14 @@ async function initBarChart() {
   }
 }
 
+// FIXED: Line chart statistical controls - only set up once
 function setupLineStatisticalControls() {
-  if (!lineChart) return;
+  if (!lineChart || eventListenerState.lineStatisticalListenersAttached) {
+    console.log('Line statistical controls already attached or chart not ready');
+    return;
+  }
+  
+  console.log('Setting up line statistical controls');
   
   // Toggle average line
   const avgToggle = document.getElementById('line-toggle-average');
@@ -1469,6 +1483,7 @@ function setupLineStatisticalControls() {
     avgToggle.addEventListener('click', (e) => {
       e.target.classList.toggle('active');
       const showAverageLine = e.target.classList.contains('active');
+      console.log('Line average toggle clicked:', showAverageLine);
       lineChart.toggleAverageLine(showAverageLine);
     });
   }
@@ -1479,35 +1494,89 @@ function setupLineStatisticalControls() {
     medianToggle.addEventListener('click', (e) => {
       e.target.classList.toggle('active');
       const showMedianLine = e.target.classList.contains('active');
+      console.log('Line median toggle clicked:', showMedianLine);
       lineChart.toggleMedianLine(showMedianLine);
     });
   }
+  
+  eventListenerState.lineStatisticalListenersAttached = true;
+  console.log('Line statistical controls setup complete');
 }
 
+// FIXED: Bar chart statistical controls - only set up once
 function setupBarStatisticalControls() {
-  if (!barChart) return;
+  if (!barChart || eventListenerState.barStatisticalListenersAttached) {
+    console.log('Bar statistical controls already attached or chart not ready');
+    return;
+  }
+  
+  console.log('Setting up bar statistical controls');
   
   // Toggle average line
   const avgToggle = document.getElementById('bar-toggle-average');
   if (avgToggle) {
-    avgToggle.addEventListener('click', (e) => {
+    // Remove any existing listeners first
+    const newAvgToggle = avgToggle.cloneNode(true);
+    avgToggle.parentNode.replaceChild(newAvgToggle, avgToggle);
+    
+    newAvgToggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
       e.target.classList.toggle('active');
       const showAverageLine = e.target.classList.contains('active');
-      barChart.toggleAverageLine(showAverageLine);
+      console.log('Bar average toggle clicked:', showAverageLine, 'Chart exists:', !!barChart);
+      
+      if (barChart && typeof barChart.toggleAverageLine === 'function') {
+        try {
+          barChart.toggleAverageLine(showAverageLine);
+          console.log('Bar average line toggled successfully');
+        } catch (error) {
+          console.error('Error toggling bar average line:', error);
+        }
+      } else {
+        console.error('Bar chart or toggleAverageLine method not available');
+      }
     });
+    console.log('Bar average toggle listener attached');
+  } else {
+    console.error('Bar average toggle button not found');
   }
   
   // Toggle median line
   const medianToggle = document.getElementById('bar-toggle-median');
   if (medianToggle) {
-    medianToggle.addEventListener('click', (e) => {
+    // Remove any existing listeners first
+    const newMedianToggle = medianToggle.cloneNode(true);
+    medianToggle.parentNode.replaceChild(newMedianToggle, medianToggle);
+    
+    newMedianToggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
       e.target.classList.toggle('active');
       const showMedianLine = e.target.classList.contains('active');
-      barChart.toggleMedianLine(showMedianLine);
+      console.log('Bar median toggle clicked:', showMedianLine, 'Chart exists:', !!barChart);
+      
+      if (barChart && typeof barChart.toggleMedianLine === 'function') {
+        try {
+          barChart.toggleMedianLine(showMedianLine);
+          console.log('Bar median line toggled successfully');
+        } catch (error) {
+          console.error('Error toggling bar median line:', error);
+        }
+      } else {
+        console.error('Bar chart or toggleMedianLine method not available');
+      }
     });
+    console.log('Bar median toggle listener attached');
+  } else {
+    console.error('Bar median toggle button not found');
   }
+  
+  eventListenerState.barStatisticalListenersAttached = true;
+  console.log('Bar statistical controls setup complete');
 }
-
 
 // Add event listeners for Bar Chart Controls
 function setupBarChartControls() {
@@ -1629,10 +1698,12 @@ function setupBarChartControls() {
       updateStudyDatasetOptions();
     });
   }
+  
+  // FIXED: Setup statistical controls only once for bar chart
   setupBarStatisticalControls();
 }
 
-// Tab functionality
+// Tab functionality - FIXED to prevent duplicate listeners
 function setupTabs() {
   const tabs = document.querySelectorAll('.tab');
   const sections = document.querySelectorAll('.chart-section');
@@ -1656,21 +1727,15 @@ function setupTabs() {
             initLineChart().then(() => {
               setupStudies();
               updateStudyDatasetOptions();
-              setupLineStatisticalControls();
             });
           } else if (tabName === 'bar' && !barChart) {
             initBarChart().then(() => {
               setupStudies();
               updateStudyDatasetOptions();
-              setupBarStatisticalControls(); 
             });
-          } else {
-            // Chart already exists, just update controls
-            setupStudies();
-            updateStudyDatasetOptions();
-            if (tabName === 'line') setupLineStatisticalControls(); 
-            if (tabName === 'bar') setupBarStatisticalControls(); 
           }
+          // REMOVED: Duplicate setupStudies() and setupXXXStatisticalControls() calls
+          // The controls are already set up in the init functions
         } else {
           section.style.display = 'none';
         }
