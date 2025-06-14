@@ -271,14 +271,42 @@ export default class LineChart extends Chart {
    * @returns {string} Path definition
    */
   generateAreaPath(data) {
-    const { curve } = this.options;
-    const points = this.getDataPoints(data);
+    const { xField, yField, curve } = this.options;
+    const xScale = this.state.scales.x;
+    const yScale = this.state.scales.y;
+    
+    // Map data points to coordinates (same as generateLinePath)
+    const points = data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
     
     if (points.length === 0) return '';
     
     // Use SvgRenderer for area path generation
     const baselineY = this.state.dimensions.innerHeight;
     return SvgRenderer.curvedAreaPathDefinition(points, baselineY, curve);
+  }
+
+  /**
+   * Helper method to get data points as coordinates
+   * @private
+   * @param {Array} data - Chart data
+   * @returns {Array} Array of [x, y] coordinate pairs
+   */
+  getDataPoints(data) {
+    const { xField, yField } = this.options;
+    const xScale = this.state.scales.x;
+    const yScale = this.state.scales.y;
+    
+    return data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
   }
   
   /**

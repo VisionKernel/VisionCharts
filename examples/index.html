@@ -330,11 +330,6 @@
               <option value="monotone" selected>Monotone</option>
             </select>
           </div>
-          <div class="control-group">
-            <label for="line-toggle-gradient">
-              <input type="checkbox" id="line-toggle-gradient"> Use Gradient for Areas
-            </label>
-          </div>
         </div>
         
         <h3>Dataset Manager</h3>
@@ -1047,15 +1042,6 @@
         lineChart.options.curve = e.target.value;
         
         // Update the chart
-        lineChart.update();
-      });
-      
-      // Toggle gradient
-      document.getElementById('line-toggle-gradient').addEventListener('change', (e) => {
-        if (!lineChart) return;
-        
-        // Update gradient option and re-render
-        lineChart.options.gradient = e.target.checked;
         lineChart.update();
       });
       

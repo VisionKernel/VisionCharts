@@ -278,39 +278,71 @@ export default class Chart {
       return;
     }
     
+    // Store existing dataset settings to preserve area, areaOpacity, etc.
+    const existingSettings = {};
+    if (this.state.datasets) {
+      this.state.datasets.forEach(dataset => {
+        existingSettings[dataset.id] = {
+          area: dataset.area,
+          areaOpacity: dataset.areaOpacity,
+          width: dataset.width,
+          color: dataset.color,
+          visible: dataset.visible
+        };
+      });
+    }
+    
     // Handle array of objects (single dataset) vs array of datasets
     if (Array.isArray(data)) {
       if (data.length === 0) {
         this.state.datasets = [];
       } else if (data[0] && data[0].hasOwnProperty('data')) {
         // Array of datasets
-        this.state.datasets = data.map((dataset, index) => ({
-          id: dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`,
-          name: dataset.name || `Dataset ${index + 1}`,
-          color: dataset.color || this.options.colors[index % this.options.colors.length],
-          width: dataset.width || this.options.lineWidth,
-          type: dataset.type || 'line',
-          data: Array.isArray(dataset.data) ? dataset.data : []
-        }));
+        this.state.datasets = data.map((dataset, index) => {
+          const id = dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`;
+          const existing = existingSettings[id] || {};
+          
+          return {
+            id: id,
+            name: dataset.name || `Dataset ${index + 1}`,
+            color: existing.color || dataset.color || this.options.colors[index % this.options.colors.length],
+            width: existing.width || dataset.width || this.options.lineWidth,
+            type: dataset.type || 'line',
+            area: existing.area !== undefined ? existing.area : (dataset.area || false),
+            areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : (dataset.areaOpacity || 0.2),
+            visible: existing.visible !== undefined ? existing.visible : (dataset.visible !== false),
+            data: Array.isArray(dataset.data) ? dataset.data : []
+          };
+        });
       } else {
         // Array of data points (single dataset)
+        const existing = existingSettings['dataset-1'] || {};
+        
         this.state.datasets = [{
           id: 'dataset-1',
           name: 'Dataset',
-          color: this.options.colors[0],
-          width: this.options.lineWidth,
+          color: existing.color || this.options.colors[0],
+          width: existing.width || this.options.lineWidth,
           type: 'line',
+          area: existing.area !== undefined ? existing.area : false,
+          areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : 0.2,
+          visible: existing.visible !== undefined ? existing.visible : true,
           data: data
         }];
       }
     } else {
       // Object with data property
+      const existing = existingSettings['dataset-1'] || {};
+      
       this.state.datasets = [{
         id: 'dataset-1',
         name: 'Dataset',
-        color: this.options.colors[0],
-        width: this.options.lineWidth,
+        color: existing.color || this.options.colors[0],
+        width: existing.width || this.options.lineWidth,
         type: 'line',
+        area: existing.area !== undefined ? existing.area : false,
+        areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : 0.2,
+        visible: existing.visible !== undefined ? existing.visible : true,
         data: data.data || []
       }];
     }
