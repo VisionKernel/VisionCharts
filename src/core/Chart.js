@@ -7,6 +7,8 @@ import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
+import { AverageLine } from '../components/AverageLine.js';
+import { MedianLine } from '../components/MedianLine.js';
 import Legend from '../components/Legend.js';
 import Grid from '../components/Grid.js';
 import Panel from '../components/Panel.js';
@@ -68,6 +70,8 @@ export default class Chart {
     showRecessionLines: false,
     recessions: [],
     showZeroLine: false,
+    showAverageLine: false,
+    showMedianLine: false,
     
     // Theme application
     theme: 'auto', // 'light', 'dark', or 'auto'
@@ -112,6 +116,8 @@ export default class Chart {
       components: {
         recessionLines: null,
         zeroLine: null,
+        averageLine: null,
+        medianLine: null,
         tooltip: null,
         legend: null,
         panels: [],
@@ -658,7 +664,21 @@ export default class Chart {
       console.log('SINGLE MODE: Rendering single-panel content');
       this.renderSingleMode();
     }
+
+
+    if (this.options.showAverageLine && this.averageLine) {
+      const data = this.getDataForStatistics();
+      const valueField = this.getValueField();
+      this.averageLine.render(this, data, valueField);
+    }
     
+    // Render median line if enabled
+    if (this.options.showMedianLine && this.medianLine) {
+      const data = this.getDataForStatistics();
+      const valueField = this.getValueField();
+      this.medianLine.render(this, data, valueField);
+    }
+      
     // Common components for both modes
     this.renderLegend();
     this.renderTitle();
@@ -1372,7 +1392,210 @@ cleanupAxes() {
     
     return this;
   }
+
+  /**
+   * Toggle average line visibility
+   * @param {boolean} show - Whether to show the average line
+   * @param {string} datasetId - Optional: specific dataset to calculate average from
+   */
+  toggleAverageLine(show = null, datasetId = null) {
+    if (show === null) {
+      show = !this.options.showAverageLine;
+    }
+    
+    this.options.showAverageLine = show;
+    
+    if (show) {
+      if (!this.averageLine) {
+        this.averageLine = new AverageLine(this.options.averageLineConfig || {});
+      }
+      
+      // Get data for calculation
+      const data = this.getDataForStatistics(datasetId);
+      const valueField = this.getValueField();
+      
+      if (data && data.length > 0) {
+        this.averageLine.render(this, data, valueField);
+      }
+    } else if (this.averageLine) {
+      this.averageLine.remove();
+    }
+    
+    return this;
+  }
+
+  /**
+   * Toggle median line visibility
+   * @param {boolean} show - Whether to show the median line
+   * @param {string} datasetId - Optional: specific dataset to calculate median from
+   */
+  toggleMedianLine(show = null, datasetId = null) {
+    if (show === null) {
+      show = !this.options.showMedianLine;
+    }
+    
+    this.options.showMedianLine = show;
+    
+    if (show) {
+      if (!this.medianLine) {
+        this.medianLine = new MedianLine(this.options.medianLineConfig || {});
+      }
+      
+      // Get data for calculation
+      const data = this.getDataForStatistics(datasetId);
+      const valueField = this.getValueField();
+      
+      if (data && data.length > 0) {
+        this.medianLine.render(this, data, valueField);
+      }
+    } else if (this.medianLine) {
+      this.medianLine.remove();
+    }
+    
+    return this;
+  }
+
+  /**
+ * Get data for statistical calculations
+ * @param {string} datasetId - Optional: specific dataset ID
+ * @returns {Array} - Data array for calculations
+ */
+getDataForStatistics(datasetId = null) {
+  if (!this.config.data || this.config.data.length === 0) {
+    return [];
+  }
   
+  if (datasetId) {
+    // Find specific dataset
+    const dataset = this.config.data.find(d => d.id === datasetId);
+    return dataset ? dataset.data : [];
+  } else {
+    // Use first dataset by default
+    return this.config.data[0].data;
+  }
+}
+
+/**
+ * Get the appropriate value field name for the chart type
+ * @returns {string} - Field name for values
+ */
+getValueField() {
+  if (this.options.yField) {
+    return this.options.yField;
+  }
+  
+  // Try to detect field name from data
+  if (this.config.data && this.config.data.length > 0 && this.config.data[0].data && this.config.data[0].data.length > 0) {
+    const samplePoint = this.config.data[0].data[0];
+    
+    // Common field names in order of preference
+    const possibleFields = ['price', 'value', 'y', 'amount', 'count'];
+    
+    for (const field of possibleFields) {
+      if (samplePoint.hasOwnProperty(field) && typeof samplePoint[field] === 'number') {
+        return field;
+      }
+    }
+  }
+  
+  // Default fallback
+  return 'y';
+}
+
+/**
+ * Update statistical lines when data changes
+ */
+updateStatisticalLines() {
+  if (this.options.showAverageLine && this.averageLine) {
+    const data = this.getDataForStatistics();
+    const valueField = this.getValueField();
+    this.averageLine.update(this, data, valueField);
+  }
+  
+  if (this.options.showMedianLine && this.medianLine) {
+    const data = this.getDataForStatistics();
+    const valueField = this.getValueField();
+    this.medianLine.update(this, data, valueField);
+  }
+}
+
+/**
+ * Configure average line appearance
+ * @param {Object} config - Configuration object
+ */
+configureAverageLine(config) {
+  this.options.averageLineConfig = { ...this.options.averageLineConfig, ...config };
+  
+  if (this.averageLine) {
+    this.averageLine.updateConfig(config);
+    
+    if (this.options.showAverageLine) {
+      const data = this.getDataForStatistics();
+      const valueField = this.getValueField();
+      this.averageLine.update(this, data, valueField);
+    }
+  }
+  
+  return this;
+}
+
+/**
+ * Configure median line appearance
+ * @param {Object} config - Configuration object
+ */
+configureMedianLine(config) {
+  this.options.medianLineConfig = { ...this.options.medianLineConfig, ...config };
+  
+  if (this.medianLine) {
+    this.medianLine.updateConfig(config);
+    
+    if (this.options.showMedianLine) {
+      const data = this.getDataForStatistics();
+      const valueField = this.getValueField();
+      this.medianLine.update(this, data, valueField);
+    }
+  }
+  
+  return this;
+}
+
+/**
+ * Get statistical information about the current dataset
+ * @param {string} datasetId - Optional: specific dataset ID
+ * @returns {Object} - Statistical information
+ */
+getStatisticalInfo(datasetId = null) {
+  const data = this.getDataForStatistics(datasetId);
+  const valueField = this.getValueField();
+  
+  if (!data || data.length === 0) {
+    return {
+      average: null,
+      median: null,
+      count: 0,
+      min: null,
+      max: null
+    };
+  }
+  
+  // Calculate statistics
+  const tempAverageLine = new AverageLine();
+  const tempMedianLine = new MedianLine();
+  
+  const average = tempAverageLine.calculateAverage(data, valueField);
+  const median = tempMedianLine.calculateMedian(data, valueField);
+  const medianStats = tempMedianLine.getStatistics(data, valueField);
+  
+  return {
+    average: average,
+    median: median,
+    count: medianStats.count,
+    min: medianStats.min,
+    max: medianStats.max,
+    quartiles: medianStats.quartiles
+  };
+}
+
   /**
    * Set X axis name
    * @public
@@ -1762,6 +1985,16 @@ destroy() {
   
   // Clean up hover features
   this.cleanupHoverFeatures();
+
+  // Remove statistical lines
+  if (this.averageLine) {
+    this.averageLine.remove();
+    this.averageLine = null;
+  }
+  if (this.medianLine) {
+    this.medianLine.remove();
+    this.medianLine = null;
+  }
 
   // Destroy axes
   this.cleanupAxes();

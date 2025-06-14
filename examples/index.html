@@ -273,6 +273,43 @@
       min-width: 30px;
       text-align: right;
     }
+
+    .visioncharts-average-line-line {
+      shape-rendering: geometricPrecision;
+    }
+
+    .visioncharts-median-line-line {
+      shape-rendering: geometricPrecision;
+    }
+
+    .visioncharts-average-line-label,
+    .visioncharts-median-line-label {
+      user-select: none;
+      pointer-events: none;
+    }
+
+    /* Toggle button active state for statistical lines */
+    #line-toggle-average.active,
+    #bar-toggle-average.active {
+      background-color: #FF6B35;
+    }
+
+    #line-toggle-median.active,
+    #bar-toggle-median.active {
+      background-color: #9C27B0;
+    }
+
+    /* Responsive design for statistical controls */
+    @media (max-width: 768px) {
+      .control-row {
+        flex-direction: column;
+        gap: 10px;
+      }
+      
+      .control-group {
+        min-width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -315,6 +352,8 @@
               <button id="line-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="line-toggle-panel" class="toggle-button">Toggle Panel View</button>
               <button id="line-toggle-legend" class="toggle-button active">Toggle Legend</button>
+              <button id="line-toggle-average" class="toggle-button">Toggle Average Line</button>
+              <button id="line-toggle-median" class="toggle-button">Toggle Median Line</button>
             </div>
           </div>
         </div>
@@ -411,6 +450,8 @@
               <button id="bar-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="bar-toggle-panel" class="toggle-button">Toggle Panel View</button>
               <button id="bar-toggle-legend" class="toggle-button active">Toggle Legend</button>
+              <button id="bar-toggle-average" class="toggle-button">Toggle Average Line</button>
+              <button id="bar-toggle-median" class="toggle-button">Toggle Median Line</button>
             </div>
           </div>
         </div>
@@ -1354,6 +1395,7 @@ function setupLineChartControls() {
       updateStudyDatasetOptions();
     });
   }
+  setupLineStatisticalControls();
 }
 
 // Initialize Bar Chart with time series data and studies support
@@ -1417,6 +1459,55 @@ async function initBarChart() {
     handleError('bar-chart', error);
   }
 }
+
+function setupLineStatisticalControls() {
+  if (!lineChart) return;
+  
+  // Toggle average line
+  const avgToggle = document.getElementById('line-toggle-average');
+  if (avgToggle) {
+    avgToggle.addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showAverageLine = e.target.classList.contains('active');
+      lineChart.toggleAverageLine(showAverageLine);
+    });
+  }
+  
+  // Toggle median line
+  const medianToggle = document.getElementById('line-toggle-median');
+  if (medianToggle) {
+    medianToggle.addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showMedianLine = e.target.classList.contains('active');
+      lineChart.toggleMedianLine(showMedianLine);
+    });
+  }
+}
+
+function setupBarStatisticalControls() {
+  if (!barChart) return;
+  
+  // Toggle average line
+  const avgToggle = document.getElementById('bar-toggle-average');
+  if (avgToggle) {
+    avgToggle.addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showAverageLine = e.target.classList.contains('active');
+      barChart.toggleAverageLine(showAverageLine);
+    });
+  }
+  
+  // Toggle median line
+  const medianToggle = document.getElementById('bar-toggle-median');
+  if (medianToggle) {
+    medianToggle.addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showMedianLine = e.target.classList.contains('active');
+      barChart.toggleMedianLine(showMedianLine);
+    });
+  }
+}
+
 
 // Add event listeners for Bar Chart Controls
 function setupBarChartControls() {
@@ -1538,6 +1629,7 @@ function setupBarChartControls() {
       updateStudyDatasetOptions();
     });
   }
+  setupBarStatisticalControls();
 }
 
 // Tab functionality
@@ -1562,20 +1654,22 @@ function setupTabs() {
           // Initialize chart if not already done
           if (tabName === 'line' && !lineChart) {
             initLineChart().then(() => {
-              // Set up studies after chart is initialized
               setupStudies();
               updateStudyDatasetOptions();
+              setupLineStatisticalControls();
             });
           } else if (tabName === 'bar' && !barChart) {
             initBarChart().then(() => {
-              // Set up studies after chart is initialized
               setupStudies();
               updateStudyDatasetOptions();
+              setupBarStatisticalControls(); 
             });
           } else {
-            // Chart already exists, just update studies setup
+            // Chart already exists, just update controls
             setupStudies();
             updateStudyDatasetOptions();
+            if (tabName === 'line') setupLineStatisticalControls(); 
+            if (tabName === 'bar') setupBarStatisticalControls(); 
           }
         } else {
           section.style.display = 'none';
