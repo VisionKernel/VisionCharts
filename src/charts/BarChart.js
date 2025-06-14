@@ -11,7 +11,7 @@ import Grid from '../components/Grid.js';
 import Panel from '../components/Panel.js';
 
 /**
- * BarChart class for rendering bar charts with time series data
+ * BarChart class for rendering bar charts with time series data and studies support
  * Styled to match the Line and Area charts
  */
 export default class BarChart extends Chart {
@@ -50,9 +50,15 @@ export default class BarChart extends Chart {
         strokeWidth: 1,   
         dashArray: '4,4'  
       },
-      isPanelView: false, // Changed from panelView to isPanelView
-      timeBarPixelWidth: 10, // New option for panel time bars
-      showZeroValueBars: true, // New option for panel bars
+      isPanelView: false,
+      timeBarPixelWidth: 10,
+      showZeroValueBars: true,
+      
+      // Studies rendering options for BarChart
+      studiesAsLines: true, // Render studies as lines overlaid on bars
+      studyLineWidth: 2,
+      studyPointRadius: 0, // No points by default for studies
+      
       // Options for recession lines (if used)
       // showRecessionLines: false,
       // recessions: [],
@@ -79,7 +85,29 @@ export default class BarChart extends Chart {
   }
   
   /**
-   * Render chart data - FIXED VERSION with proper negative value handling
+   * Check if a dataset is a study/indicator
+   * @private
+   * @param {Object} dataset - Dataset to check
+   * @returns {boolean} True if dataset is a study
+   */
+  isStudyDataset(dataset) {
+    // Check if this dataset was created from a study
+    return this.options.studies && this.options.studies.some(study => study.id === dataset.id);
+  }
+  
+  /**
+   * Get the study configuration for a dataset
+   * @private
+   * @param {Object} dataset - Dataset to get study config for
+   * @returns {Object|null} Study configuration or null
+   */
+  getStudyConfig(dataset) {
+    if (!this.options.studies) return null;
+    return this.options.studies.find(study => study.id === dataset.id) || null;
+  }
+  
+  /**
+   * Render chart data - ENHANCED VERSION with studies support
    * @private
    */
   renderData() {
@@ -108,7 +136,10 @@ export default class BarChart extends Chart {
         barSpacing,
         showValues,
         valuePosition,
-        stacked
+        stacked,
+        studiesAsLines,
+        studyLineWidth,
+        studyPointRadius
       } = this.options;
       
       // Create data group using SvgRenderer
@@ -123,239 +154,21 @@ export default class BarChart extends Chart {
       
       console.log('Rendering', this.state.datasets.length, 'datasets');
       
-      // Get unique X values
-      const allXValues = new Set();
-      this.state.datasets.forEach(dataset => {
-        dataset.data.forEach(d => {
-          if (d[xField] !== undefined) {
-            allXValues.add(d[xField]);
-          }
-        });
-      });
+      // Separate bar datasets from study datasets
+      const barDatasets = this.state.datasets.filter(dataset => !this.isStudyDataset(dataset));
+      const studyDatasets = this.state.datasets.filter(dataset => this.isStudyDataset(dataset));
       
-      const uniqueXValues = Array.from(allXValues);
+      console.log('Bar datasets:', barDatasets.length, 'Study datasets:', studyDatasets.length);
       
-      // Sort X values based on type
-      if (this.options.xType === 'time') {
-        uniqueXValues.sort((a, b) => {
-          const dateA = a instanceof Date ? a : new Date(a);
-          const dateB = b instanceof Date ? b : new Date(b);
-          return dateA - dateB;
-        });
-      } else if (this.options.xType === 'number') {
-        uniqueXValues.sort((a, b) => a - b);
-      } else {
-        // For category, try to sort based on timestamp if available
-        const firstDataset = this.state.datasets[0];
-        if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
-          // Create a map of category to timestamp
-          const categoryMap = new Map();
-          firstDataset.data.forEach(d => {
-            if (d.x && d[xField]) {
-              categoryMap.set(d[xField], d.x);
-            }
-          });
-          
-          // Sort by timestamp if available
-          if (categoryMap.size > 0) {
-            uniqueXValues.sort((a, b) => {
-              const timeA = categoryMap.get(a) || 0;
-              const timeB = categoryMap.get(b) || 0;
-              return timeA - timeB;
-            });
-          } else {
-            // Default string sorting
-            uniqueXValues.sort();
-          }
-        } else {
-          // Default string sorting
-          uniqueXValues.sort();
-        }
+      // Render bars first (background)
+      if (barDatasets.length > 0) {
+        this.renderBarData(dataGroup, barDatasets);
       }
       
-      // Calculate bar dimensions
-      const totalBarWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
-      const usableBarWidth = totalBarWidth * (1 - barSpacing);
-      const actualBarWidth = usableBarWidth * barWidth;
-      
-      // Get zero line position
-      const zeroY = this.state.scales.y.scale(0);
-      
-      // For each unique X value, create bars (stacked or grouped)
-      uniqueXValues.forEach((xValue, xIndex) => {
-        // Calculate bar x position
-        const barX = xIndex * totalBarWidth + (totalBarWidth - actualBarWidth) / 2;
-        
-        if (stacked) {
-          // FIXED: Proper stacking with separate positive/negative stacks
-          let positiveStackTop = zeroY; // Start positive stack at zero line
-          let negativeStackTop = zeroY; // Start negative stack at zero line
-          
-          // Process each dataset
-          this.state.datasets.forEach((dataset, datasetIndex) => {
-            // Find data point for this X value in this dataset
-            const dataPoint = dataset.data.find(d => d[xField] === xValue);
-            
-            // Skip if no data point found
-            if (!dataPoint) return;
-            
-            const value = dataPoint[yField] || 0;
-            
-            // Skip if value is 0
-            if (value === 0) return;
-            
-            // Calculate bar dimensions based on positive/negative
-            let barY, barHeight;
-            
-            if (value > 0) {
-              // Positive value - stack upward from current positive stack top
-              const valueY = this.state.scales.y.scale(value);
-              barHeight = Math.abs(positiveStackTop - valueY);
-              barY = valueY;
-              
-              // Update positive stack top for next positive bar
-              positiveStackTop = valueY;
-            } else {
-              // Negative value - stack downward from current negative stack top
-              const valueY = this.state.scales.y.scale(value);
-              barHeight = Math.abs(negativeStackTop - valueY);
-              barY = negativeStackTop;
-              
-              // Update negative stack top for next negative bar
-              negativeStackTop = valueY;
-            }
-            
-            // Create bar element using SvgRenderer
-            const bar = SvgRenderer.createRect(
-              barX,
-              barY,
-              actualBarWidth,
-              Math.max(1, barHeight),
-              {
-                fill: dataset.color,
-                class: 'visioncharts-bar',
-                'data-x': xValue,
-                'data-y': value,
-                'data-dataset': dataset.id
-              }
-            );
-            
-            dataGroup.appendChild(bar);
-            
-            // Show values if enabled
-            if (showValues) {
-              // Position value based on option and whether value is positive/negative
-              let valueX = barX + actualBarWidth / 2;
-              let valueY;
-              
-              if (valuePosition === 'top') {
-                valueY = value > 0 ? barY - 5 : barY + barHeight + 15;
-              } else if (valuePosition === 'middle') {
-                valueY = barY + barHeight / 2;
-              } else { // bottom
-                valueY = value > 0 ? barY + barHeight - 5 : barY - 5;
-              }
-              
-              // Create value text using SvgRenderer
-              const valueText = SvgRenderer.createText(
-                formatLargeNumber(value),
-                valueX,
-                valueY,
-                {
-                  'text-anchor': 'middle',
-                  'font-size': '10px',
-                  'font-family': this.options.fontFamily,
-                  fill: valuePosition === 'middle' ? '#fff' : this.options.textColor,
-                  class: 'visioncharts-bar-value'
-                }
-              );
-              
-              dataGroup.appendChild(valueText);
-            }
-          });
-        } else {
-          // FIXED: Non-stacked (grouped) bars with proper negative handling
-          const barWidthPerDataset = actualBarWidth / this.state.datasets.length;
-          
-          this.state.datasets.forEach((dataset, datasetIndex) => {
-            // Find data point for this X value in this dataset
-            const dataPoint = dataset.data.find(d => d[xField] === xValue);
-            
-            // Skip if no data point found
-            if (!dataPoint) return;
-            
-            const value = dataPoint[yField] || 0;
-            
-            // Skip if value is 0
-            if (value === 0) return;
-            
-            // Calculate grouped bar position
-            const groupedBarX = barX + (datasetIndex * barWidthPerDataset);
-            
-            // Calculate Y positions for positive/negative values
-            const valueY = this.state.scales.y.scale(value);
-            let barY, barHeight;
-            
-            if (value >= 0) {
-              // Positive value - bar goes from zero line up to value
-              barY = valueY;
-              barHeight = Math.abs(zeroY - valueY);
-            } else {
-              // Negative value - bar goes from zero line down to value
-              barY = zeroY;
-              barHeight = Math.abs(zeroY - valueY);
-            }
-            
-            // Create bar element using SvgRenderer
-            const bar = SvgRenderer.createRect(
-              groupedBarX,
-              barY,
-              barWidthPerDataset * 0.9, // Small gap between grouped bars
-              Math.max(1, barHeight),
-              {
-                fill: dataset.color,
-                class: 'visioncharts-bar',
-                'data-x': xValue,
-                'data-y': value,
-                'data-dataset': dataset.id
-              }
-            );
-            
-            dataGroup.appendChild(bar);
-            
-            // Show values if enabled
-            if (showValues) {
-              // Position value based on option and whether value is positive/negative
-              let valueX = groupedBarX + (barWidthPerDataset * 0.9) / 2;
-              let valueY;
-              
-              if (valuePosition === 'top') {
-                valueY = value >= 0 ? barY - 5 : barY + barHeight + 15;
-              } else if (valuePosition === 'middle') {
-                valueY = barY + barHeight / 2;
-              } else { // bottom
-                valueY = value >= 0 ? barY + barHeight - 5 : barY - 5;
-              }
-              
-              // Create value text using SvgRenderer
-              const valueText = SvgRenderer.createText(
-                formatLargeNumber(value),
-                valueX,
-                valueY,
-                {
-                  'text-anchor': 'middle',
-                  'font-size': '10px',
-                  'font-family': this.options.fontFamily,
-                  fill: valuePosition === 'middle' ? '#fff' : this.options.textColor,
-                  class: 'visioncharts-bar-value'
-                }
-              );
-              
-              dataGroup.appendChild(valueText);
-            }
-          });
-        }
-      });
+      // Render studies as lines (foreground)
+      if (studyDatasets.length > 0 && studiesAsLines) {
+        this.renderStudyData(dataGroup, studyDatasets);
+      }
       
       // Add data group to chart
       this.state.chart.appendChild(dataGroup);
@@ -363,6 +176,359 @@ export default class BarChart extends Chart {
     } catch (error) {
       console.error('Error rendering data:', error);
     }
+  }
+  
+  /**
+   * Render bar data (original bar rendering logic)
+   * @private
+   * @param {SVGElement} dataGroup - Data group to append to
+   * @param {Array} barDatasets - Array of bar datasets
+   */
+  renderBarData(dataGroup, barDatasets) {
+    const {
+      xField,
+      yField,
+      barWidth,
+      barSpacing,
+      showValues,
+      valuePosition,
+      stacked
+    } = this.options;
+    
+    // Get unique X values
+    const allXValues = new Set();
+    barDatasets.forEach(dataset => {
+      dataset.data.forEach(d => {
+        if (d[xField] !== undefined) {
+          allXValues.add(d[xField]);
+        }
+      });
+    });
+    
+    const uniqueXValues = Array.from(allXValues);
+    
+    // Sort X values based on type
+    if (this.options.xType === 'time') {
+      uniqueXValues.sort((a, b) => {
+        const dateA = a instanceof Date ? a : new Date(a);
+        const dateB = b instanceof Date ? b : new Date(b);
+        return dateA - dateB;
+      });
+    } else if (this.options.xType === 'number') {
+      uniqueXValues.sort((a, b) => a - b);
+    } else {
+      // For category, try to sort based on timestamp if available
+      const firstDataset = barDatasets[0];
+      if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
+        // Create a map of category to timestamp
+        const categoryMap = new Map();
+        firstDataset.data.forEach(d => {
+          if (d.x && d[xField]) {
+            categoryMap.set(d[xField], d.x);
+          }
+        });
+        
+        // Sort by timestamp if available
+        if (categoryMap.size > 0) {
+          uniqueXValues.sort((a, b) => {
+            const timeA = categoryMap.get(a) || 0;
+            const timeB = categoryMap.get(b) || 0;
+            return timeA - timeB;
+          });
+        } else {
+          // Default string sorting
+          uniqueXValues.sort();
+        }
+      } else {
+        // Default string sorting
+        uniqueXValues.sort();
+      }
+    }
+    
+    // Calculate bar dimensions
+    const totalBarWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
+    const usableBarWidth = totalBarWidth * (1 - barSpacing);
+    const actualBarWidth = usableBarWidth * barWidth;
+    
+    // Get zero line position
+    const zeroY = this.state.scales.y.scale(0);
+    
+    // For each unique X value, create bars (stacked or grouped)
+    uniqueXValues.forEach((xValue, xIndex) => {
+      // Calculate bar x position
+      const barX = xIndex * totalBarWidth + (totalBarWidth - actualBarWidth) / 2;
+      
+      if (stacked) {
+        // FIXED: Proper stacking with separate positive/negative stacks
+        let positiveStackTop = zeroY; // Start positive stack at zero line
+        let negativeStackTop = zeroY; // Start negative stack at zero line
+        
+        // Process each dataset
+        barDatasets.forEach((dataset, datasetIndex) => {
+          // Find data point for this X value in this dataset
+          const dataPoint = dataset.data.find(d => d[xField] === xValue);
+          
+          // Skip if no data point found
+          if (!dataPoint) return;
+          
+          const value = dataPoint[yField] || 0;
+          
+          // Skip if value is 0
+          if (value === 0) return;
+          
+          // Calculate bar dimensions based on positive/negative
+          let barY, barHeight;
+          
+          if (value > 0) {
+            // Positive value - stack upward from current positive stack top
+            const valueY = this.state.scales.y.scale(value);
+            barHeight = Math.abs(positiveStackTop - valueY);
+            barY = valueY;
+            
+            // Update positive stack top for next positive bar
+            positiveStackTop = valueY;
+          } else {
+            // Negative value - stack downward from current negative stack top
+            const valueY = this.state.scales.y.scale(value);
+            barHeight = Math.abs(negativeStackTop - valueY);
+            barY = negativeStackTop;
+            
+            // Update negative stack top for next negative bar
+            negativeStackTop = valueY;
+          }
+          
+          // Create bar element using SvgRenderer
+          const bar = SvgRenderer.createRect(
+            barX,
+            barY,
+            actualBarWidth,
+            Math.max(1, barHeight),
+            {
+              fill: dataset.color,
+              class: 'visioncharts-bar',
+              'data-x': xValue,
+              'data-y': value,
+              'data-dataset': dataset.id
+            }
+          );
+          
+          dataGroup.appendChild(bar);
+          
+          // Show values if enabled
+          if (showValues) {
+            // Position value based on option and whether value is positive/negative
+            let valueX = barX + actualBarWidth / 2;
+            let valueY;
+            
+            if (valuePosition === 'top') {
+              valueY = value > 0 ? barY - 5 : barY + barHeight + 15;
+            } else if (valuePosition === 'middle') {
+              valueY = barY + barHeight / 2;
+            } else { // bottom
+              valueY = value > 0 ? barY + barHeight - 5 : barY - 5;
+            }
+            
+            // Create value text using SvgRenderer
+            const valueText = SvgRenderer.createText(
+              formatLargeNumber(value),
+              valueX,
+              valueY,
+              {
+                'text-anchor': 'middle',
+                'font-size': '10px',
+                'font-family': this.options.fontFamily,
+                fill: valuePosition === 'middle' ? '#fff' : this.options.textColor,
+                class: 'visioncharts-bar-value'
+              }
+            );
+            
+            dataGroup.appendChild(valueText);
+          }
+        });
+      } else {
+        // FIXED: Non-stacked (grouped) bars with proper negative handling
+        const barWidthPerDataset = actualBarWidth / barDatasets.length;
+        
+        barDatasets.forEach((dataset, datasetIndex) => {
+          // Find data point for this X value in this dataset
+          const dataPoint = dataset.data.find(d => d[xField] === xValue);
+          
+          // Skip if no data point found
+          if (!dataPoint) return;
+          
+          const value = dataPoint[yField] || 0;
+          
+          // Skip if value is 0
+          if (value === 0) return;
+          
+          // Calculate grouped bar position
+          const groupedBarX = barX + (datasetIndex * barWidthPerDataset);
+          
+          // Calculate Y positions for positive/negative values
+          const valueY = this.state.scales.y.scale(value);
+          let barY, barHeight;
+          
+          if (value >= 0) {
+            // Positive value - bar goes from zero line up to value
+            barY = valueY;
+            barHeight = Math.abs(zeroY - valueY);
+          } else {
+            // Negative value - bar goes from zero line down to value
+            barY = zeroY;
+            barHeight = Math.abs(zeroY - valueY);
+          }
+          
+          // Create bar element using SvgRenderer
+          const bar = SvgRenderer.createRect(
+            groupedBarX,
+            barY,
+            barWidthPerDataset * 0.9, // Small gap between grouped bars
+            Math.max(1, barHeight),
+            {
+              fill: dataset.color,
+              class: 'visioncharts-bar',
+              'data-x': xValue,
+              'data-y': value,
+              'data-dataset': dataset.id
+            }
+          );
+          
+          dataGroup.appendChild(bar);
+          
+          // Show values if enabled
+          if (showValues) {
+            // Position value based on option and whether value is positive/negative
+            let valueX = groupedBarX + (barWidthPerDataset * 0.9) / 2;
+            let valueY;
+            
+            if (valuePosition === 'top') {
+              valueY = value >= 0 ? barY - 5 : barY + barHeight + 15;
+            } else if (valuePosition === 'middle') {
+              valueY = barY + barHeight / 2;
+            } else { // bottom
+              valueY = value >= 0 ? barY + barHeight - 5 : barY - 5;
+            }
+            
+            // Create value text using SvgRenderer
+            const valueText = SvgRenderer.createText(
+              formatLargeNumber(value),
+              valueX,
+              valueY,
+              {
+                'text-anchor': 'middle',
+                'font-size': '10px',
+                'font-family': this.options.fontFamily,
+                fill: valuePosition === 'middle' ? '#fff' : this.options.textColor,
+                class: 'visioncharts-bar-value'
+              }
+            );
+            
+            dataGroup.appendChild(valueText);
+          }
+        });
+      }
+    });
+  }
+  
+  /**
+   * Render study data as lines overlaid on bars
+   * @private
+   * @param {SVGElement} dataGroup - Data group to append to
+   * @param {Array} studyDatasets - Array of study datasets
+   */
+  renderStudyData(dataGroup, studyDatasets) {
+    const { xField, yField, studyLineWidth, studyPointRadius } = this.options;
+    
+    console.log('Rendering studies as lines:', studyDatasets.length);
+    
+    // Create studies group
+    const studiesGroup = SvgRenderer.createGroup({ class: 'visioncharts-studies' });
+    
+    studyDatasets.forEach((dataset, index) => {
+      if (!dataset.data || !dataset.data.length) {
+        console.log('Study dataset', dataset.id, 'has no data, skipping');
+        return;
+      }
+      
+      console.log('Rendering study', dataset.id, 'with', dataset.data.length, 'points');
+      
+      // Create dataset group for this study
+      const studyGroup = SvgRenderer.createGroup({ 
+        class: `visioncharts-study-${dataset.id}` 
+      });
+      
+      // Generate line path for the study
+      const linePath = this.generateStudyLinePath(dataset.data);
+      if (linePath) {
+        const studyConfig = this.getStudyConfig(dataset);
+        const lineWidth = studyConfig?.width || dataset.width || studyLineWidth;
+        
+        const lineElement = SvgRenderer.createPath(linePath, {
+          stroke: dataset.color,
+          'stroke-width': lineWidth,
+          fill: 'none',
+          class: 'visioncharts-study-line',
+          'data-study-id': dataset.id
+        });
+        
+        studyGroup.appendChild(lineElement);
+      }
+      
+      // Render points if enabled
+      if (studyPointRadius > 0) {
+        const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-study-points' });
+        
+        dataset.data.forEach(d => {
+          if (d[xField] === undefined || d[yField] === undefined) return;
+          
+          const x = this.state.scales.x.scale(d[xField]);
+          const y = this.state.scales.y.scale(d[yField]);
+          
+          // Use SvgRenderer to create circle
+          const point = SvgRenderer.createCircle(x, y, studyPointRadius, {
+            fill: '#fff',
+            stroke: dataset.color,
+            'stroke-width': 1,
+            class: 'visioncharts-study-point'
+          });
+          
+          pointsGroup.appendChild(point);
+        });
+        
+        studyGroup.appendChild(pointsGroup);
+      }
+      
+      // Add to studies group
+      studiesGroup.appendChild(studyGroup);
+    });
+    
+    // Add studies group to data group
+    dataGroup.appendChild(studiesGroup);
+  }
+  
+  /**
+   * Generate line path for study data
+   * @private
+   * @param {Array} data - Study data
+   * @returns {string} SVG path definition
+   */
+  generateStudyLinePath(data) {
+    const { xField, yField } = this.options;
+    const xScale = this.state.scales.x;
+    const yScale = this.state.scales.y;
+    
+    // Map data points to coordinates
+    const points = data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
+    
+    if (points.length === 0) return '';
+    
+    // Generate linear path for studies (studies are typically smooth lines)
+    return SvgRenderer.linePathDefinition(points);
   }
   
   /**
@@ -605,7 +771,46 @@ export default class BarChart extends Chart {
   }
   
   /**
-   * Render data for a panel - FIXED VERSION with proper negative value handling
+   * Toggle studies rendering mode
+   * @public
+   * @param {boolean} studiesAsLines - Whether to render studies as lines
+   * @returns {BarChart} This chart instance
+   */
+  toggleStudiesAsLines(studiesAsLines) {
+    console.log('BarChart.toggleStudiesAsLines called:', studiesAsLines);
+    
+    this.options.studiesAsLines = Boolean(studiesAsLines);
+    return this.update();
+  }
+  
+  /**
+   * Set study line width
+   * @public
+   * @param {number} width - Line width for studies
+   * @returns {BarChart} This chart instance
+   */
+  setStudyLineWidth(width) {
+    console.log('BarChart.setStudyLineWidth called:', width);
+    
+    this.options.studyLineWidth = Math.max(0.5, width);
+    return this.update();
+  }
+  
+  /**
+   * Toggle study points
+   * @public
+   * @param {number} radius - Point radius (0 to disable)
+   * @returns {BarChart} This chart instance
+   */
+  setStudyPointRadius(radius) {
+    console.log('BarChart.setStudyPointRadius called:', radius);
+    
+    this.options.studyPointRadius = Math.max(0, radius);
+    return this.update();
+  }
+  
+  /**
+   * Render data for a panel - ENHANCED VERSION with studies support
    * @private
    * @param {SVGElement} panel - Panel container
    * @param {Object} dataset - Dataset to render
@@ -615,13 +820,23 @@ export default class BarChart extends Chart {
    * @param {number} datasetIndex - Dataset index for color selection
    */
   renderPanelData(panel, dataset, xScale, yScale, panelHeight, datasetIndex = 0) {
-    const { xField, yField, xType, timeBarPixelWidth, colors, showZeroValueBars } = this.options;
+    const { xField, yField, xType, timeBarPixelWidth, colors, showZeroValueBars, studiesAsLines } = this.options;
     
     if (!dataset.data || !dataset.data.length) return;
     
     const color = dataset.color || colors[datasetIndex % colors.length] || colors[0];
     const zeroY = yScale.scale(0);
     
+    // Check if this is a study dataset
+    const isStudy = this.isStudyDataset(dataset);
+    
+    if (isStudy && studiesAsLines) {
+      // Render study as a line in panel mode
+      this.renderPanelStudyData(panel, dataset, xScale, yScale, panelHeight);
+      return;
+    }
+    
+    // Render as bars (original logic)
     if (xType === 'time') {
       // Time-based bars
       dataset.data.forEach(dataPoint => {
@@ -755,6 +970,63 @@ export default class BarChart extends Chart {
         );
         
         panel.appendChild(bar);
+      });
+    }
+  }
+  
+  /**
+   * Render study data as line in panel mode
+   * @private
+   * @param {SVGElement} panel - Panel container
+   * @param {Object} dataset - Study dataset to render
+   * @param {Object} xScale - X scale for this panel
+   * @param {Object} yScale - Y scale for this panel
+   * @param {number} panelHeight - Panel height
+   */
+  renderPanelStudyData(panel, dataset, xScale, yScale, panelHeight) {
+    const { xField, yField, studyLineWidth, studyPointRadius } = this.options;
+    
+    // Map data points to coordinates using panel-specific scales
+    const points = dataset.data
+      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
+      .map(d => [
+        xScale.scale(d[xField]),
+        yScale.scale(d[yField])
+      ]);
+    
+    if (points.length === 0) return;
+    
+    // Generate linear path for study
+    const pathD = SvgRenderer.linePathDefinition(points);
+    
+    // Render line
+    const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    lineElement.setAttribute('d', pathD);
+    lineElement.setAttribute('stroke', dataset.color);
+    lineElement.setAttribute('stroke-width', dataset.width || studyLineWidth);
+    lineElement.setAttribute('fill', 'none');
+    lineElement.setAttribute('class', 'visioncharts-panel-study-line');
+    lineElement.setAttribute('data-study-id', dataset.id);
+    panel.appendChild(lineElement);
+    
+    // Render points if enabled
+    if (studyPointRadius > 0) {
+      dataset.data.forEach(d => {
+        if (d[xField] === undefined || d[yField] === undefined) return;
+        
+        const x = xScale.scale(d[xField]);
+        const y = yScale.scale(d[yField]);
+        
+        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        point.setAttribute('cx', x);
+        point.setAttribute('cy', y);
+        point.setAttribute('r', studyPointRadius);
+        point.setAttribute('fill', '#fff');
+        point.setAttribute('stroke', dataset.color);
+        point.setAttribute('stroke-width', 1);
+        point.setAttribute('class', 'visioncharts-panel-study-point');
+        
+        panel.appendChild(point);
       });
     }
   }
