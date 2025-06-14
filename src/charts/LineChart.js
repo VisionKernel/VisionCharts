@@ -3,6 +3,7 @@ import Axis from '../core/Axis.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber } from '../utils/chartUtils.js';
+import StudiesRenderer from '../components/StudiesRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -340,88 +341,93 @@ export default class LineChart extends Chart {
     defs.appendChild(gradient);
   });
 }
-
-/**
-   * Render study datasets (like indicators) properly
-   * @private
-   * @param {Object} dataset - Study dataset
-   * @param {SVGElement} datasetGroup - Dataset group element
-   */
-  renderStudyDataset(dataset, datasetGroup) {
-    const { xField, yField, showPoints, pointRadius } = this.options;
+  renderData() {
+  console.log('LineChart.renderData called');
+  
+  if (!this.state.chart) {
+    console.error('Cannot render data: chart element is null');
+    return;
+  }
+  
+  try {
+    const {
+      xField,
+      yField,
+      showPoints,
+      pointRadius,
+      areaOpacity,
+      gradient
+    } = this.options;
     
-    if (!dataset.data || !dataset.data.length) return;
+    // Create data group using SvgRenderer
+    const dataGroup = SvgRenderer.createGroup({ class: 'visioncharts-data' });
     
-    // Handle different study types
-    if (dataset.studyType === 'bollinger') {
-      // Render Bollinger Bands (upper, middle, lower lines)
-      ['upper', 'middle', 'lower'].forEach((line, index) => {
-        const lineData = dataset.data.map(d => ({
-          [xField]: d[xField],
-          [yField]: d[line]
-        })).filter(d => d[yField] !== undefined && d[yField] !== null);
-        
-        if (lineData.length === 0) return;
-        
-        const linePath = this.generateLinePath(lineData);
-        if (linePath) {
-          const opacity = line === 'middle' ? 1 : 0.6;
-          const strokeWidth = line === 'middle' ? dataset.width : (dataset.width * 0.7);
-          
-          const lineElement = SvgRenderer.createPath(linePath, {
-            stroke: dataset.color,
-            'stroke-width': strokeWidth,
-            'stroke-opacity': opacity,
-            fill: 'none',
-            class: `visioncharts-study-line visioncharts-bollinger-${line}`
-          });
-          
-          datasetGroup.appendChild(lineElement);
-        }
-      });
-      
-      // Optionally add fill between upper and lower bands
-      if (dataset.area) {
-        this.renderBollingerBandsFill(dataset, datasetGroup);
+    // No data to render
+    if (!this.state.datasets.length) {
+      this.state.chart.appendChild(dataGroup);
+      console.log('No datasets to render');
+      return;
+    }
+    
+    console.log('Rendering', this.state.datasets.length, 'datasets');
+    
+    // Create gradient definitions if needed
+    if (gradient) {
+      this.createGradients();
+    }
+    
+    // Separate regular datasets from study datasets
+    const regularDatasets = this.state.datasets.filter(dataset => dataset.type !== 'study');
+    const studyDatasets = this.state.datasets.filter(dataset => dataset.type === 'study');
+    
+    console.log('Regular datasets:', regularDatasets.length, 'Study datasets:', studyDatasets.length);
+    
+    // Render regular datasets first
+    regularDatasets.forEach((dataset, index) => {
+      if (!dataset.data || !dataset.data.length) {
+        console.log('Dataset', index, 'has no data, skipping');
+        return;
       }
       
-    } else if (dataset.studyType === 'macd') {
-      // Render MACD lines
-      ['macd', 'signal'].forEach((line, index) => {
-        const lineData = dataset.data.map(d => ({
-          [xField]: d[xField],
-          [yField]: d[line]
-        })).filter(d => d[yField] !== undefined && d[yField] !== null);
-        
-        if (lineData.length === 0) return;
-        
-        const linePath = this.generateLinePath(lineData);
-        if (linePath) {
-          const color = line === 'macd' ? dataset.color : '#ff6b6b';
-          
-          const lineElement = SvgRenderer.createPath(linePath, {
-            stroke: color,
-            'stroke-width': dataset.width,
-            fill: 'none',
-            class: `visioncharts-study-line visioncharts-macd-${line}`
-          });
-          
-          datasetGroup.appendChild(lineElement);
-        }
+      console.log('Rendering regular dataset', index, 'with', dataset.data.length, 'points', 
+                'area enabled:', Boolean(dataset.area));
+      
+      // Create dataset group using SvgRenderer
+      const datasetGroup = SvgRenderer.createGroup({ 
+        class: `visioncharts-dataset-${dataset.id}` 
       });
       
-      // Render histogram bars
-      this.renderMACDHistogram(dataset, datasetGroup);
+      // Render area if enabled for this dataset
+      if (dataset.area) {
+        const areaPath = this.generateAreaPath(dataset.data);
+        if (areaPath) {
+          const areaAttributes = {
+            d: areaPath,
+            stroke: 'none',
+            class: 'visioncharts-area'
+          };
+          
+          // Apply fill (either gradient or color)
+          if (gradient) {
+            areaAttributes.fill = `url(#area-gradient-${dataset.id})`;
+          } else {
+            areaAttributes.fill = dataset.color;
+            areaAttributes['fill-opacity'] = dataset.areaOpacity || areaOpacity;
+          }
+          
+          const areaElement = SvgRenderer.createPath(areaPath, areaAttributes);
+          datasetGroup.appendChild(areaElement);
+        }
+      }
       
-    } else {
-      // Standard single-line studies (SMA, EMA, RSI)
+      // Render line using SvgRenderer
       const linePath = this.generateLinePath(dataset.data);
       if (linePath) {
         const lineElement = SvgRenderer.createPath(linePath, {
           stroke: dataset.color,
           'stroke-width': dataset.width,
           fill: 'none',
-          class: 'visioncharts-study-line'
+          class: 'visioncharts-line'
         });
         
         datasetGroup.appendChild(lineElement);
@@ -429,6 +435,8 @@ export default class LineChart extends Chart {
       
       // Render points if enabled
       if (showPoints) {
+        const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-points' });
+        
         dataset.data.forEach(d => {
           if (d[xField] === undefined || d[yField] === undefined) return;
           
@@ -439,214 +447,31 @@ export default class LineChart extends Chart {
             fill: '#fff',
             stroke: dataset.color,
             'stroke-width': dataset.width / 2,
-            class: 'visioncharts-study-point'
+            class: 'visioncharts-point'
           });
           
-          datasetGroup.appendChild(point);
-        });
-      }
-    }
-  }
-
-  /**
-   * Render Bollinger Bands fill area
-   * @private
-   */
-  renderBollingerBandsFill(dataset, datasetGroup) {
-    const { xField } = this.options;
-    
-    // Create path for the area between upper and lower bands
-    const upperPoints = [];
-    const lowerPoints = [];
-    
-    dataset.data.forEach(d => {
-      if (d.upper !== undefined && d.lower !== undefined && d[xField] !== undefined) {
-        const x = this.state.scales.x.scale(d[xField]);
-        const upperY = this.state.scales.y.scale(d.upper);
-        const lowerY = this.state.scales.y.scale(d.lower);
-        
-        upperPoints.push([x, upperY]);
-        lowerPoints.push([x, lowerY]);
-      }
-    });
-    
-    if (upperPoints.length === 0) return;
-    
-    // Create area path
-    const upperPath = SvgRenderer.linePathDefinition(upperPoints);
-    const lowerPath = SvgRenderer.linePathDefinition(lowerPoints.reverse());
-    const areaPath = `${upperPath} L ${lowerPath.substring(1)} Z`;
-    
-    const areaElement = SvgRenderer.createPath(areaPath, {
-      fill: dataset.color,
-      'fill-opacity': dataset.areaOpacity || 0.1,
-      stroke: 'none',
-      class: 'visioncharts-bollinger-fill'
-    });
-    
-    datasetGroup.appendChild(areaElement);
-  }
-
-  /**
-   * Render MACD histogram
-   * @private
-   */
-  renderMACDHistogram(dataset, datasetGroup) {
-    const { xField } = this.options;
-    const zeroY = this.state.scales.y.scale(0);
-    
-    dataset.data.forEach(d => {
-      if (d.histogram === undefined || d[xField] === undefined) return;
-      
-      const x = this.state.scales.x.scale(d[xField]);
-      const histogramY = this.state.scales.y.scale(d.histogram);
-      const barHeight = Math.abs(zeroY - histogramY);
-      const barY = Math.min(zeroY, histogramY);
-      
-      // Bar color based on positive/negative
-      const barColor = d.histogram >= 0 ? '#26a69a' : '#ef5350';
-      
-      const bar = SvgRenderer.createRect(x - 1, barY, 2, barHeight, {
-        fill: barColor,
-        class: 'visioncharts-macd-histogram'
-      });
-      
-      datasetGroup.appendChild(bar);
-    });
-  }
-  
-  /**
-   * Render chart data - REFACTORED VERSION using SvgRenderer
-   * @private
-   */
-  renderData() {
-    console.log('LineChart.renderData called');
-    
-    if (!this.state.chart) {
-      console.error('Cannot render data: chart element is null');
-      return;
-    }
-    
-    try {
-      const {
-        xField,
-        yField,
-        showPoints,
-        pointRadius,
-        areaOpacity,
-        gradient
-      } = this.options;
-      
-      // Create data group using SvgRenderer
-      const dataGroup = SvgRenderer.createGroup({ class: 'visioncharts-data' });
-      
-      // No data to render
-      if (!this.state.datasets.length) {
-        this.state.chart.appendChild(dataGroup);
-        console.log('No datasets to render');
-        return;
-      }
-      
-      console.log('Rendering', this.state.datasets.length, 'datasets');
-      
-      // Create gradient definitions if needed
-      if (gradient) {
-        this.createGradients();
-      }
-      
-      // Render each dataset
-      this.state.datasets.forEach((dataset, index) => {
-        if (!dataset.data || !dataset.data.length) {
-          console.log('Dataset', index, 'has no data, skipping');
-          return;
-        }
-        
-        console.log('Rendering dataset', index, 'with', dataset.data.length, 'points', 
-                  'area enabled:', Boolean(dataset.area), 'type:', dataset.type);
-        
-        // Create dataset group using SvgRenderer
-        const datasetGroup = SvgRenderer.createGroup({ 
-          class: `visioncharts-dataset-${dataset.id}` 
+          pointsGroup.appendChild(point);
         });
         
-        // Check if this is a study dataset
-        if (dataset.type === 'study') {
-          // Use special study rendering
-          this.renderStudyDataset(dataset, datasetGroup);
-        } else {
-          // Regular dataset rendering (your existing code)
-          
-          // Render area if enabled for this dataset
-          if (dataset.area) {
-            const areaPath = this.generateAreaPath(dataset.data);
-            if (areaPath) {
-              const areaAttributes = {
-                d: areaPath,
-                stroke: 'none',
-                class: 'visioncharts-area'
-              };
-              
-              // Apply fill (either gradient or color)
-              if (gradient) {
-                areaAttributes.fill = `url(#area-gradient-${dataset.id})`;
-              } else {
-                areaAttributes.fill = dataset.color;
-                areaAttributes['fill-opacity'] = dataset.areaOpacity || areaOpacity;
-              }
-              
-              const areaElement = SvgRenderer.createPath(areaPath, areaAttributes);
-              datasetGroup.appendChild(areaElement);
-            }
-          }
-          
-          // Render line using SvgRenderer
-          const linePath = this.generateLinePath(dataset.data);
-          if (linePath) {
-            const lineElement = SvgRenderer.createPath(linePath, {
-              stroke: dataset.color,
-              'stroke-width': dataset.width,
-              fill: 'none',
-              class: 'visioncharts-line'
-            });
-            
-            datasetGroup.appendChild(lineElement);
-          }
-          
-          // Render points if enabled
-          if (showPoints) {
-            const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-points' });
-            
-            dataset.data.forEach(d => {
-              if (d[xField] === undefined || d[yField] === undefined) return;
-              
-              const x = this.state.scales.x.scale(d[xField]);
-              const y = this.state.scales.y.scale(d[yField]);
-              
-              const point = SvgRenderer.createCircle(x, y, pointRadius, {
-                fill: '#fff',
-                stroke: dataset.color,
-                'stroke-width': dataset.width / 2,
-                class: 'visioncharts-point'
-              });
-              
-              pointsGroup.appendChild(point);
-            });
-            
-            datasetGroup.appendChild(pointsGroup);
-          }
-        }
-        
-        // Add to data group
-        dataGroup.appendChild(datasetGroup);
-      });
+        datasetGroup.appendChild(pointsGroup);
+      }
       
-      // Add data group to chart
-      this.state.chart.appendChild(dataGroup);
-      console.log('Data rendered successfully');
-    } catch (error) {
-      console.error('Error rendering data:', error);
+      // Add to data group
+      dataGroup.appendChild(datasetGroup);
+    });
+    
+    // Render all study datasets at once (overlaid on top)
+    if (studyDatasets.length > 0) {
+      StudiesRenderer.renderForLineChart(this, studyDatasets, dataGroup);
     }
+    
+    // Add data group to chart
+    this.state.chart.appendChild(dataGroup);
+    console.log('Data rendered successfully');
+  } catch (error) {
+    console.error('Error rendering data:', error);
   }
+}
   
   /**
    * Render data for a panel with area support

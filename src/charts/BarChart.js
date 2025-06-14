@@ -3,6 +3,7 @@ import Axis from '../core/Axis.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber } from '../utils/chartUtils.js';
+import StudiesRenderer from '../components/StudiesRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -91,10 +92,9 @@ export default class BarChart extends Chart {
    * @returns {boolean} True if dataset is a study
    */
   isStudyDataset(dataset) {
-    // Check if this dataset was created from a study
-    return this.options.studies && this.options.studies.some(study => study.id === dataset.id);
+    return StudiesRenderer.isStudyDataset(this, dataset);
   }
-  
+
   /**
    * Get the study configuration for a dataset
    * @private
@@ -102,8 +102,7 @@ export default class BarChart extends Chart {
    * @returns {Object|null} Study configuration or null
    */
   getStudyConfig(dataset) {
-    if (!this.options.studies) return null;
-    return this.options.studies.find(study => study.id === dataset.id) || null;
+    return StudiesRenderer.getStudyConfig(this, dataset);
   }
   
   /**
@@ -167,7 +166,7 @@ export default class BarChart extends Chart {
       
       // Render studies as lines (foreground)
       if (studyDatasets.length > 0 && studiesAsLines) {
-        this.renderStudyData(dataGroup, studyDatasets);
+        StudiesRenderer.renderForBarChart(this, studyDatasets, dataGroup);
       }
       
       // Add data group to chart
@@ -429,108 +428,7 @@ export default class BarChart extends Chart {
       }
     });
   }
-  
-  /**
-   * Render study data as lines overlaid on bars
-   * @private
-   * @param {SVGElement} dataGroup - Data group to append to
-   * @param {Array} studyDatasets - Array of study datasets
-   */
-  renderStudyData(dataGroup, studyDatasets) {
-    const { xField, yField, studyLineWidth, studyPointRadius } = this.options;
-    
-    console.log('Rendering studies as lines:', studyDatasets.length);
-    
-    // Create studies group
-    const studiesGroup = SvgRenderer.createGroup({ class: 'visioncharts-studies' });
-    
-    studyDatasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length) {
-        console.log('Study dataset', dataset.id, 'has no data, skipping');
-        return;
-      }
-      
-      console.log('Rendering study', dataset.id, 'with', dataset.data.length, 'points');
-      
-      // Create dataset group for this study
-      const studyGroup = SvgRenderer.createGroup({ 
-        class: `visioncharts-study-${dataset.id}` 
-      });
-      
-      // Generate line path for the study
-      const linePath = this.generateStudyLinePath(dataset.data);
-      if (linePath) {
-        const studyConfig = this.getStudyConfig(dataset);
-        const lineWidth = studyConfig?.width || dataset.width || studyLineWidth;
-        
-        const lineElement = SvgRenderer.createPath(linePath, {
-          stroke: dataset.color,
-          'stroke-width': lineWidth,
-          fill: 'none',
-          class: 'visioncharts-study-line',
-          'data-study-id': dataset.id
-        });
-        
-        studyGroup.appendChild(lineElement);
-      }
-      
-      // Render points if enabled
-      if (studyPointRadius > 0) {
-        const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-study-points' });
-        
-        dataset.data.forEach(d => {
-          if (d[xField] === undefined || d[yField] === undefined) return;
-          
-          const x = this.state.scales.x.scale(d[xField]);
-          const y = this.state.scales.y.scale(d[yField]);
-          
-          // Use SvgRenderer to create circle
-          const point = SvgRenderer.createCircle(x, y, studyPointRadius, {
-            fill: '#fff',
-            stroke: dataset.color,
-            'stroke-width': 1,
-            class: 'visioncharts-study-point'
-          });
-          
-          pointsGroup.appendChild(point);
-        });
-        
-        studyGroup.appendChild(pointsGroup);
-      }
-      
-      // Add to studies group
-      studiesGroup.appendChild(studyGroup);
-    });
-    
-    // Add studies group to data group
-    dataGroup.appendChild(studiesGroup);
-  }
-  
-  /**
-   * Generate line path for study data
-   * @private
-   * @param {Array} data - Study data
-   * @returns {string} SVG path definition
-   */
-  generateStudyLinePath(data) {
-    const { xField, yField } = this.options;
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    // Map data points to coordinates
-    const points = data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    if (points.length === 0) return '';
-    
-    // Generate linear path for studies (studies are typically smooth lines)
-    return SvgRenderer.linePathDefinition(points);
-  }
-  
+
   /**
    * Render chart title - consistent with other charts
    * @private
@@ -828,11 +726,11 @@ export default class BarChart extends Chart {
     const zeroY = yScale.scale(0);
     
     // Check if this is a study dataset
-    const isStudy = this.isStudyDataset(dataset);
-    
+    const isStudy = StudiesRenderer.isStudyDataset(this, dataset);
+
     if (isStudy && studiesAsLines) {
       // Render study as a line in panel mode
-      this.renderPanelStudyData(panel, dataset, xScale, yScale, panelHeight);
+      StudiesRenderer.renderForPanel(this, dataset, panel, xScale, yScale, panelHeight);
       return;
     }
     
@@ -970,63 +868,6 @@ export default class BarChart extends Chart {
         );
         
         panel.appendChild(bar);
-      });
-    }
-  }
-  
-  /**
-   * Render study data as line in panel mode
-   * @private
-   * @param {SVGElement} panel - Panel container
-   * @param {Object} dataset - Study dataset to render
-   * @param {Object} xScale - X scale for this panel
-   * @param {Object} yScale - Y scale for this panel
-   * @param {number} panelHeight - Panel height
-   */
-  renderPanelStudyData(panel, dataset, xScale, yScale, panelHeight) {
-    const { xField, yField, studyLineWidth, studyPointRadius } = this.options;
-    
-    // Map data points to coordinates using panel-specific scales
-    const points = dataset.data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    if (points.length === 0) return;
-    
-    // Generate linear path for study
-    const pathD = SvgRenderer.linePathDefinition(points);
-    
-    // Render line
-    const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    lineElement.setAttribute('d', pathD);
-    lineElement.setAttribute('stroke', dataset.color);
-    lineElement.setAttribute('stroke-width', dataset.width || studyLineWidth);
-    lineElement.setAttribute('fill', 'none');
-    lineElement.setAttribute('class', 'visioncharts-panel-study-line');
-    lineElement.setAttribute('data-study-id', dataset.id);
-    panel.appendChild(lineElement);
-    
-    // Render points if enabled
-    if (studyPointRadius > 0) {
-      dataset.data.forEach(d => {
-        if (d[xField] === undefined || d[yField] === undefined) return;
-        
-        const x = xScale.scale(d[xField]);
-        const y = yScale.scale(d[yField]);
-        
-        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        point.setAttribute('cx', x);
-        point.setAttribute('cy', y);
-        point.setAttribute('r', studyPointRadius);
-        point.setAttribute('fill', '#fff');
-        point.setAttribute('stroke', dataset.color);
-        point.setAttribute('stroke-width', 1);
-        point.setAttribute('class', 'visioncharts-panel-study-point');
-        
-        panel.appendChild(point);
       });
     }
   }
