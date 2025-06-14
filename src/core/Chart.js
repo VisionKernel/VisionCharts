@@ -745,8 +745,7 @@ render() {
     console.log('renderPanelMode called');
     
     // Render panels using the Panel component
-    const chartSpecificRenderer = this.renderPanelData ? this.renderPanelData.bind(this) : null;
-    Panel.renderForChart(this, chartSpecificRenderer);
+    Panel.renderForChart(this);
     
     // Initialize hover features using InteractionManager
     InteractionManager.initPanelMode(this);

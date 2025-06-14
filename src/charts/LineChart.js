@@ -4,6 +4,7 @@ import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber } from '../utils/chartUtils.js';
 import StudiesRenderer from '../components/StudiesRenderer.js';
+import PanelDataRenderer from '../components/PanelDataRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
@@ -472,122 +473,6 @@ export default class LineChart extends Chart {
     console.error('Error rendering data:', error);
   }
 }
-  
-  /**
-   * Render data for a panel with area support
-   * @private
-   */
-  renderPanelData(panel, dataset, xScale, yScale, panelHeight) {
-    const { xField, yField, curve, showPoints, pointRadius, areaOpacity, gradient } = this.options;
-    
-    if (!dataset.data || !dataset.data.length) return;
-    
-    // Map data points to coordinates using panel-specific scales
-    const points = dataset.data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    // Render area if enabled for this dataset
-    if (dataset.area) {
-      // Generate area path
-      const baselineY = panelHeight;
-      let areaPathD;
-      
-      switch (curve) {
-        case 'step':
-          areaPathD = this.generateStepPath(points);
-          break;
-        case 'cardinal':
-          areaPathD = this.generateCardinalPath(points);
-          break;
-        case 'monotone':
-          areaPathD = this.generateMonotonePath(points);
-          break;
-        case 'linear':
-        default:
-          areaPathD = this.generateLinearPath(points);
-          break;
-      }
-      
-      if (areaPathD) {
-        // Complete area path
-        const [firstPoint] = points;
-        const [firstX] = firstPoint;
-        const [lastPoint] = [...points].reverse();
-        const [lastX] = lastPoint;
-        
-        const areaPath = `${areaPathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
-        
-        const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        areaElement.setAttribute('d', areaPath);
-        
-        // Apply fill (either gradient or color)
-        if (gradient) {
-          const gradientId = `area-gradient-panel-${dataset.id}`;
-          areaElement.setAttribute('fill', `url(#${gradientId})`);
-        } else {
-          areaElement.setAttribute('fill', dataset.color);
-          areaElement.setAttribute('fill-opacity', dataset.areaOpacity || areaOpacity);
-        }
-        
-        areaElement.setAttribute('stroke', 'none');
-        areaElement.setAttribute('class', 'visioncharts-panel-area');
-        
-        panel.appendChild(areaElement);
-      }
-    }
-    
-    // Generate line path based on curve type
-    let pathD;
-    switch (curve) {
-      case 'step':
-        pathD = this.generateStepPath(points);
-        break;
-      case 'cardinal':
-        pathD = this.generateCardinalPath(points);
-        break;
-      case 'monotone':
-        pathD = this.generateMonotonePath(points);
-        break;
-      case 'linear':
-      default:
-        pathD = this.generateLinearPath(points);
-        break;
-    }
-    
-    // Render line
-    const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    lineElement.setAttribute('d', pathD);
-    lineElement.setAttribute('stroke', dataset.color);
-    lineElement.setAttribute('stroke-width', dataset.width);
-    lineElement.setAttribute('fill', 'none');
-    lineElement.setAttribute('class', 'visioncharts-panel-line');
-    panel.appendChild(lineElement);
-    
-    // Render points if enabled
-    if (showPoints) {
-      dataset.data.forEach(d => {
-        if (d[xField] === undefined || d[yField] === undefined) return;
-        
-        const x = xScale.scale(d[xField]);
-        const y = yScale.scale(d[yField]);
-        
-        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        point.setAttribute('cx', x);
-        point.setAttribute('cy', y);
-        point.setAttribute('r', pointRadius);
-        point.setAttribute('fill', '#fff');
-        point.setAttribute('stroke', dataset.color);
-        point.setAttribute('stroke-width', dataset.width / 2);
-        point.setAttribute('class', 'visioncharts-panel-point');
-        
-        panel.appendChild(point);
-      });
-    }
-  }
 
   /**
    * Create individual axes for single-panel mode (override parent method if needed)

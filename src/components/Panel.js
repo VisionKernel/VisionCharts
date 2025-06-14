@@ -1,5 +1,6 @@
 import Axis from '../core/Axis.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
+import PanelDataRenderer from './PanelDataRenderer.js';
 import ScaleManager from '../core/ScaleManager.js';
 import RecessionLines from './RecessionLines.js';
 import ZeroLine from './ZeroLine.js';
@@ -16,7 +17,7 @@ export default class Panel {
      * @param {Function} chartSpecificRenderer - Function to render chart-specific data
      * @returns {Array} Panel scales for hover functionality
      */
-    static renderForChart(chart, chartSpecificRenderer) {
+    static renderForChart(chart) {
     console.log('Panel.renderForChart called');
     
     if (!chart.state.chart) {
@@ -87,10 +88,16 @@ export default class Panel {
             index === chart.state.datasets.length - 1 // isLastPanel
         );
         
-        // Render chart-specific data using the provided renderer
-        if (chartSpecificRenderer) {
-            chartSpecificRenderer(panelGroup, dataset, scales.xScale, scales.yScale, effectivePanelHeight, index);
-        }
+        // Render chart-specific data using PanelDataRenderer
+        PanelDataRenderer.renderForPanel(
+            chart, 
+            panelGroup, 
+            dataset, 
+            scales.xScale, 
+            scales.yScale, 
+            effectivePanelHeight, 
+            index
+        );
         
         // Render panel label
         const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
