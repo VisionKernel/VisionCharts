@@ -15,6 +15,7 @@ import Legend from '../components/Legend.js';
 import Grid from '../components/Grid.js';
 import Panel from '../components/Panel.js';
 import { calculateIndicator } from '../utils/math.js';
+import ChartExporter from '../utils/ChartExporter.js';
 
 /**
  * Base Chart class that handles common chart functionality
@@ -1624,86 +1625,171 @@ updateStudy(studyId, updates) {
   getStudyById(studyId) {
     return StudiesManager.getStudyById(this, studyId);
   }
-  
+
   /**
-   * Export chart as SVG string
-   * @public
-   * @returns {string} SVG string
-   */
-  exportSVG() {
-    console.log('exportSVG called');
-    
-    if (!this.state.svg) return '';
-    
-    // Clone the SVG to avoid modifying the original
-    const svgClone = this.state.svg.cloneNode(true);
-    
-    // Set explicit dimensions
-    svgClone.setAttribute('width', this.state.dimensions.width);
-    svgClone.setAttribute('height', this.state.dimensions.height);
-    
-    // Convert to string
-    const serializer = new XMLSerializer();
-    return serializer.serializeToString(svgClone);
+ * Export chart as SVG - UPDATED VERSION using ChartExporter
+ * @public
+ * @param {Object} options - Export options
+ * @returns {string} SVG content as string
+ */
+  exportSVG(options = {}) {
+    console.log('Chart.exportSVG called - delegating to ChartExporter');
+    return ChartExporter.exportSVG(this, options);
   }
-  
+
   /**
-   * Export chart as PNG data URL
+   * Export chart as PNG - UPDATED VERSION using ChartExporter
    * @public
-   * @param {number} scale - Scale factor for higher resolution
+   * @param {Object} options - Export options
    * @returns {Promise<string>} PNG data URL
+ */
+  async exportPNG(options = {}) {
+    console.log('Chart.exportPNG called - delegating to ChartExporter');
+    return await ChartExporter.exportPNG(this, options);
+  }
+
+  /**
+   * Serialize chart configuration and data - UPDATED VERSION using ChartExporter
+   * @public
+   * @param {Object} options - Serialization options
+   * @returns {string} Serialized chart configuration as JSON string
    */
-  exportPNG(scale = 2) {
-    console.log('exportPNG called');
+  serialize(options = {}) {
+    console.log('Chart.serialize called - delegating to ChartExporter');
+    return ChartExporter.serialize(this, options);
+  }
+
+  /**
+   * Load chart configuration from serialized data - UPDATED VERSION using ChartExporter
+   * @public
+   * @param {string|Object} configData - Serialized configuration
+   * @param {Object} options - Loading options
+   * @returns {Chart} This chart instance
+   */
+  loadConfig(configData, options = {}) {
+    console.log('Chart.loadConfig called - delegating to ChartExporter');
+    return ChartExporter.loadConfig(this, configData, options);
+  }
+
+  /**
+   * Download chart as SVG file
+   * @public
+   * @param {string} filename - Filename (optional)
+   * @param {Object} options - Export options
+   */
+  downloadSVG(filename = 'chart.svg', options = {}) {
+    console.log('Chart.downloadSVG called');
+    ChartExporter.downloadSVG(this, filename, options);
+    return this;
+  }
+
+  /**
+   * Download chart as PNG file
+   * @public
+   * @param {string} filename - Filename (optional)
+   * @param {Object} options - Export options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async downloadPNG(filename = 'chart.png', options = {}) {
+    console.log('Chart.downloadPNG called');
+    await ChartExporter.downloadPNG(this, filename, options);
+    return this;
+  }
+
+  /**
+   * Download chart configuration as JSON file
+   * @public
+   * @param {string} filename - Filename (optional)
+   * @param {Object} options - Serialization options
+   */
+  downloadConfig(filename = 'chart-config.json', options = {}) {
+    console.log('Chart.downloadConfig called');
+    ChartExporter.downloadConfig(this, filename, options);
+    return this;
+  }
+
+  /**
+   * Load configuration from file input
+   * @public
+   * @param {File} file - File object from input element
+   * @param {Object} options - Loading options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async loadConfigFromFile(file, options = {}) {
+    console.log('Chart.loadConfigFromFile called');
     
     return new Promise((resolve, reject) => {
-      if (!this.state.svg) {
-        reject(new Error('Chart is not rendered'));
-        return;
-      }
+      const reader = new FileReader();
       
-      // Get SVG data
-      const svgData = this.exportSVG();
-      const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
-      const svgUrl = URL.createObjectURL(svgBlob);
-      
-      // Create image
-      const img = new Image();
-      img.onload = () => {
+      reader.onload = (e) => {
         try {
-          // Create canvas
-          const canvas = document.createElement('canvas');
-          canvas.width = this.state.dimensions.width * scale;
-          canvas.height = this.state.dimensions.height * scale;
-          
-          // Get context and scale
-          const ctx = canvas.getContext('2d');
-          ctx.scale(scale, scale);
-          
-          // Draw image
-          ctx.drawImage(img, 0, 0);
-          
-          // Get data URL
-          const pngUrl = canvas.toDataURL('image/png');
-          
-          // Clean up
-          URL.revokeObjectURL(svgUrl);
-          
-          resolve(pngUrl);
-        } catch (err) {
-          reject(err);
+          const configData = e.target.result;
+          this.loadConfig(configData, options);
+          resolve(this);
+        } catch (error) {
+          reject(error);
         }
       };
       
-      img.onerror = () => {
-        URL.revokeObjectURL(svgUrl);
-        reject(new Error('Error loading SVG'));
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
       };
       
-      img.src = svgUrl;
+      reader.readAsText(file);
     });
   }
 
+  /**
+   * Copy SVG to clipboard
+   * @public
+   * @param {Object} options - Export options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async copySVGToClipboard(options = {}) {
+    console.log('Chart.copySVGToClipboard called');
+    
+    try {
+      const svgContent = this.exportSVG(options);
+      await navigator.clipboard.writeText(svgContent);
+      console.log('SVG copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy SVG to clipboard:', error);
+      throw error;
+    }
+    
+    return this;
+  }
+
+  /**
+   * Copy PNG to clipboard
+   * @public
+   * @param {Object} options - Export options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async copyPNGToClipboard(options = {}) {
+    console.log('Chart.copyPNGToClipboard called');
+    
+    try {
+      const pngDataUrl = await this.exportPNG(options);
+      
+      // Convert data URL to blob
+      const response = await fetch(pngDataUrl);
+      const blob = await response.blob();
+      
+      // Copy to clipboard
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      
+      console.log('PNG copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy PNG to clipboard:', error);
+      throw error;
+    }
+    
+    return this;
+  }
+  
   /**
    * Clean up hover features using InteractionManager
    * @private
@@ -1725,55 +1811,7 @@ updateStudy(studyId, updates) {
     // Use InteractionManager for all interaction cleanup
     InteractionManager.cleanup(this);
   }
-
-  /**
-   * Get chart configuration for saving
-   * @public
-   * @returns {Object} Serialized chart configuration
-   */
-  serialize() {
-    console.log('serialize called');
-    
-    // Create a clean object with configuration for saving
-    return {
-      id: this.options.id || 'chart',
-      title: this.options.title || 'Chart',
-      chartType: this.options.chartType || 'line',
-      chartLibrary: 'VisionCharts',
-      isLogarithmic: this.options.isLogarithmic || false,
-      isPanelView: this.options.isPanelView || false,
-      showRecessionLines: this.options.showRecessionLines || false,
-      showZeroLine: this.options.showZeroLine || false,
-      xAxisName: this.options.xAxisName || '',
-      yAxisName: this.options.yAxisName || '',
-      studies: this.options.studies || [],
-      // Store datasets without the data array to save space
-      datasets: this.state.datasets.map(dataset => {
-        const { data, ...rest } = dataset;
-        return rest;
-      })
-    };
-  }
   
-  /**
-   * Load chart configuration
-   * @public
-   * @param {Object} config - Chart configuration
-   * @returns {Chart} This chart instance
-   */
-  loadConfig(config) {
-    console.log('loadConfig called');
-    
-    // Update options with loaded configuration
-    Object.assign(this.options, config);
-    
-    // Datasets are handled separately since they typically
-    // need to be reloaded with actual data
-    
-    // Update chart
-    return this.update();
-  }
-
  /**
  * Destroy the chart and clean up
  * @public
