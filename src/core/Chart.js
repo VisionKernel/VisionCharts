@@ -1,6 +1,7 @@
 import Axis from '../core/Axis.js';
 import InteractionManager from '../core/InteractionManager.js';
 import ScaleManager from '../core/ScaleManager.js';
+import StudiesManager from '../core/StudiesManager.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
@@ -355,117 +356,13 @@ export default class Chart {
     
     // Process studies if present
     if (this.options.studies && this.options.studies.length) {
-      this.processStudies();
+      StudiesManager.processStudies(this);
     }
     
     // Apply date filtering if needed
     this.applyDateFilter();
     
     console.log('Datasets processed:', this.state.datasets.length);
-  }
-  
-  /**
-   * Process studies/indicators - FIXED VERSION
-   * @private
-   */
-  processStudies() {
-    console.log('Chart.processStudies called');
-    
-    const { studies } = this.options;
-    
-    // Skip if no studies
-    if (!studies || !studies.length) {
-      console.log('No studies to process');
-      return;
-    }
-    
-    // Process each study
-    studies.forEach(study => {
-      // Find dataset to apply the study to
-      const dataset = this.state.datasets.find(d => d.id === study.datasetId);
-      if (!dataset || !dataset.data || !dataset.data.length) {
-        console.log('Dataset not found for study:', study.id);
-        return;
-      }
-      
-      console.log('Processing study:', study.type, 'for dataset:', dataset.id);
-      
-      try {
-        // FIXED: Map your data structure to what the math functions expect
-        const studyData = dataset.data.map(point => ({
-          x: point[this.options.xField] || point.x || point.date,
-          y: point[this.options.yField] || point.y || point.price || point.value,
-          // Preserve original point for reference
-          ...point
-        }));
-        
-        // Use the consolidated math function with proper field mapping
-        const calculatedStudy = calculateIndicator(study.type, studyData, {
-          ...study.params,
-          xField: 'x',
-          yField: 'y'
-        });
-        
-        // Check if we got a valid result
-        if (!calculatedStudy || !calculatedStudy.length) {
-          console.warn('Study calculation returned no data:', study.type);
-          return;
-        }
-        
-        // Convert back to your chart's data format
-        const chartStudyData = calculatedStudy.map(point => {
-          const result = {
-            [this.options.xField]: point.x || point[this.options.xField],
-          };
-          
-          // Handle different study types' output formats
-          if (study.type === 'bollinger') {
-            // Bollinger bands return multiple values
-            result[this.options.yField] = point.middle;
-            result.upper = point.upper;
-            result.lower = point.lower;
-          } else if (study.type === 'macd') {
-            // MACD returns multiple values
-            result[this.options.yField] = point.macd;
-            result.signal = point.signal;
-            result.histogram = point.histogram;
-          } else if (study.type === 'rsi') {
-            // RSI returns rsi value
-            result[this.options.yField] = point.rsi;
-          } else {
-            // SMA, EMA return single values
-            result[this.options.yField] = point[this.options.yField] || point.y;
-          }
-          
-          return result;
-        });
-        
-        // Add study dataset - FIXED: Don't add if already exists
-        const existingStudyIndex = this.state.datasets.findIndex(d => d.id === study.id);
-        const studyDataset = {
-          id: study.id,
-          name: study.name || `${study.type.toUpperCase()}(${study.params?.period || 14})`,
-          color: study.color || '#888',
-          width: study.width || 1,
-          area: study.area || false,
-          type: 'study',
-          studyType: study.type,
-          data: chartStudyData
-        };
-        
-        if (existingStudyIndex >= 0) {
-          // Update existing study
-          this.state.datasets[existingStudyIndex] = studyDataset;
-        } else {
-          // Add new study
-          this.state.datasets.push(studyDataset);
-        }
-        
-        console.log('Study added as dataset:', study.id, 'with', chartStudyData.length, 'points');
-      } catch (error) {
-        console.error(`Error calculating study ${study.type}:`, error);
-      }
-    });
   }
   
   /**
@@ -1846,69 +1743,86 @@ getStatisticalInfo(datasetId = null) {
     // Update chart
     return this.update();
   }
-  
+
   /**
-   * Add a study/indicator - FIXED VERSION
+   * Add a study/indicator - UPDATED VERSION using StudiesManager
    * @public
    * @param {string} datasetId - Dataset ID to apply the study to
    * @param {Object} study - Study configuration
    * @returns {Chart} This chart instance
    */
   addStudy(datasetId, study) {
-    console.log('addStudy called:', datasetId, study);
+    console.log('Chart.addStudy called - delegating to StudiesManager');
     
-    // Initialize studies array if it doesn't exist
-    this.options.studies = this.options.studies || [];
-    
-    // Add study to options
-    const studyConfig = {
-      ...study,
-      datasetId: datasetId,
-      id: study.id || `study-${study.type}-${Date.now()}`
-    };
-    
-    // Remove existing study with same ID if it exists
-    this.options.studies = this.options.studies.filter(s => s.id !== studyConfig.id);
-    
-    // Add the new study
-    this.options.studies.push(studyConfig);
-    
-    console.log('Study added to options:', studyConfig);
+    StudiesManager.addStudy(this, datasetId, study);
     
     // Update chart
     return this.update();
   }
-  
+
   /**
-   * Remove a study/indicator - FIXED VERSION
+   * Remove a study/indicator - UPDATED VERSION using StudiesManager
    * @public
    * @param {string} datasetId - Dataset ID (for compatibility)
    * @param {string} studyId - Study ID to remove
    * @returns {Chart} This chart instance
    */
   removeStudy(datasetId, studyId) {
-    console.log('removeStudy called:', datasetId, studyId);
+    console.log('Chart.removeStudy called - delegating to StudiesManager');
     
-    // Remove study from options
-    if (this.options.studies) {
-      const beforeCount = this.options.studies.length;
-      this.options.studies = this.options.studies.filter(s => s.id !== studyId);
-      const afterCount = this.options.studies.length;
-      
-      console.log(`Removed ${beforeCount - afterCount} studies with ID ${studyId}`);
-    }
-    
-    // Remove study dataset from state
-    if (this.state.datasets) {
-      const beforeCount = this.state.datasets.length;
-      this.state.datasets = this.state.datasets.filter(d => d.id !== studyId);
-      const afterCount = this.state.datasets.length;
-      
-      console.log(`Removed ${beforeCount - afterCount} study datasets with ID ${studyId}`);
-    }
+    StudiesManager.removeStudy(this, datasetId, studyId);
     
     // Update chart
     return this.update();
+  }
+
+  /**
+ * Update study configuration
+ * @public
+ * @param {string} studyId - Study ID
+ * @param {Object} updates - Configuration updates
+ * @returns {Chart} This chart instance
+ */
+updateStudy(studyId, updates) {
+  console.log('Chart.updateStudy called');
+  
+  if (StudiesManager.updateStudy(this, studyId, updates)) {
+    return this.update();
+  }
+  
+  return this;
+}
+
+/**
+ * Clear all studies
+ * @public
+ * @returns {Chart} This chart instance
+ */
+  clearAllStudies() {
+    console.log('Chart.clearAllStudies called');
+    
+    StudiesManager.clearAllStudies(this);
+    return this.update();
+  }
+
+  /**
+   * Get studies for a dataset
+   * @public
+   * @param {string} datasetId - Dataset ID
+   * @returns {Array} Array of studies
+   */
+  getStudiesForDataset(datasetId) {
+    return StudiesManager.getStudiesForDataset(this, datasetId);
+  }
+
+  /**
+   * Get study by ID
+   * @public
+   * @param {string} studyId - Study ID
+   * @returns {Object|null} Study configuration
+   */
+  getStudyById(studyId) {
+    return StudiesManager.getStudyById(this, studyId);
   }
   
   /**
