@@ -1,5 +1,6 @@
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import StudiesRenderer from './StudiesRenderer.js';
+import PathGenerator from '../utils/PathGenerator.js';
 
 /**
  * PanelDataRenderer - Centralized component for rendering data in panel mode
@@ -80,7 +81,7 @@ export default class PanelDataRenderer {
       this.renderAreaForPanel(chart, panel, dataset, points, panelHeight, gradient, areaOpacity);
     }
     
-    // Generate and render line path
+    // Generate and render line path based on curve type
     const pathD = this.generateLinePathForPanel(points, curve);
     if (pathD) {
       const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -337,7 +338,7 @@ export default class PanelDataRenderer {
   }
   
   /**
-   * Generate line path for panel based on curve type
+   * Generate line path for panel based on curve type - UPDATED to use PathGenerator
    * @private
    * @param {Array} points - Array of [x, y] coordinates
    * @param {string} curve - Curve type
@@ -348,163 +349,14 @@ export default class PanelDataRenderer {
     
     switch (curve) {
       case 'step':
-        return this.generateStepPath(points);
+        return PathGenerator.generateStepPath(points);
       case 'cardinal':
-        return this.generateCardinalPath(points);
+        return PathGenerator.generateCardinalPath(points);
       case 'monotone':
-        return this.generateMonotonePath(points);
+        return PathGenerator.generateMonotonePath(points);
       case 'linear':
       default:
-        return this.generateLinearPath(points);
+        return PathGenerator.generateLinearPath(points);
     }
-  }
-  
-  /**
-   * Generate linear path
-   * @private
-   */
-  static generateLinearPath(points) {
-    if (!points.length) return '';
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [
-      `M ${firstX},${firstY}`,
-      ...restPoints.map(([x, y]) => `L ${x},${y}`)
-    ];
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate step path
-   * @private
-   */
-  static generateStepPath(points) {
-    if (!points.length) return '';
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [`M ${firstX},${firstY}`];
-    
-    for (let i = 0; i < restPoints.length; i++) {
-      const [x, y] = restPoints[i];
-      pathParts.push(`H ${x}`);
-      pathParts.push(`V ${y}`);
-    }
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate cardinal spline path
-   * @private
-   */
-  static generateCardinalPath(points, tension = 0.5) {
-    if (points.length < 2) return this.generateLinearPath(points);
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [`M ${firstX},${firstY}`];
-    
-    // Need at least 3 points for cardinal spline
-    if (points.length < 3) {
-      return this.generateLinearPath(points);
-    }
-    
-    // Helper function to calculate control points
-    const getControlPoints = (p0, p1, p2, t) => {
-      const d1x = (p2[0] - p0[0]) * t;
-      const d1y = (p2[1] - p0[1]) * t;
-      
-      return [
-        [p1[0] - d1x, p1[1] - d1y], // CP1
-        [p1[0] + d1x, p1[1] + d1y]  // CP2
-      ];
-    };
-    
-    // For the first segment, use the first point as the previous point
-    let [cp1, cp2] = getControlPoints(
-      firstPoint,
-      firstPoint,
-      restPoints[0],
-      tension
-    );
-    
-    for (let i = 0; i < restPoints.length; i++) {
-      const current = restPoints[i];
-      const prev = i > 0 ? restPoints[i - 1] : firstPoint;
-      const next = i < restPoints.length - 1 ? restPoints[i + 1] : current;
-      
-      if (i > 0) {
-        [cp1, cp2] = getControlPoints(
-          prev,
-          current,
-          next,
-          tension
-        );
-      }
-      
-      // Add cubic bezier curve segment
-      pathParts.push(`C ${cp1[0]},${cp1[1]} ${cp2[0]},${cp2[1]} ${current[0]},${current[1]}`);
-    }
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate monotone cubic interpolation path
-   * @private
-   */
-  static generateMonotonePath(points) {
-    if (points.length < 3) return this.generateLinearPath(points);
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [`M ${firstX},${firstY}`];
-    
-    // Calculate slope for each segment
-    const n = points.length;
-    const tangents = new Array(n);
-    
-    // Initialize slopes
-    for (let i = 0; i < n - 1; i++) {
-      tangents[i] = (points[i + 1][1] - points[i][1]) / 
-                  (points[i + 1][0] - points[i][0]);
-    }
-    
-    // Set the slope at each point to be the average of adjacent segments
-    tangents[n - 1] = tangents[n - 2];
-    
-    for (let i = 1; i < n - 1; i++) {
-      if (tangents[i - 1] * tangents[i] <= 0) {
-        tangents[i] = 0;
-      } else {
-        const a = tangents[i - 1];
-        const b = tangents[i];
-        tangents[i] = (a * b) / (a + b);
-      }
-    }
-    
-    // Generate the curve segments
-    for (let i = 0; i < n - 1; i++) {
-      const dx = (points[i + 1][0] - points[i][0]) / 3;
-      
-      const cp1x = points[i][0] + dx;
-      const cp1y = points[i][1] + dx * tangents[i];
-      
-      const cp2x = points[i + 1][0] - dx;
-      const cp2y = points[i + 1][1] - dx * tangents[i + 1];
-      
-      pathParts.push(
-        `C ${cp1x},${cp1y} ${cp2x},${cp2y} ${points[i + 1][0]},${points[i + 1][1]}`
-      );
-    }
-    
-    return pathParts.join(' ');
   }
 }

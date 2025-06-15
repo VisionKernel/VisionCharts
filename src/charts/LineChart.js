@@ -3,6 +3,7 @@ import Axis from '../core/Axis.js';
 import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber } from '../utils/chartUtils.js';
+import PathGenerator from '../utils/PathGenerator.js';
 import StudiesRenderer from '../components/StudiesRenderer.js';
 import PanelDataRenderer from '../components/PanelDataRenderer.js';
 import Crosshair from '../components/Crosshair.js';
@@ -66,249 +67,6 @@ export default class LineChart extends Chart {
     });
     
     console.log('LineChart constructor finished with merged options:', this.options);
-  }
-  
-  /**
-   * Generate line path based on data
-   * @private
-   * @param {Array} data - Chart data
-   * @returns {string} Path definition
-   */
-  generateLinePath(data) {
-    const { xField, yField, curve } = this.options;
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    // Map data points to coordinates
-    const points = data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    if (points.length === 0) return '';
-    
-    // Generate path definition using SvgRenderer methods
-    switch (curve) {
-      case 'step':
-        return SvgRenderer.stepPathDefinition(points);
-      case 'cardinal':
-        return SvgRenderer.cardinalPathDefinition(points, 0.5); // Default tension
-      case 'monotone':
-        return this.generateMonotonePath(points); // Keep custom implementation
-      case 'linear':
-      default:
-        return SvgRenderer.linePathDefinition(points);
-    }
-  }
-  
-  /**
-   * Generate linear path
-   * @private
-   * @param {Array} points - Array of [x, y] coordinates
-   * @returns {string} Path definition
-   */
-  generateLinearPath(points) {
-    if (!points.length) return '';
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [
-      `M ${firstX},${firstY}`,
-      ...restPoints.map(([x, y]) => `L ${x},${y}`)
-    ];
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate step line path
-   * @private
-   * @param {Array} points - Array of [x, y] coordinates
-   * @returns {string} Path definition
-   */
-  generateStepPath(points) {
-    if (!points.length) return '';
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [`M ${firstX},${firstY}`];
-    
-    for (let i = 0; i < restPoints.length; i++) {
-      const [x, y] = restPoints[i];
-      const prevX = i > 0 ? restPoints[i - 1][0] : firstX;
-      
-      pathParts.push(`H ${x}`);
-      pathParts.push(`V ${y}`);
-    }
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate cardinal spline path
-   * @private
-   * @param {Array} points - Array of [x, y] coordinates
-   * @param {number} tension - Curve tension (0-1)
-   * @returns {string} Path definition
-   */
-  generateCardinalPath(points, tension = 0.5) {
-    if (points.length < 2) return this.generateLinearPath(points);
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [`M ${firstX},${firstY}`];
-    
-    // Helper function to calculate control points
-    const getControlPoints = (p0, p1, p2, t) => {
-      const d1x = (p2[0] - p0[0]) * t;
-      const d1y = (p2[1] - p0[1]) * t;
-      
-      return [
-        [p1[0] - d1x, p1[1] - d1y], // CP1
-        [p1[0] + d1x, p1[1] + d1y]  // CP2
-      ];
-    };
-    
-    // Need at least 3 points for cardinal spline
-    if (points.length < 3) {
-      return this.generateLinearPath(points);
-    }
-    
-    // For the first segment, use the first point as the previous point
-    let [cp1, cp2] = getControlPoints(
-      firstPoint,
-      firstPoint,
-      restPoints[0],
-      tension
-    );
-    
-    for (let i = 0; i < restPoints.length; i++) {
-      const current = restPoints[i];
-      const prev = i > 0 ? restPoints[i - 1] : firstPoint;
-      const next = i < restPoints.length - 1 ? restPoints[i + 1] : current;
-      
-      if (i > 0) {
-        [cp1, cp2] = getControlPoints(
-          prev,
-          current,
-          next,
-          tension
-        );
-      }
-      
-      // Add cubic bezier curve segment
-      pathParts.push(`C ${cp1[0]},${cp1[1]} ${cp2[0]},${cp2[1]} ${current[0]},${current[1]}`);
-    }
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate monotone cubic interpolation path
-   * @private
-   * @param {Array} points - Array of [x, y] coordinates
-   * @returns {string} Path definition
-   */
-  generateMonotonePath(points) {
-    if (points.length < 3) return this.generateLinearPath(points);
-    
-    const [firstPoint, ...restPoints] = points;
-    const [firstX, firstY] = firstPoint;
-    
-    const pathParts = [`M ${firstX},${firstY}`];
-    
-    // Calculate slope for each segment
-    const n = points.length;
-    const tangents = new Array(n);
-    
-    // Initialize slopes
-    for (let i = 0; i < n - 1; i++) {
-      tangents[i] = (points[i + 1][1] - points[i][1]) / 
-                  (points[i + 1][0] - points[i][0]);
-    }
-    
-    // Set the slope at each point to be the average of adjacent segments
-    // This ensures monotonicity
-    tangents[n - 1] = tangents[n - 2];
-    
-    for (let i = 1; i < n - 1; i++) {
-      if (tangents[i - 1] * tangents[i] <= 0) {
-        // If slopes have different signs, set to zero
-        tangents[i] = 0;
-      } else {
-        // Otherwise, use harmonic mean of slopes
-        const a = tangents[i - 1];
-        const b = tangents[i];
-        tangents[i] = (a * b) / (a + b);
-      }
-    }
-    
-    // Generate the curve segments
-    for (let i = 0; i < n - 1; i++) {
-      const dx = (points[i + 1][0] - points[i][0]) / 3;
-      
-      const cp1x = points[i][0] + dx;
-      const cp1y = points[i][1] + dx * tangents[i];
-      
-      const cp2x = points[i + 1][0] - dx;
-      const cp2y = points[i + 1][1] - dx * tangents[i + 1];
-      
-      pathParts.push(
-        `C ${cp1x},${cp1y} ${cp2x},${cp2y} ${points[i + 1][0]},${points[i + 1][1]}`
-      );
-    }
-    
-    return pathParts.join(' ');
-  }
-  
-  /**
-   * Generate area path based on data
-   * @private
-   * @param {Array} data - Chart data
-   * @returns {string} Path definition
-   */
-  generateAreaPath(data) {
-    const { xField, yField, curve } = this.options;
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    // Map data points to coordinates (same as generateLinePath)
-    const points = data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    if (points.length === 0) return '';
-    
-    // Use SvgRenderer for area path generation
-    const baselineY = this.state.dimensions.innerHeight;
-    return SvgRenderer.curvedAreaPathDefinition(points, baselineY, curve);
-  }
-
-  /**
-   * Helper method to get data points as coordinates
-   * @private
-   * @param {Array} data - Chart data
-   * @returns {Array} Array of [x, y] coordinate pairs
-   */
-  getDataPoints(data) {
-    const { xField, yField } = this.options;
-    const xScale = this.state.scales.x;
-    const yScale = this.state.scales.y;
-    
-    return data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
   }
   
   /**
@@ -400,7 +158,7 @@ export default class LineChart extends Chart {
       
       // Render area if enabled for this dataset
       if (dataset.area) {
-        const areaPath = this.generateAreaPath(dataset.data);
+        const areaPath = PathGenerator.generateAreaPath(dataset.data, this);
         if (areaPath) {
           const areaAttributes = {
             d: areaPath,
@@ -422,7 +180,7 @@ export default class LineChart extends Chart {
       }
       
       // Render line using SvgRenderer
-      const linePath = this.generateLinePath(dataset.data);
+      const linePath = PathGenerator.generateLinePath(dataset.data, this);
       if (linePath) {
         const lineElement = SvgRenderer.createPath(linePath, {
           stroke: dataset.color,
@@ -689,5 +447,25 @@ export default class LineChart extends Chart {
     
     this.options.gradient = gradient;
     return this.update();
+  }
+
+  /**
+   * Generate line path for dataset - UPDATED VERSION using PathGenerator
+   * @private
+   * @param {Array} data - Data array
+   * @returns {string} SVG path definition
+   */
+  generateLinePath(data) {
+    return PathGenerator.generateLinePath(data, this);
+  }
+
+  /**
+   * Generate area path for dataset - UPDATED VERSION using PathGenerator
+   * @private
+   * @param {Array} data - Data array
+   * @returns {string} SVG path definition
+   */
+  generateAreaPath(data) {
+    return PathGenerator.generateAreaPath(data, this);
   }
 }
