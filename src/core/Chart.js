@@ -5,6 +5,7 @@ import StudiesManager from '../core/StudiesManager.js';
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
 import Crosshair from '../components/Crosshair.js';
+import StatisticalLines from '../components/StatisticalLines.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
 import ZeroLine from '../components/ZeroLine.js';
@@ -566,8 +567,7 @@ render() {
   this.renderTitle();
   this.renderAxisNames();
 
-  // FIXED: Render statistical lines AFTER everything else is set up
-  this.renderStatisticalLines();
+  StatisticalLines.renderForChart(this);
   
   // Update state
   this.state.rendered = true;
@@ -1059,8 +1059,7 @@ update() {
   }
   this.renderLegend();
   
-  // FIXED: Update statistical lines after main chart update
-  this.updateStatisticalLines();
+  StatisticalLines.updateForChart(this);
   
   return this;
 }
@@ -1281,310 +1280,111 @@ update() {
   }
 
   /**
- * FIXED: Toggle average line visibility
- * @param {boolean} show - Whether to show the average line
- * @param {string} datasetId - Optional: specific dataset to calculate average from
- */
-toggleAverageLine(show = null, datasetId = null) {
-  console.log('toggleAverageLine called:', show, datasetId);
-  
-  if (show === null) {
-    show = !this.options.showAverageLine;
+   * Toggle average line visibility - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {boolean} show - Whether to show the average line
+   * @param {string} datasetId - Optional: specific dataset to calculate average from
+   * @returns {Chart} This chart instance
+   */
+  toggleAverageLine(show = null, datasetId = null) {
+    console.log('Chart.toggleAverageLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.toggleAverageLine(this, show, datasetId);
+    return this;
   }
-  
-  this.options.showAverageLine = show;
-  
-  if (show) {
-    // Create instance if it doesn't exist
-    if (!this.averageLine) {
-      this.averageLine = new AverageLine(this.options.averageLineConfig || {});
-    }
-    
-    // Get data for calculation
-    const data = this.getDataForStatistics(datasetId);
-    const valueField = this.getValueField();
-    
-    console.log('Rendering average line with:', {
-      dataLength: data.length,
-      valueField: valueField,
-      hasScales: Boolean(this.state.scales.y),
-      hasChart: Boolean(this.state.chart)
-    });
-    
-    if (data && data.length > 0 && this.state.rendered) {
-      this.averageLine.render(this, data, valueField);
-    }
-  } else if (this.averageLine) {
-    console.log('Removing average line');
-    this.averageLine.remove();
-  }
-  
-  return this;
-}
 
   /**
- * FIXED: Toggle median line visibility
- * @param {boolean} show - Whether to show the median line
- * @param {string} datasetId - Optional: specific dataset to calculate median from
- */
-toggleMedianLine(show = null, datasetId = null) {
-  console.log('toggleMedianLine called:', show, datasetId);
-  
-  if (show === null) {
-    show = !this.options.showMedianLine;
+   * Toggle median line visibility - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {boolean} show - Whether to show the median line
+   * @param {string} datasetId - Optional: specific dataset to calculate median from
+   * @returns {Chart} This chart instance
+   */
+  toggleMedianLine(show = null, datasetId = null) {
+    console.log('Chart.toggleMedianLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.toggleMedianLine(this, show, datasetId);
+    return this;
   }
-  
-  this.options.showMedianLine = show;
-  
-  if (show) {
-    // Create instance if it doesn't exist
-    if (!this.medianLine) {
-      this.medianLine = new MedianLine(this.options.medianLineConfig || {});
-    }
-    
-    // Get data for calculation
-    const data = this.getDataForStatistics(datasetId);
-    const valueField = this.getValueField();
-    
-    console.log('Rendering median line with:', {
-      dataLength: data.length,
-      valueField: valueField,
-      hasScales: Boolean(this.state.scales.y),
-      hasChart: Boolean(this.state.chart)
-    });
-    
-    if (data && data.length > 0 && this.state.rendered) {
-      this.medianLine.render(this, data, valueField);
-    }
-  } else if (this.medianLine) {
-    console.log('Removing median line');
-    this.medianLine.remove();
-  }
-  
-  return this;
-}
-
 
   /**
- * FIXED: Get data for statistical calculations
- * @param {string} datasetId - Optional: specific dataset ID
- * @returns {Array} - Data array for calculations
- */
-getDataForStatistics(datasetId = null) {
-  console.log('getDataForStatistics called with datasetId:', datasetId);
-  
-  // Check if we have data in the new config format
-  if (this.config.data && this.config.data.length > 0) {
-    if (datasetId) {
-      // Find specific dataset
-      const dataset = this.config.data.find(d => d.id === datasetId);
-      console.log('Found specific dataset:', Boolean(dataset));
-      return dataset ? dataset.data : [];
-    } else {
-      // Use first dataset by default
-      const firstDataset = this.config.data[0];
-      console.log('Using first dataset, data length:', firstDataset.data?.length || 0);
-      return firstDataset.data || [];
-    }
+   * Configure average line appearance - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {Object} config - Configuration object
+   * @returns {Chart} This chart instance
+   */
+  configureAverageLine(config) {
+    console.log('Chart.configureAverageLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.configureAverageLine(this, config);
+    return this;
   }
-  
-  // Fallback to state.datasets if config.data is not available
-  if (this.state.datasets && this.state.datasets.length > 0) {
-    if (datasetId) {
-      const dataset = this.state.datasets.find(d => d.id === datasetId);
-      console.log('Found dataset in state:', Boolean(dataset));
-      return dataset ? dataset.data : [];
-    } else {
-      const firstDataset = this.state.datasets[0];
-      console.log('Using first state dataset, data length:', firstDataset.data?.length || 0);
-      return firstDataset.data || [];
-    }
-  }
-  
-  console.warn('No data found for statistics');
-  return [];
-}
 
-/**
- * FIXED: Get the appropriate value field name for the chart type
- * @returns {string} - Field name for values
- */
-getValueField() {
-  // First check if explicitly set in options
-  if (this.options.yField) {
-    console.log('Using yField from options:', this.options.yField);
-    return this.options.yField;
+  /**
+   * Configure median line appearance - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {Object} config - Configuration object
+   * @returns {Chart} This chart instance
+   */
+  configureMedianLine(config) {
+    console.log('Chart.configureMedianLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.configureMedianLine(this, config);
+    return this;
   }
-  
-  // Try to detect field name from data
-  const data = this.getDataForStatistics();
-  if (data && data.length > 0) {
-    const samplePoint = data[0];
-    
-    // Common field names in order of preference
-    const possibleFields = ['price', 'value', 'y', 'amount', 'count'];
-    
-    for (const field of possibleFields) {
-      if (samplePoint.hasOwnProperty(field) && typeof samplePoint[field] === 'number') {
-        console.log('Detected value field:', field);
-        return field;
-      }
+
+  /**
+   * Get statistical information about the current dataset - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {string} datasetId - Optional: specific dataset ID
+   * @returns {Object} - Statistical information
+   */
+    getStatisticalInfo(datasetId = null) {
+      return StatisticalLines.getStatisticalInfo(this, datasetId);
     }
-    
-    console.log('Sample data point keys:', Object.keys(samplePoint));
-  }
-  
-  // Default fallback
-  console.log('Using default value field: y');
-  return 'y';
-}
 
-/**
- * NEW METHOD: Render statistical lines separately to ensure proper timing
- */
-renderStatisticalLines() {
-  console.log('renderStatisticalLines called');
-  
-  // Only render in single mode (not panel mode)
-  if (this.options.isPanelView) {
-    console.log('Panel mode detected, skipping statistical lines');
-    return;
-  }
-  
-  // Ensure we have valid scales and chart
-  if (!this.state.scales.y || !this.state.chart) {
-    console.warn('Scales or chart not ready for statistical lines');
-    return;
-  }
-  
-  // Render average line if enabled
-  if (this.options.showAverageLine) {
-    if (!this.averageLine) {
-      this.averageLine = new AverageLine(this.options.averageLineConfig || {});
-    }
+    /**
+   * Remove all statistical lines
+   * @public
+   * @returns {Chart} This chart instance
+   */
+  removeAllStatisticalLines() {
+    console.log('Chart.removeAllStatisticalLines called');
     
-    const data = this.getDataForStatistics();
-    const valueField = this.getValueField();
-    
-    console.log('Rendering average line with data:', data.length, 'points');
-    this.averageLine.render(this, data, valueField);
+    StatisticalLines.removeAllLines(this);
+    return this.update();
   }
-  
-  // Render median line if enabled
-  if (this.options.showMedianLine) {
-    if (!this.medianLine) {
-      this.medianLine = new MedianLine(this.options.medianLineConfig || {});
-    }
-    
-    const data = this.getDataForStatistics();
-    const valueField = this.getValueField();
-    
-    console.log('Rendering median line with data:', data.length, 'points');
-    this.medianLine.render(this, data, valueField);
-  }
-}
 
+  /**
+   * Check if any statistical lines are visible
+   * @public
+   * @returns {boolean} True if any statistical lines are visible
+   */
+  hasStatisticalLines() {
+    return StatisticalLines.hasVisibleLines(this);
+  }
 
-/**
- * FIXED: Update statistical lines when data changes
- */
-updateStatisticalLines() {
-  console.log('updateStatisticalLines called');
-  
-  // Only update in single mode
-  if (this.options.isPanelView) {
-    return;
+  /**
+   * Get statistical lines configuration
+   * @public
+   * @returns {Object} Configuration object
+   */
+  getStatisticalLinesConfig() {
+    return StatisticalLines.getConfiguration(this);
   }
-  
-  if (this.options.showAverageLine && this.averageLine) {
-    const data = this.getDataForStatistics();
-    const valueField = this.getValueField();
-    this.averageLine.update(this, data, valueField);
-  }
-  
-  if (this.options.showMedianLine && this.medianLine) {
-    const data = this.getDataForStatistics();
-    const valueField = this.getValueField();
-    this.medianLine.update(this, data, valueField);
-  }
-}
 
-/**
- * Configure average line appearance
- * @param {Object} config - Configuration object
- */
-configureAverageLine(config) {
-  this.options.averageLineConfig = { ...this.options.averageLineConfig, ...config };
-  
-  if (this.averageLine) {
-    this.averageLine.updateConfig(config);
+  /**
+   * Apply statistical lines configuration
+   * @public
+   * @param {Object} configuration - Configuration object
+   * @returns {Chart} This chart instance
+   */
+  applyStatisticalLinesConfig(configuration) {
+    console.log('Chart.applyStatisticalLinesConfig called');
     
-    if (this.options.showAverageLine) {
-      const data = this.getDataForStatistics();
-      const valueField = this.getValueField();
-      this.averageLine.update(this, data, valueField);
-    }
+    StatisticalLines.applyConfiguration(this, configuration);
+    return this.update();
   }
-  
-  return this;
-}
-
-/**
- * Configure median line appearance
- * @param {Object} config - Configuration object
- */
-configureMedianLine(config) {
-  this.options.medianLineConfig = { ...this.options.medianLineConfig, ...config };
-  
-  if (this.medianLine) {
-    this.medianLine.updateConfig(config);
-    
-    if (this.options.showMedianLine) {
-      const data = this.getDataForStatistics();
-      const valueField = this.getValueField();
-      this.medianLine.update(this, data, valueField);
-    }
-  }
-  
-  return this;
-}
-
-/**
- * Get statistical information about the current dataset
- * @param {string} datasetId - Optional: specific dataset ID
- * @returns {Object} - Statistical information
- */
-getStatisticalInfo(datasetId = null) {
-  const data = this.getDataForStatistics(datasetId);
-  const valueField = this.getValueField();
-  
-  if (!data || data.length === 0) {
-    return {
-      average: null,
-      median: null,
-      count: 0,
-      min: null,
-      max: null
-    };
-  }
-  
-  // Calculate statistics
-  const tempAverageLine = new AverageLine();
-  const tempMedianLine = new MedianLine();
-  
-  const average = tempAverageLine.calculateAverage(data, valueField);
-  const median = tempMedianLine.calculateMedian(data, valueField);
-  const medianStats = tempMedianLine.getStatistics(data, valueField);
-  
-  return {
-    average: average,
-    median: median,
-    count: medianStats.count,
-    min: medianStats.min,
-    max: medianStats.max,
-    quartiles: medianStats.quartiles
-  };
-}
 
   /**
    * Set X axis name
@@ -1994,14 +1794,7 @@ destroy() {
   this.cleanupHoverFeatures();
 
   // Remove statistical lines
-  if (this.averageLine) {
-    this.averageLine.remove();
-    this.averageLine = null;
-  }
-  if (this.medianLine) {
-    this.medianLine.remove();
-    this.medianLine = null;
-  }
+  StatisticalLines.cleanup(this);
 
   // Destroy axes
   this.cleanupAxes();
