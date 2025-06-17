@@ -5,6 +5,8 @@ import ScaleManager from '../core/ScaleManager.js';
 import RecessionLines from './RecessionLines.js';
 import ZeroLine from './ZeroLine.js';
 import Grid from './Grid.js';
+import StatisticalLines from './StatisticalLines.js';
+
 
 /**
  * Panel component for rendering multi-panel charts
@@ -85,7 +87,8 @@ export default class Panel {
             scales, 
             { innerWidth, effectivePanelHeight }, 
             chart.options, 
-            index === chart.state.datasets.length - 1 // isLastPanel
+            index === chart.state.datasets.length - 1, // isLastPanel
+            dataset // Pass dataset for statistical lines
         );
         
         // Render chart-specific data using PanelDataRenderer
@@ -126,14 +129,15 @@ export default class Panel {
     }
   
   /**
-   * Render panel components (axes, grid, zero line, recession lines)
+   * Render panel components (axes, grid, zero line, recession lines, statistical lines)
    * @param {SVGElement} panelGroup - Panel container
-   * @param {Object} scales - Panel scales
+   * @param {Object} scales - Panel scales  
    * @param {Object} dimensions - Panel dimensions
    * @param {Object} options - Chart options
    * @param {boolean} isLastPanel - Whether this is the last panel
+   * @param {Object} dataset - Dataset for this panel (NEW PARAMETER)
    */
-  static renderPanelComponents(panelGroup, scales, dimensions, options, isLastPanel) {
+  static renderPanelComponents(panelGroup, scales, dimensions, options, isLastPanel, dataset) {
     const { innerWidth, effectivePanelHeight } = dimensions;
     const { xScale, yScale } = scales;
     
@@ -168,6 +172,19 @@ export default class Panel {
         innerWidth,
         options.xType,
         options.recessionLinesOptions || {}
+      );
+    }
+    
+    // Render statistical lines for this panel if enabled
+    if ((options.showAverageLine || options.showMedianLine) && dataset) {
+      StatisticalLines.renderForPanel(
+        panelGroup,
+        dataset,
+        xScale,
+        yScale,
+        innerWidth,
+        effectivePanelHeight,
+        options
       );
     }
   }

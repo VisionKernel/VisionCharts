@@ -46,6 +46,7 @@ export default class StatisticalLines {
     
     // Only update in single mode
     if (chart.options.isPanelView) {
+      console.log('Panel mode detected, statistical lines handled per panel');
       return;
     }
     
@@ -111,8 +112,15 @@ export default class StatisticalLines {
     }
     
     chart.options.showAverageLine = show;
+
+    if (chart.options.isPanelView) {
+      console.log('Panel mode detected, re-rendering average line for panel');
+      if (chart.state.rendered) {
+        return chart.update();
+      }
     
-    if (show) {
+    } else {
+      if (show) {
       // Create instance if it doesn't exist
       if (!chart.averageLine) {
         chart.averageLine = new AverageLine(chart.options.averageLineConfig || {});
@@ -139,6 +147,7 @@ export default class StatisticalLines {
     
     return chart;
   }
+}
   
   /**
    * Toggle median line visibility
@@ -428,6 +437,171 @@ export default class StatisticalLines {
     if (chart.medianLine) {
       chart.medianLine.remove();
       chart.medianLine = null;
+    }
+  }
+  
+  /**
+   * Render statistical lines for a specific panel
+   * @param {SVGElement} panelGroup - Panel container
+   * @param {Object} dataset - Dataset for this panel
+   * @param {Object} xScale - X scale for this panel
+   * @param {Object} yScale - Y scale for this panel
+   * @param {number} panelWidth - Panel width
+   * @param {number} panelHeight - Panel height
+   * @param {Object} options - Chart options
+   */
+  static renderForPanel(panelGroup, dataset, xScale, yScale, panelWidth, panelHeight, options) {
+    console.log('StatisticalLines.renderForPanel called for dataset:', dataset.id);
+    
+    // Render average line for this panel if enabled
+    if (options.showAverageLine) {
+      StatisticalLines.renderAverageLineForPanel(
+        panelGroup, 
+        dataset, 
+        xScale, 
+        yScale, 
+        panelWidth, 
+        panelHeight,
+        options
+      );
+    }
+    
+    // Render median line for this panel if enabled  
+    if (options.showMedianLine) {
+      StatisticalLines.renderMedianLineForPanel(
+        panelGroup, 
+        dataset, 
+        xScale, 
+        yScale, 
+        panelWidth, 
+        panelHeight,
+        options
+      );
+    }
+  }
+
+  /**
+   * Render average line for a specific panel
+   * @private
+   */
+  static renderAverageLineForPanel(panelGroup, dataset, xScale, yScale, panelWidth, panelHeight, options) {
+    console.log('Rendering average line for panel, dataset:', dataset.id);
+    
+    if (!dataset.data || dataset.data.length === 0) {
+      console.log('No data for average line calculation');
+      return;
+    }
+    
+    // Calculate average from this panel's dataset only
+    const valueField = StatisticalLines.getValueField({ options });
+    const validValues = dataset.data
+      .map(d => {
+        const value = typeof d === 'object' ? d[valueField] : d;
+        return typeof value === 'number' && !isNaN(value) ? value : null;
+      })
+      .filter(value => value !== null);
+    
+    if (validValues.length === 0) {
+      console.log('No valid values for average calculation');
+      return;
+    }
+    
+    const averageValue = validValues.reduce((sum, value) => sum + value, 0) / validValues.length;
+    const averageY = yScale.scale(averageValue);
+    
+    console.log('Panel average calculated:', averageValue, 'at Y position:', averageY);
+    
+    // Create average line element
+    const averageLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    averageLine.setAttribute('x1', 0);
+    averageLine.setAttribute('y1', averageY);
+    averageLine.setAttribute('x2', panelWidth);
+    averageLine.setAttribute('y2', averageY);
+    averageLine.setAttribute('stroke', options.averageLineConfig?.color || '#FF6B35');
+    averageLine.setAttribute('stroke-width', options.averageLineConfig?.width || 2);
+    averageLine.setAttribute('stroke-opacity', options.averageLineConfig?.opacity || 0.8);
+    averageLine.setAttribute('stroke-dasharray', options.averageLineConfig?.strokeDasharray || '5,5');
+    averageLine.setAttribute('class', 'visioncharts-panel-average-line');
+    
+    panelGroup.appendChild(averageLine);
+    
+    // Add label if enabled
+    if (options.averageLineConfig?.showLabel !== false) {
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = `Average: ${averageValue.toLocaleString()}`;
+      label.setAttribute('x', panelWidth - 10);
+      label.setAttribute('y', averageY - 5);
+      label.setAttribute('text-anchor', 'end');
+      label.setAttribute('font-size', '12px');
+      label.setAttribute('font-family', 'Arial, sans-serif');
+      label.setAttribute('fill', options.averageLineConfig?.color || '#FF6B35');
+      label.setAttribute('font-weight', 'bold');
+      label.setAttribute('class', 'visioncharts-panel-average-label');
+      
+      panelGroup.appendChild(label);
+    }
+  }
+
+  /**
+   * Render median line for a specific panel
+   * @private  
+   */
+  static renderMedianLineForPanel(panelGroup, dataset, xScale, yScale, panelWidth, panelHeight, options) {
+    console.log('Rendering median line for panel, dataset:', dataset.id);
+    
+    if (!dataset.data || dataset.data.length === 0) {
+      return;
+    }
+    
+    // Calculate median from this panel's dataset only
+    const valueField = StatisticalLines.getValueField({ options });
+    const validValues = dataset.data
+      .map(d => {
+        const value = typeof d === 'object' ? d[valueField] : d;
+        return typeof value === 'number' && !isNaN(value) ? value : null;
+      })
+      .filter(value => value !== null)
+      .sort((a, b) => a - b);
+    
+    if (validValues.length === 0) {
+      return;
+    }
+    
+    const middleIndex = Math.floor(validValues.length / 2);
+    const medianValue = validValues.length % 2 === 0
+      ? (validValues[middleIndex - 1] + validValues[middleIndex]) / 2
+      : validValues[middleIndex];
+      
+    const medianY = yScale.scale(medianValue);
+    
+    // Create median line element
+    const medianLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    medianLine.setAttribute('x1', 0);
+    medianLine.setAttribute('y1', medianY);
+    medianLine.setAttribute('x2', panelWidth);
+    medianLine.setAttribute('y2', medianY);
+    medianLine.setAttribute('stroke', options.medianLineConfig?.color || '#9C27B0');
+    medianLine.setAttribute('stroke-width', options.medianLineConfig?.width || 2);
+    medianLine.setAttribute('stroke-opacity', options.medianLineConfig?.opacity || 0.8);
+    medianLine.setAttribute('stroke-dasharray', options.medianLineConfig?.strokeDasharray || '3,3');
+    medianLine.setAttribute('class', 'visioncharts-panel-median-line');
+    
+    panelGroup.appendChild(medianLine);
+    
+    // Add label if enabled
+    if (options.medianLineConfig?.showLabel !== false) {
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.textContent = `Median: ${medianValue.toLocaleString()}`;
+      label.setAttribute('x', panelWidth - 10);
+      label.setAttribute('y', medianY + 15);
+      label.setAttribute('text-anchor', 'end');
+      label.setAttribute('font-size', '12px');
+      label.setAttribute('font-family', 'Arial, sans-serif');
+      label.setAttribute('fill', options.medianLineConfig?.color || '#9C27B0');
+      label.setAttribute('font-weight', 'bold');
+      label.setAttribute('class', 'visioncharts-panel-median-label');
+      
+      panelGroup.appendChild(label);
     }
   }
 }
