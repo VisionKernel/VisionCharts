@@ -18,7 +18,8 @@ export default class PanelDataRenderer {
    * @param {number} panelHeight - Panel height
    * @param {number} datasetIndex - Dataset index for color selection (optional)
    */
-  static renderForPanel(chart, panel, dataset, xScale, yScale, panelHeight, datasetIndex = 0) {
+
+  static renderForPanel(chart, panel, dataset, xScale, yScale, panelHeight, panelWidth, datasetIndex = 0) {
     console.log('PanelDataRenderer.renderForPanel called for chart type:', chart.options.chartType);
     
     if (!dataset.data || !dataset.data.length) {
@@ -37,7 +38,7 @@ export default class PanelDataRenderer {
     // Render based on chart type
     switch (chart.options.chartType) {
       case 'line':
-        this.renderLineDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight);
+        this.renderLineDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, panelWidth);
         break;
       case 'bar':
         this.renderBarDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, datasetIndex);
@@ -47,6 +48,7 @@ export default class PanelDataRenderer {
         break;
     }
   }
+
   
   /**
    * Render line/area data for a panel
@@ -58,7 +60,7 @@ export default class PanelDataRenderer {
    * @param {Object} yScale - Y scale for this panel
    * @param {number} panelHeight - Panel height
    */
-  static renderLineDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight) {
+  static renderLineDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, panelWidth) {
     const { xField, yField, curve, showPoints, pointRadius, areaOpacity, gradient } = chart.options;
     
     console.log('Rendering line data for panel, dataset:', dataset.id);
@@ -78,7 +80,7 @@ export default class PanelDataRenderer {
     
     // Render area if enabled for this dataset
     if (dataset.area) {
-      this.renderAreaForPanel(chart, panel, dataset, points, panelHeight, gradient, areaOpacity);
+      this.renderAreaForPanel(chart, panel, dataset, points, panelHeight, panelWidth, gradient, areaOpacity);
     }
     
     // Generate and render line path based on curve type
@@ -131,8 +133,8 @@ export default class PanelDataRenderer {
    * Render area for panel (line chart)
    * @private
    */
-  static renderAreaForPanel(chart, panel, dataset, points, panelHeight, gradient, areaOpacity) {
-    console.log('Rendering area for panel');
+  static renderAreaForPanel(chart, panel, dataset, points, panelHeight, panelWidth, gradient, areaOpacity) {
+    console.log('Rendering area for panel with clipping');
     
     const pathD = this.generateLinePathForPanel(points, chart.options.curve);
     
@@ -145,8 +147,35 @@ export default class PanelDataRenderer {
       
       const areaPath = `${pathD} L ${lastX},${panelHeight} L ${firstX},${panelHeight} Z`;
       
+      // CREATE CLIP PATH FOR THIS PANEL
+      const clipPathId = `panel-clip-${dataset.id}-${Date.now()}`;
+      
+      // Check if defs element already exists
+      let defsElement = panel.querySelector('defs');
+      if (!defsElement) {
+        // Create defs element if it doesn't exist
+        defsElement = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        panel.appendChild(defsElement);
+      }
+      
+      // Create a unique clip path ID for this dataset
+      const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+      clipPath.setAttribute('id', clipPathId);
+      
+      // Create a rectangle for clipping
+      const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      clipRect.setAttribute('x', 0);
+      clipRect.setAttribute('y', 0);
+      clipRect.setAttribute('width', panelWidth);
+      clipRect.setAttribute('height', panelHeight);
+      clipRect.setAttribute('fill', 'white');
+      
+      clipPath.appendChild(clipRect);
+      defsElement.appendChild(clipPath);
+      
       const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       areaElement.setAttribute('d', areaPath);
+      areaElement.setAttribute('clip-path', `url(#${clipPathId})`);
       
       // Apply fill (either gradient or color)
       if (gradient) {

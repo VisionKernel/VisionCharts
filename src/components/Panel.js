@@ -96,6 +96,7 @@ export default class Panel {
             scales.xScale, 
             scales.yScale, 
             effectivePanelHeight, 
+            innerWidth,
             index
         );
         
