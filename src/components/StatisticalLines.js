@@ -157,40 +157,50 @@ export default class StatisticalLines {
    * @returns {Object} Chart instance (for chaining)
    */
   static toggleMedianLine(chart, show = null, datasetId = null) {
-    console.log('StatisticalLines.toggleMedianLine called:', show, datasetId);
-    
-    if (show === null) {
-      show = !chart.options.showMedianLine;
+  console.log('StatisticalLines.toggleMedianLine called:', show, datasetId, 'isPanelView:', chart.options.isPanelView);
+  
+  if (show === null) {
+    show = !chart.options.showMedianLine;
+  }
+  
+  chart.options.showMedianLine = show;
+  
+  // Handle panel mode vs single mode
+  if (chart.options.isPanelView) {
+    console.log('Panel mode detected, statistical lines handled per panel');
+    if (chart.state.rendered) {
+      return chart.update();
+    }
+ 
+  } else {
+  
+  if (show) {
+    // Create instance if it doesn't exist
+    if (!chart.medianLine) {
+      chart.medianLine = new MedianLine(chart.options.medianLineConfig || {});
     }
     
-    chart.options.showMedianLine = show;
+    // Get data for calculation
+    const data = this.getDataForStatistics(chart, datasetId);
+    const valueField = this.getValueField(chart);
     
-    if (show) {
-      // Create instance if it doesn't exist
-      if (!chart.medianLine) {
-        chart.medianLine = new MedianLine(chart.options.medianLineConfig || {});
-      }
-      
-      // Get data for calculation
-      const data = this.getDataForStatistics(chart, datasetId);
-      const valueField = this.getValueField(chart);
-      
-      console.log('Rendering median line with:', {
-        dataLength: data.length,
-        valueField: valueField,
-        hasScales: Boolean(chart.state.scales.y),
-        hasChart: Boolean(chart.state.chart)
-      });
-      
-      if (data && data.length > 0 && chart.state.rendered) {
-        chart.medianLine.render(chart, data, valueField);
-      }
-    } else if (chart.medianLine) {
-      console.log('Removing median line');
-      chart.medianLine.remove();
+    console.log('Rendering median line with:', {
+      dataLength: data.length,
+      valueField: valueField,
+      hasScales: Boolean(chart.state.scales.y),
+      hasChart: Boolean(chart.state.chart)
+    });
+    
+    if (data && data.length > 0 && chart.state.rendered) {
+      chart.medianLine.render(chart, data, valueField);
     }
-    
-    return chart;
+  } else if (chart.medianLine) {
+    console.log('Removing median line');
+    chart.medianLine.remove();
+  }
+  
+  return chart;
+}
   }
   
   /**
@@ -550,6 +560,7 @@ export default class StatisticalLines {
     console.log('Rendering median line for panel, dataset:', dataset.id);
     
     if (!dataset.data || dataset.data.length === 0) {
+      console.log('No data for median line calculation');
       return;
     }
     
@@ -561,18 +572,22 @@ export default class StatisticalLines {
         return typeof value === 'number' && !isNaN(value) ? value : null;
       })
       .filter(value => value !== null)
-      .sort((a, b) => a - b);
+      .sort((a, b) => a - b); // Sort for median calculation
     
     if (validValues.length === 0) {
+      console.log('No valid values for median calculation');
       return;
     }
     
+    // Calculate median value
     const middleIndex = Math.floor(validValues.length / 2);
     const medianValue = validValues.length % 2 === 0
       ? (validValues[middleIndex - 1] + validValues[middleIndex]) / 2
       : validValues[middleIndex];
       
     const medianY = yScale.scale(medianValue);
+    
+    console.log('Panel median calculated:', medianValue, 'at Y position:', medianY);
     
     // Create median line element
     const medianLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -583,7 +598,7 @@ export default class StatisticalLines {
     medianLine.setAttribute('stroke', options.medianLineConfig?.color || '#9C27B0');
     medianLine.setAttribute('stroke-width', options.medianLineConfig?.width || 2);
     medianLine.setAttribute('stroke-opacity', options.medianLineConfig?.opacity || 0.8);
-    medianLine.setAttribute('stroke-dasharray', options.medianLineConfig?.strokeDasharray || '3,3');
+    medianLine.setAttribute('stroke-dasharray', options.medianLineConfig?.strokeDasharray || '8,4');
     medianLine.setAttribute('class', 'visioncharts-panel-median-line');
     
     panelGroup.appendChild(medianLine);
@@ -593,7 +608,7 @@ export default class StatisticalLines {
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       label.textContent = `Median: ${medianValue.toLocaleString()}`;
       label.setAttribute('x', panelWidth - 10);
-      label.setAttribute('y', medianY + 15);
+      label.setAttribute('y', medianY + 15); // Offset below the line to avoid overlap with average
       label.setAttribute('text-anchor', 'end');
       label.setAttribute('font-size', '12px');
       label.setAttribute('font-family', 'Arial, sans-serif');
