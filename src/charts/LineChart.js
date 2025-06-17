@@ -160,10 +160,35 @@ export default class LineChart extends Chart {
       if (dataset.area) {
         const areaPath = PathGenerator.generateAreaPath(dataset.data, this);
         if (areaPath) {
+          // CREATE CLIP PATH FOR CHART BOUNDS
+          const clipPathId = `chart-clip-${dataset.id}-${Date.now()}`;
+          
+          // Get or create defs element
+          let defs = this.state.svg.querySelector('defs');
+          if (!defs) {
+            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            this.state.svg.insertBefore(defs, this.state.svg.firstChild);
+          }
+          
+          // Create clip path
+          const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+          clipPath.setAttribute('id', clipPathId);
+          
+          // Create clipping rectangle that matches chart inner bounds
+          const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          clipRect.setAttribute('x', '0');
+          clipRect.setAttribute('y', '0');
+          clipRect.setAttribute('width', this.state.dimensions.innerWidth);
+          clipRect.setAttribute('height', this.state.dimensions.innerHeight);
+          
+          clipPath.appendChild(clipRect);
+          defs.appendChild(clipPath);
+          
           const areaAttributes = {
             d: areaPath,
             stroke: 'none',
-            class: 'visioncharts-area'
+            class: 'visioncharts-area',
+            'clip-path': `url(#${clipPathId})`  // <-- ADD CLIPPING HERE
           };
           
           // Apply fill (either gradient or color)
