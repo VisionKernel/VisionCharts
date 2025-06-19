@@ -12,6 +12,7 @@ import ZeroLine from '../components/ZeroLine.js';
 import Grid from '../components/Grid.js';
 import Panel from '../components/Panel.js';
 
+
 /**
  * BarChart class for rendering bar charts with time series data and studies support
  * Styled to match the Line and Area charts
@@ -650,24 +651,7 @@ export default class BarChart extends Chart {
     return super.update();
   }
   
-  /**
-   * Toggle logarithmic scale
-   * @public
-   * @param {boolean} isLogarithmic - Whether to use logarithmic scale
-   * @returns {BarChart} This chart instance
-   */
-  toggleLogarithmic(isLogarithmic) {
-    console.log('BarChart.toggleLogarithmic called:', isLogarithmic);
-    
-    this.options.isLogarithmic = isLogarithmic;
-    
-    // Re-create Y scale based on type
-    this.state.scales.y = isLogarithmic ? 
-      new LogScale([0.1, 1], [0, 1]) :
-      new LinearScale([0, 1], [0, 1]);
-    
-    return this.update();
-  }
+  
   
   /**
    * Toggle studies rendering mode

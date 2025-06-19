@@ -740,6 +740,8 @@ async function initLineChart() {
       }
     });
     
+    window.debugLineChart = lineChart;
+    
     // Render the chart (this will also render the legend)
     lineChart.render();
     

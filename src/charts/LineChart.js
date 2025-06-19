@@ -394,23 +394,7 @@ export default class LineChart extends Chart {
     }
   }
   
-  /**
-   * Toggle logarithmic scale
-   * @public
-   * @param {boolean} isLogarithmic - Whether to use logarithmic scale
-   */
-  toggleLogarithmic(isLogarithmic) {
-    console.log('LineChart.toggleLogarithmic called:', isLogarithmic);
-    
-    this.options.isLogarithmic = isLogarithmic;
-    
-    // Re-create Y scale based on type
-    this.state.scales.y = isLogarithmic ? 
-      new LogScale([0.1, 1], [0, 1]) :
-      new LinearScale([0, 1], [0, 1]);
-    
-    return this.update();
-  }
+  
   
   /**
    * Toggle area fill for a specific dataset

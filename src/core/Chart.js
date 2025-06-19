@@ -1194,44 +1194,142 @@ update() {
   }
   
   /**
-   * Toggle logarithmic scale
+   * Toggle logarithmic scale using data transformation approach
    * @public
    * @param {boolean} isLogarithmic - Whether to use logarithmic scale
    * @returns {Chart} This chart instance
    */
   toggleLogarithmic(isLogarithmic) {
-    console.log('toggleLogarithmic called:', isLogarithmic);
-    
-    this.options.isLogarithmic = isLogarithmic;
-    
-    // For logarithmic scale changes, always do a full update
-    // since scales need to be recreated
-    return this.update();
-  }
-  
-  /**
-   * Panel toggle that enforces strict panel mode
-   * @public
-   * @param {boolean} isPanelView - Whether to use panel view
-   */
-  togglePanelView(isPanelView) {
-    console.log('togglePanelView called with value:', isPanelView);
-    
+    console.log('Chart.toggleLogarithmic called:', isLogarithmic);
+
     // Update option
-    this.options.isPanelView = Boolean(isPanelView);
-    
-    // Force complete re-rendering
-    if (this.state.svg && this.state.container) {
-      // Remove existing SVG completely
-      this.state.container.removeChild(this.state.svg);
-      this.state.svg = null;
-      this.state.chart = null;
+    this.options.isLogarithmic = isLogarithmic;
+
+    // Transform data for all datasets
+    this.handleLogarithmicDataTransformation(isLogarithmic);
+
+    if (this.state.chart) {
+    // Remove all existing axes
+      this.state.chart.innerHTML = '';
     }
-    
-    // Re-render from scratch to enforce the correct mode
-    return this.render();
+
+
+    this.updateScales(); // Update scales after data transformation
+    // Update axes to reflect new scale
+    this.updateData(); // Update axes after scale change
+    this.updateAxes(); // Update axes after data transformation
+
+    // Update the chart with transformed data
+    return this;
   }
-  
+
+  /**
+   * Handle logarithmic data transformation for all datasets
+   * @private
+   * @param {boolean} isLogarithmic - Whether to apply logarithmic transformation
+   */
+  handleLogarithmicDataTransformation(isLogarithmic) {
+    console.log('handleLogarithmicDataTransformation called:', isLogarithmic);
+
+    if (!this.state.datasets || !this.state.datasets.length) {
+      console.log('No datasets to transform');
+      return;
+    }
+
+    const yField = this.options.yField;
+
+    this.state.datasets.forEach((dataset, index) => {
+      if (!dataset.data || !dataset.data.length) {
+        console.log(`Skipping empty dataset ${index}`);
+        return;
+      }
+
+      if (isLogarithmic) {
+        // GOING TO LOG: Store original data and transform
+        if (!dataset._originalData) {
+          // Store deep copy of original data
+          dataset._originalData = dataset.data.map(point => ({ ...point }));
+          console.log(`Stored original data for dataset ${index}:`, dataset._originalData.length, 'points');
+        }
+
+        // Transform current data to logarithmic
+        dataset.data = this.transformDataToLogarithmic(dataset.data, yField);
+        console.log(`Transformed dataset ${index} to logarithmic`);
+
+      } else {
+        // GOING TO LINEAR: Restore original data  
+        if (dataset._originalData) {
+          // Restore from backup
+          dataset.data = dataset._originalData.map(point => ({ ...point }));
+          console.log(`Restored original data for dataset ${index}:`, dataset.data.length, 'points');
+
+          // Clean up backup
+          delete dataset._originalData;
+        } else {
+          console.log(`No original data to restore for dataset ${index}`);
+        }
+      }
+    });
+  }
+
+  /**
+   * Transform dataset to logarithmic values
+   * @private
+   * @param {Array} data - Original data points
+   * @param {string} yField - Y field name to transform
+   * @returns {Array} Transformed data points
+   */
+  transformDataToLogarithmic(data, yField) {
+    return data.map(point => {
+      const originalValue = point[yField];
+
+      // Handle edge cases for logarithmic transformation
+      const transformedValue = this.validateAndTransformLogValue(originalValue);
+
+      return {
+        ...point,
+        [yField]: transformedValue
+      };
+    });
+  }
+
+  /**
+   * Validate and transform a single value for logarithmic scale
+   * @private
+   * @param {number} value - Original value
+   * @returns {number} Transformed value safe for log10
+   */
+  validateAndTransformLogValue(value) {
+    // Handle null, undefined, or non-numeric values
+    if (value == null || typeof value !== 'number' || isNaN(value)) {
+      console.warn('Invalid value for log transformation:', value, '- using 0.01');
+      return Math.log10(0.01); // ≈ -2
+    }
+
+    // Handle negative values - convert to positive
+    if (value < 0) {
+      console.warn('Negative value for log transformation:', value, '- using absolute value');
+      value = Math.abs(value);
+    }
+
+    // Handle zero or very small values - set minimum threshold
+    if (value <= 0 || value < 0.01) {
+      console.warn('Zero/small value for log transformation:', value, '- using 0.01');
+      value = 0.01;
+    }
+
+    // Apply log10 transformation
+    const logValue = Math.log10(value);
+
+    // Validate result
+    if (isNaN(logValue) || !isFinite(logValue)) {
+      console.error('Invalid log transformation result for value:', value, '- using -2');
+      return -2; // log10(0.01)
+    }
+
+    return logValue;
+  }
+
   /**
    * Toggle recession lines
    * @public
