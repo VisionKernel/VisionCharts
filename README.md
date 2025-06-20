@@ -2,7 +2,7 @@
 
 A modern, high-performance JavaScript charting library optimized for financial and economic data visualization. Built specifically to replace multiple charting libraries in the VisionKernel platform.
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ## Overview
@@ -27,13 +27,15 @@ All chart types in VisionCharts support these essential capabilities:
 - **Single and Multi-Panel Views**: View datasets individually or combined
 - **Recession Line Indicators**: Show economic recession periods with shaded areas
 - **Zero Line Display**: Emphasize the zero threshold with a reference line
+- **Average Line Display**: Shows a horizontal line that is the cumulative average of all datasets
+- **Median Line Display**: Shows a horizontal line that is the cumulative median of all datasets
 - **Customizable Line Properties**: Adjust width, color, and style for each dataset
 - **Technical Studies/Indicators**: Add common technical analysis tools (SMA, EMA, etc.)
+- **Area fill for line charts**: Add a shaded gradient under the dataset lines for line charts
 
 ## Chart Types
 
 - **Line Charts**: Visualize trends over time with optional points and area fill
-- **Area Charts**: Emphasize magnitude and cumulative value with stacked or standard views
 - **Bar Charts**: Compare discrete values with grouped or individual bars
 
 ## Technical Indicators
