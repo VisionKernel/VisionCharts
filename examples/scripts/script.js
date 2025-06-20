@@ -814,6 +814,7 @@ function setupLineChartControls() {
     panelToggle.addEventListener('click', (e) => {
       e.target.classList.toggle('active');
       const isPanelView = e.target.classList.contains('active');
+      console.log('Line panel view toggle clicked:', isPanelView);
       lineChart.togglePanelView(isPanelView);
     });
   }
@@ -877,6 +878,16 @@ function setupLineChartControls() {
       // Update study dataset options
       updateStudyDatasetOptions();
     });
+
+    const endingLabelsToggle = document.getElementById('line-toggle-endinglabels');
+    if (endingLabelsToggle) {
+      endingLabelsToggle.addEventListener('click', (e) => {
+        e.target.classList.toggle('active');
+        const showEndingLabels = e.target.classList.contains('active');
+        console.log('Line ending labels toggle clicked:', showEndingLabels);
+        lineChart.toggleEndingLabels(showEndingLabels);
+      });
+    }
   }
   
   // FIXED: Setup statistical controls only once for line chart
@@ -1106,11 +1117,12 @@ function setupBarChartControls() {
   }
   
   // Toggle panel view
-  const panelToggle = document.getElementById('bar-toggle-panel');
-  if (panelToggle) {
-    panelToggle.addEventListener('click', (e) => {
+  const barPanelToggle = document.getElementById('bar-toggle-panel');
+  if (barPanelToggle) {
+    barPanelToggle.addEventListener('click', (e) => {
       e.target.classList.toggle('active');
       const isPanelView = e.target.classList.contains('active');
+      console.log('Bar panel view toggle clicked:', isPanelView);
       barChart.togglePanelView(isPanelView);
     });
   }
@@ -1149,6 +1161,16 @@ function setupBarChartControls() {
       
       // Update the chart
       barChart.update();
+    });
+  }
+
+  const barEndingLabelsToggle = document.getElementById('bar-toggle-endinglabels');
+  if (barEndingLabelsToggle) {
+    barEndingLabelsToggle.addEventListener('click', (e) => {
+      e.target.classList.toggle('active');
+      const showEndingLabels = e.target.classList.contains('active');
+      console.log('Bar chart ending labels toggle clicked:', showEndingLabels);
+      barChart.toggleEndingLabels(showEndingLabels);
     });
   }
   

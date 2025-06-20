@@ -8,6 +8,7 @@ import PanelDataRenderer from '../components/PanelDataRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
+import EndingLabels from '../components/EndingLabels.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Grid from '../components/Grid.js';
 import Panel from '../components/Panel.js';
@@ -56,16 +57,28 @@ export default class BarChart extends Chart {
       isPanelView: false,
       timeBarPixelWidth: 10,
       showZeroValueBars: true,
+      showEndingLabels: false,
+      endingLabelsConfig: {
+        show: true,
+        fontSize: '11px',
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        backgroundColor: '#ffffff',
+        borderColor: '#cccccc',
+        borderWidth: 1,
+        borderRadius: 3,
+        padding: { top: 2, right: 6, bottom: 2, left: 6 },
+        offsetX: 8,
+        offsetY: 0,
+        textColor: null,
+        showBorder: true,
+        showBackground: true
+      },
       
       // Studies rendering options for BarChart
-      studiesAsLines: true, // Render studies as lines overlaid on bars
+      studiesAsLines: true,
       studyLineWidth: 2,
-      studyPointRadius: 0, // No points by default for studies
-      
-      // Options for recession lines (if used)
-      // showRecessionLines: false,
-      // recessions: [],
-      // recessionLinesOptions: {},
+      studyPointRadius: 0,
     };
 
     // Merge options: user's config.options take precedence, with special handling for grid
@@ -173,6 +186,15 @@ export default class BarChart extends Chart {
       
       // Add data group to chart
       this.state.chart.appendChild(dataGroup);
+
+      if (this.options.showEndingLabels) {
+        console.log('BarChart: Rendering ending labels');
+        if (!this.endingLabels) {
+          this.endingLabels = new EndingLabels(this.options.endingLabelsConfig || {});
+        }
+        this.endingLabels.renderForSinglePanel(this, dataGroup);
+      }
+
       console.log('Data rendered successfully');
     } catch (error) {
       console.error('Error rendering data:', error);
@@ -664,6 +686,53 @@ export default class BarChart extends Chart {
     
     this.options.studiesAsLines = Boolean(studiesAsLines);
     return this.update();
+  }
+
+  /**
+   * Toggle ending labels visibility
+   * @public
+   * @param {boolean} show - Whether to show ending labels (null to toggle)
+   * @returns {BarChart} This chart instance
+   */
+  toggleEndingLabels(show = null) {
+    console.log('BarChart.toggleEndingLabels called:', show);
+    
+    if (show === null) {
+      show = !this.options.showEndingLabels;
+    }
+    
+    this.options.showEndingLabels = Boolean(show);
+    
+    if (this.state.rendered) {
+      return this.update();
+    }
+    
+    return this;
+  }
+
+  /**
+   * Configure ending labels appearance
+   * @public
+   * @param {Object} config - Configuration object
+   * @returns {BarChart} This chart instance
+   */
+  configureEndingLabels(config) {
+    console.log('BarChart.configureEndingLabels called:', config);
+    
+    this.options.endingLabelsConfig = { 
+      ...this.options.endingLabelsConfig, 
+      ...config 
+    };
+    
+    if (this.endingLabels) {
+      this.endingLabels.updateConfig(config);
+    }
+    
+    if (this.options.showEndingLabels && this.state.rendered) {
+      return this.update();
+    }
+    
+    return this;
   }
   
   /**

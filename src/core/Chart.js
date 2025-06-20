@@ -531,52 +531,61 @@ export default class Chart {
   }
 
   /**
- * Modified render method to enforce proper rendering order
- */
-render() {
-  console.log('render called with isPanelView =', this.options.isPanelView);
-  
-  // Clear the container
-  if (!this.state.container) {
-    console.error('Cannot render chart: container is null');
+   * Modified render method to enforce proper rendering order
+   */
+  render() {
+    console.log('render called with isPanelView =', this.options.isPanelView);
+    
+    // Clear the container
+    if (!this.state.container) {
+      console.error('Cannot render chart: container is null');
+      return this;
+    }
+    
+    this.state.container.innerHTML = '';
+    
+    // Create SVG
+    this.createSvg();
+    
+    if (!this.state.chart) {
+      console.error('Failed to create SVG chart element');
+      return this;
+    }
+    
+    console.log('About to render chart content');
+    
+    // Completely separate rendering modes
+    if (this.options.isPanelView) {
+      console.log('PANEL MODE: Rendering panel-only content');
+      
+      // Ensure we have datasets for panel mode
+      if (!this.state.datasets || this.state.datasets.length === 0) {
+        console.warn('No datasets for panel mode, falling back to single mode');
+        this.options.isPanelView = false;
+        this.renderSingleMode();
+      } else {
+        this.renderPanelMode();
+      }
+    } else {
+      console.log('SINGLE MODE: Rendering single-panel content');
+      this.renderSingleMode();
+    }
+
+    // Common components for both modes
+    this.renderLegend();
+    this.renderTitle();
+    this.renderAxisNames();
+
+    // Render statistical lines
+    StatisticalLines.renderForChart(this);
+    
+    // Update state
+    this.state.rendered = true;
+    
+    console.log('Chart rendering completed, rendered=true');
+    
     return this;
   }
-  
-  this.state.container.innerHTML = '';
-  
-  // Create SVG
-  this.createSvg();
-  
-  if (!this.state.chart) {
-    console.error('Failed to create SVG chart element');
-    return this;
-  }
-  
-  console.log('About to render chart content');
-  
-  // Completely separate rendering modes
-  if (this.options.isPanelView) {
-    console.log('PANEL MODE: Rendering panel-only content');
-    this.renderPanelMode();
-  } else {
-    console.log('SINGLE MODE: Rendering single-panel content');
-    this.renderSingleMode();
-  }
-
-  // Common components for both modes
-  this.renderLegend();
-  this.renderTitle();
-  this.renderAxisNames();
-
-  StatisticalLines.renderForChart(this);
-  
-  // Update state
-  this.state.rendered = true;
-  
-  console.log('Chart rendering completed, rendered=true');
-  
-  return this;
-}
 
   
   /**
@@ -642,6 +651,12 @@ render() {
   renderPanelMode() {
     console.log('renderPanelMode called');
     
+    // Make sure we have datasets to render
+    if (!this.state.datasets || this.state.datasets.length === 0) {
+      console.warn('No datasets available for panel mode');
+      return;
+    }
+    
     // Render panels using the Panel component
     Panel.renderForChart(this);
     
@@ -649,14 +664,14 @@ render() {
     InteractionManager.initPanelMode(this);
   }
 
-  
   /**
-   * Render panels for multi-panel view
+   * Render panels for multi-panel view - UPDATED VERSION
    * @private
    */
   renderPanels() {
-    console.log('renderPanels called');
-    // To be implemented by subclasses
+    console.log('renderPanels called - delegating to renderPanelMode');
+    // Delegate to the proper panel rendering
+    this.renderPanelMode();
   }
 
   /**
@@ -1349,6 +1364,47 @@ update() {
         // In single mode, just update recession lines
         this.updateRecessionLines();
       }
+    }
+    
+    return this;
+  }
+
+  /**
+   * Toggle panel view mode
+   * @public
+   * @param {boolean} isPanelView - Whether to enable panel view
+   * @returns {Chart} This chart instance
+   */
+  togglePanelView(isPanelView) {
+    console.log('Chart.togglePanelView called:', isPanelView);
+    
+    this.options.isPanelView = Boolean(isPanelView);
+    
+    if (this.state.rendered) {
+      // Panel view requires a complete re-render
+      return this.render();
+    }
+    
+    return this;
+  }
+
+  /**
+   * Toggle ending labels visibility - ALSO ADD THIS if it's missing
+   * @public
+   * @param {boolean} show - Whether to show ending labels (null to toggle)
+   * @returns {Chart} This chart instance
+   */
+  toggleEndingLabels(show = null) {
+    console.log('Chart.toggleEndingLabels called:', show);
+    
+    if (show === null) {
+      show = !this.options.showEndingLabels;
+    }
+    
+    this.options.showEndingLabels = Boolean(show);
+    
+    if (this.state.rendered) {
+      return this.update();
     }
     
     return this;
