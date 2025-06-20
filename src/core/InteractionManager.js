@@ -86,6 +86,9 @@ export default class InteractionManager {
     // Initialize hover features for each panel
     chart.state.components.panelHoverFeatures = [];
     
+    // FIXED: Only process regular datasets (not studies) for hover functionality
+    const regularDatasets = chart.state.datasets.filter(dataset => dataset.type !== 'study');
+    
     chart.state.panelScales.forEach((panelScale, index) => {
       const panel = chart.state.chart.querySelector(`.panel-${index}`);
       if (!panel) return;
@@ -109,9 +112,10 @@ export default class InteractionManager {
       hoverPointsGroup.style.display = 'none';
       panel.appendChild(hoverPointsGroup);
       
-      // Create hover point for the dataset in this panel
-      const dataset = chart.state.datasets[index];
+      // FIXED: Use the regular dataset for this panel index
+      const dataset = regularDatasets[index];
       if (dataset) {
+        // Create hover point for the main dataset
         const hoverPoint = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         hoverPoint.setAttribute('r', 4);
         hoverPoint.setAttribute('fill', '#fff');
@@ -120,6 +124,19 @@ export default class InteractionManager {
         hoverPoint.setAttribute('class', 'visioncharts-panel-hover-point');
         hoverPoint.style.display = 'none';
         hoverPointsGroup.appendChild(hoverPoint);
+        
+        // FIXED: Also create hover points for studies attached to this dataset
+        const relatedStudies = InteractionManager.findStudiesForDataset(chart, dataset.id);
+        relatedStudies.forEach((studyDataset, studyIndex) => {
+          const studyHoverPoint = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          studyHoverPoint.setAttribute('r', 3); // Slightly smaller for studies
+          studyHoverPoint.setAttribute('fill', '#fff');
+          studyHoverPoint.setAttribute('stroke', studyDataset.color);
+          studyHoverPoint.setAttribute('stroke-width', 2);
+          studyHoverPoint.setAttribute('class', `visioncharts-panel-study-hover-point-${studyDataset.id}`);
+          studyHoverPoint.style.display = 'none';
+          hoverPointsGroup.appendChild(studyHoverPoint);
+        });
       }
       
       // Store panel hover features
@@ -127,6 +144,7 @@ export default class InteractionManager {
         crosshair: crosshair,
         hoverPointsGroup: hoverPointsGroup,
         dataset: dataset,
+        relatedStudies: dataset ? InteractionManager.findStudiesForDataset(chart, dataset.id) : [],
         panelScale: panelScale
       };
       
@@ -136,6 +154,34 @@ export default class InteractionManager {
     
     // Apply flickering fix
     InteractionManager.fixFlickering(chart);
+  }
+  
+  /**
+   * Find study datasets that belong to a specific regular dataset
+   * @param {Object} chart - Chart instance
+   * @param {string} datasetId - ID of the regular dataset
+   * @returns {Array} Array of study datasets
+   */
+  static findStudiesForDataset(chart, datasetId) {
+    if (!chart.state.datasets) {
+      return [];
+    }
+    
+    // Find all study datasets that have this dataset as their parent
+    return chart.state.datasets.filter(dataset => {
+      // Check if it's a study dataset
+      if (dataset.type !== 'study') {
+        return false;
+      }
+      
+      // Check if this study belongs to the specified dataset
+      if (chart.options.studies) {
+        const studyConfig = chart.options.studies.find(study => study.id === dataset.id);
+        return studyConfig && studyConfig.datasetId === datasetId;
+      }
+      
+      return false;
+    });
   }
   
   /**
@@ -267,7 +313,7 @@ export default class InteractionManager {
     const panelFeatures = chart.state.components.panelHoverFeatures[panelIndex];
     if (!panelFeatures) return;
     
-    const { panelScale, dataset, crosshair, hoverPointsGroup } = panelFeatures;
+    const { panelScale, dataset, relatedStudies, crosshair, hoverPointsGroup } = panelFeatures;
     const { xField, yField } = chart.options;
     
     // Mouse move handler for panel
@@ -291,10 +337,12 @@ export default class InteractionManager {
       crosshair.update(mouseX, 0);
       crosshair.show();
       
-      // Find closest data point in this panel's dataset
+      // FIXED: Find closest data point in this panel's main dataset and related studies
       let closestPoint = null;
       let minDistance = Infinity;
+      let closestDataset = null;
       
+      // Check main dataset
       if (dataset && dataset.data) {
         dataset.data.forEach(point => {
           if (point[xField] === undefined || point[yField] === undefined) return;
@@ -305,27 +353,72 @@ export default class InteractionManager {
           if (distance < minDistance) {
             minDistance = distance;
             closestPoint = point;
+            closestDataset = dataset;
           }
         });
       }
       
-      // Show hover point and tooltip if close enough
+      // Check related studies
+      relatedStudies.forEach(studyDataset => {
+        if (studyDataset && studyDataset.data) {
+          studyDataset.data.forEach(point => {
+            if (point[xField] === undefined || point[yField] === undefined) return;
+            
+            const pointX = panelScale.xScale.scale(point[xField]);
+            const distance = Math.abs(mouseX - pointX);
+            
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestPoint = point;
+              closestDataset = studyDataset;
+            }
+          });
+        }
+      });
+      
+      // Show hover points and tooltip if close enough
       if (closestPoint && minDistance < 50) {
         const pointX = panelScale.xScale.scale(closestPoint[xField]);
         const pointY = panelScale.yScale.scale(closestPoint[yField]);
         
-        // Update hover point
-        const hoverPoint = hoverPointsGroup.querySelector('.visioncharts-panel-hover-point');
-        if (hoverPoint) {
-          hoverPoint.setAttribute('cx', pointX);
-          hoverPoint.setAttribute('cy', pointY);
-          hoverPoint.style.display = 'block';
-        }
+        // Update hover points for all datasets in this panel
         hoverPointsGroup.style.display = 'block';
         
-        // Show tooltip
+        // Update main dataset hover point
+        const mainHoverPoint = hoverPointsGroup.querySelector('.visioncharts-panel-hover-point');
+        if (mainHoverPoint && dataset) {
+          const mainClosest = InteractionManager.findClosestPointInDataset(dataset, mouseX, panelScale.xScale, xField, yField);
+          if (mainClosest) {
+            const mainPointX = panelScale.xScale.scale(mainClosest[xField]);
+            const mainPointY = panelScale.yScale.scale(mainClosest[yField]);
+            mainHoverPoint.setAttribute('cx', mainPointX);
+            mainHoverPoint.setAttribute('cy', mainPointY);
+            mainHoverPoint.style.display = 'block';
+          } else {
+            mainHoverPoint.style.display = 'none';
+          }
+        }
+        
+        // Update study hover points
+        relatedStudies.forEach(studyDataset => {
+          const studyHoverPoint = hoverPointsGroup.querySelector(`.visioncharts-panel-study-hover-point-${studyDataset.id}`);
+          if (studyHoverPoint) {
+            const studyClosest = InteractionManager.findClosestPointInDataset(studyDataset, mouseX, panelScale.xScale, xField, yField);
+            if (studyClosest) {
+              const studyPointX = panelScale.xScale.scale(studyClosest[xField]);
+              const studyPointY = panelScale.yScale.scale(studyClosest[yField]);
+              studyHoverPoint.setAttribute('cx', studyPointX);
+              studyHoverPoint.setAttribute('cy', studyPointY);
+              studyHoverPoint.style.display = 'block';
+            } else {
+              studyHoverPoint.style.display = 'none';
+            }
+          }
+        });
+        
+        // Show tooltip for closest point
         const closestData = {
-          dataset: dataset,
+          dataset: closestDataset,
           point: closestPoint,
           x: pointX,
           y: pointY,
@@ -372,6 +465,36 @@ export default class InteractionManager {
       leave: mouseLeaveHandler,
       panel: panel
     };
+  }
+  
+  /**
+   * Find closest point in a specific dataset
+   * @param {Object} dataset - Dataset to search
+   * @param {number} mouseX - Mouse X position
+   * @param {Object} xScale - X scale
+   * @param {string} xField - X field name
+   * @param {string} yField - Y field name
+   * @returns {Object|null} Closest point or null
+   */
+  static findClosestPointInDataset(dataset, mouseX, xScale, xField, yField) {
+    if (!dataset || !dataset.data) return null;
+    
+    let closestPoint = null;
+    let minDistance = Infinity;
+    
+    dataset.data.forEach(point => {
+      if (point[xField] === undefined || point[yField] === undefined) return;
+      
+      const pointX = xScale.scale(point[xField]);
+      const distance = Math.abs(mouseX - pointX);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestPoint = point;
+      }
+    });
+    
+    return minDistance < 50 ? closestPoint : null;
   }
   
   /**
