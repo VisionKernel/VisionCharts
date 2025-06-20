@@ -83,7 +83,7 @@ export default class Panel {
                     yPos: yPos
                 };
                 
-                // Render panel components (axes, grid, etc.)
+                // Render panel components (axes, grid, etc.) - EXCLUDING statistical lines for now
                 Panel.renderPanelComponents(
                     panelGroup, 
                     scales, 
@@ -120,6 +120,20 @@ export default class Panel {
                         effectivePanelHeight
                     );
                 });
+                
+                // FIXED: Render statistical lines AFTER data so they appear on top
+                if ((chart.options.showAverageLine || chart.options.showMedianLine) && dataset) {
+                    console.log('Rendering statistical lines ON TOP for panel', index);
+                    StatisticalLines.renderForPanel(
+                        panelGroup,
+                        dataset,
+                        scales.xScale,
+                        scales.yScale,
+                        innerWidth,
+                        effectivePanelHeight,
+                        chart.options
+                    );
+                }
                 
                 // Render panel label
                 const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -176,13 +190,14 @@ export default class Panel {
     }
   
     /**
-     * Render panel components (axes, grid, zero line, recession lines, statistical lines)
+     * Render panel components (axes, grid, zero line, recession lines) 
+     * FIXED: Statistical lines moved to main renderForChart method to appear on top
      * @param {SVGElement} panelGroup - Panel container
      * @param {Object} scales - Panel scales  
      * @param {Object} dimensions - Panel dimensions
      * @param {Object} options - Chart options
      * @param {boolean} isLastPanel - Whether this is the last panel
-     * @param {Object} dataset - Dataset for this panel (NEW PARAMETER)
+     * @param {Object} dataset - Dataset for this panel
      */
     static renderPanelComponents(panelGroup, scales, dimensions, options, isLastPanel, dataset) {
         const { innerWidth, effectivePanelHeight } = dimensions;
@@ -222,18 +237,8 @@ export default class Panel {
             );
         }
         
-        // Render statistical lines for this panel if enabled
-        if ((options.showAverageLine || options.showMedianLine) && dataset) {
-            StatisticalLines.renderForPanel(
-                panelGroup,
-                dataset,
-                xScale,
-                yScale,
-                innerWidth,
-                effectivePanelHeight,
-                options
-            );
-        }
+        // REMOVED: Statistical lines rendering moved to main renderForChart method
+        // to ensure they appear on top of data
     }
   
     /**
