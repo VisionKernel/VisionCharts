@@ -67,7 +67,7 @@ export default class BarChart extends Chart {
         borderColor: '#cccccc',
         borderWidth: 1,
         borderRadius: 3,
-        padding: { top: 2, right: 6, bottom: 2, left: 6 },
+        padding: { top: 2, right: 2, bottom: 2, left: 2 },
         offsetX: 8,
         offsetY: 0,
         textColor: null,

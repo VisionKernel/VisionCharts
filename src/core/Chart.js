@@ -64,7 +64,7 @@ export default class Chart {
     // Default options
     width: null,
     height: null,
-    margins: { top: 50, right: 20, bottom: 70, left: 60 },
+    margins: { top: 50, right: 40, bottom: 70, left: 60 },
     title: '',
     xAxisName: '',
     yAxisName: '',
