@@ -41,11 +41,12 @@
           </div>
           <div class="control-group">
             <label>Visualization</label>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
               <button id="line-toggle-zero" class="toggle-button">Toggle Zero Line</button>
               <button id="line-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="line-toggle-panel" class="toggle-button">Toggle Panel View</button>
               <button id="line-toggle-legend" class="toggle-button active">Toggle Legend</button>
+              <button id="line-toggle-ending-labels" class="toggle-button">Toggle Ending Labels</button>
               <button id="line-toggle-average" class="toggle-button">Toggle Average Line</button>
               <button id="line-toggle-median" class="toggle-button">Toggle Median Line</button>
             </div>
@@ -113,6 +114,52 @@
             </div>
           </div>
         </div>
+        
+        <div class="accordion">
+          <div class="accordion-header">
+            Ending Labels Configuration
+            <span>+</span>
+          </div>
+          <div class="accordion-content">
+            <div class="control-row">
+              <div class="control-group">
+                <label for="line-ending-labels-font-size">Font Size</label>
+                <select id="line-ending-labels-font-size">
+                  <option value="10px">10px</option>
+                  <option value="11px" selected>11px</option>
+                  <option value="12px">12px</option>
+                  <option value="13px">13px</option>
+                  <option value="14px">14px</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <label for="line-ending-labels-bg-color">Background Color</label>
+                <input type="color" id="line-ending-labels-bg-color" value="#ffffff">
+              </div>
+              <div class="control-group">
+                <label for="line-ending-labels-border-color">Border Color</label>
+                <input type="color" id="line-ending-labels-border-color" value="#cccccc">
+              </div>
+              <div class="control-group">
+                <label for="line-ending-labels-offset-x">Horizontal Offset</label>
+                <input type="range" id="line-ending-labels-offset-x" min="0" max="30" value="8">
+                <span class="range-value">8px</span>
+              </div>
+            </div>
+            <div class="control-row">
+              <div class="control-group">
+                <label>
+                  <input type="checkbox" id="line-ending-labels-show-background" checked> Show Background
+                </label>
+              </div>
+              <div class="control-group">
+                <label>
+                  <input type="checkbox" id="line-ending-labels-show-border" checked> Show Border
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <div id="line-chart" class="chart-container"></div>
@@ -139,11 +186,12 @@
           </div>
           <div class="control-group">
             <label>Visualization</label>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
               <button id="bar-toggle-zero" class="toggle-button active">Toggle Zero Line</button>
               <button id="bar-toggle-recession" class="toggle-button">Toggle Recessions</button>
               <button id="bar-toggle-panel" class="toggle-button">Toggle Panel View</button>
               <button id="bar-toggle-legend" class="toggle-button active">Toggle Legend</button>
+              <button id="bar-toggle-ending-labels" class="toggle-button">Toggle Ending Labels</button>
               <button id="bar-toggle-average" class="toggle-button">Toggle Average Line</button>
               <button id="bar-toggle-median" class="toggle-button">Toggle Median Line</button>
             </div>

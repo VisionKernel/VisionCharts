@@ -2,7 +2,7 @@
  * VisionCharts - A modern, high-performance JavaScript charting library
  * optimized for financial and economic data visualization.
  * 
- * @version 0.2.0
+ * @version 1.2.0
  * @license MIT
  */
 
@@ -17,6 +17,7 @@ import Tooltip from './components/Tooltip.js';
 import Legend from './components/Legend.js';
 import Crosshair from './components/Crosshair.js';
 import RecessionLines from './components/RecessionLines.js';
+import EndingLabels from './components/EndingLabels.js';
 
 // Renderers
 import SvgRenderer from './renderers/SvgRenderer.js';
@@ -70,6 +71,7 @@ export function parseChartConfig(config) {
     showRecessionLines: false,
     showZeroLine: false,
     showPoints: false,
+    showEndingLabels: false,
     studies: [],
     datasets: []
   };
@@ -123,6 +125,7 @@ export {
   Legend,
   Crosshair,
   RecessionLines,
+  EndingLabels,
   
   // Renderers
   SvgRenderer,
@@ -137,7 +140,7 @@ export {
 };
 
 // Export library version
-export const version = '0.2.0';
+export const version = '1.2.0';
 
 // Default export
 export default {
@@ -157,6 +160,7 @@ export default {
   Legend,
   Crosshair,
   RecessionLines,
+  EndingLabels,
   
   SvgRenderer,
   

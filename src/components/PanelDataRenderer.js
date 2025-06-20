@@ -1,6 +1,7 @@
 import SvgRenderer from '../renderers/SvgRenderer.js';
 import StudiesRenderer from './StudiesRenderer.js';
 import PathGenerator from '../utils/PathGenerator.js';
+import EndingLabels from './EndingLabels.js';
 
 /**
  * PanelDataRenderer - Centralized component for rendering data in panel mode
@@ -98,6 +99,19 @@ export default class PanelDataRenderer {
     // Render points if enabled
     if (showPoints) {
       this.renderPointsForPanel(chart, panel, dataset, xScale, yScale, pointRadius);
+    }
+    
+    // Render ending label if enabled
+    if (chart.options.showEndingLabels) {
+      console.log('PanelDataRenderer: Rendering ending label for dataset:', dataset.id);
+      EndingLabels.renderForPanel(
+        chart, 
+        dataset, 
+        panel, 
+        xScale, 
+        yScale,
+        chart.options.endingLabelsConfig || {}
+      );
     }
   }
   

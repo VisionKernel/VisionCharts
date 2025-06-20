@@ -267,6 +267,13 @@ footer {
   text-align: right;
 }
 
+.range-value {
+  font-size: 12px;
+  min-width: 30px;
+  text-align: right;
+  margin-left: 5px;
+}
+
 .visioncharts-average-line-line {
   shape-rendering: geometricPrecision;
 }
@@ -292,6 +299,44 @@ footer {
   background-color: #9C27B0;
 }
 
+/* Toggle button active state for ending labels */
+#line-toggle-ending-labels.active,
+#bar-toggle-ending-labels.active {
+  background-color: #2196F3;
+}
+
+/* Ending labels configuration styling */
+.ending-labels-config {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 15px;
+  margin-top: 10px;
+}
+
+.ending-labels-config h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #495057;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] + label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+/* Range input styling improvements */
+input[type="range"] {
+  accent-color: #1468a8;
+}
+
 /* Responsive design for statistical controls */
 @media (max-width: 768px) {
   .control-row {
@@ -302,4 +347,45 @@ footer {
   .control-group {
     min-width: 100%;
   }
+  
+  /* Stack visualization buttons vertically on mobile */
+  .control-group > div[style*="display: flex"] {
+    flex-direction: column !important;
+    gap: 5px !important;
+  }
+  
+  .control-group > div[style*="display: flex"] button {
+    width: 100%;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+}
+
+/* Improved accordion styling */
+.accordion-header:hover {
+  background-color: #e9ecef;
+}
+
+.accordion-header span {
+  font-size: 18px;
+  font-weight: bold;
+  color: #6c757d;
+  transition: transform 0.2s ease;
+}
+
+.accordion-content.active + .accordion-header span {
+  transform: rotate(45deg);
+}
+
+/* Study item styling */
+.study-item {
+  transition: background-color 0.2s ease;
+}
+
+.study-item:hover {
+  background-color: #e9ecef !important;
+}
+
+.study-item button:hover {
+  background-color: #c82333 !important;
 }

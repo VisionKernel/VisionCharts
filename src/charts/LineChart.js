@@ -9,6 +9,7 @@ import PanelDataRenderer from '../components/PanelDataRenderer.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
 import RecessionLines from '../components/RecessionLines.js';
+import EndingLabels from '../components/EndingLabels.js';
 import ZeroLine from '../components/ZeroLine.js';
 import Grid from '../components/Grid.js';
 import Panel from '../components/Panel.js';
@@ -40,12 +41,29 @@ export default class LineChart extends Chart {
       yFormatOptions: {
         maximumFractionDigits: 2,
         minimumFractionDigits: 0
-  },
+      },
       grid: {
         show: true,
         color: '#e0e0e0',
         strokeWidth: 1,
         dashArray: '4,4'
+      },
+      showEndingLabels: false,
+      endingLabelsConfig: {
+        show: true,
+        fontSize: '11px',
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        backgroundColor: '#ffffff',
+        borderColor: '#cccccc',
+        borderWidth: 1,
+        borderRadius: 3,
+        padding: { top: 2, right: 6, bottom: 2, left: 6 },
+        offsetX: 8,
+        offsetY: 0,
+        textColor: null,
+        showBorder: true,
+        showBackground: true
       }
       // ... any other existing default options ...
     };
@@ -57,6 +75,10 @@ export default class LineChart extends Chart {
       grid: { // Deep merge for the grid object
         ...defaultLineChartOptions.grid, // Start with LineChart's grid defaults
         ...((config.options && config.options.grid) || {}) // Override with user's grid options
+      },
+      endingLabelsConfig: { // Deep merge for ending labels config
+        ...defaultLineChartOptions.endingLabelsConfig,
+        ...((config.options && config.options.endingLabelsConfig) || {})
       }
     };
 
@@ -69,7 +91,7 @@ export default class LineChart extends Chart {
     console.log('LineChart constructor finished with merged options:', this.options);
   }
   
-  /**
+   /**
    * Create gradient definitions for area fills
    * @private
    */
@@ -251,6 +273,16 @@ export default class LineChart extends Chart {
     
     // Add data group to chart
     this.state.chart.appendChild(dataGroup);
+    
+    // Render ending labels if enabled (after all data is rendered)
+    if (this.options.showEndingLabels) {
+      console.log('LineChart: Rendering ending labels');
+      if (!this.endingLabels) {
+        this.endingLabels = new EndingLabels(this.options.endingLabelsConfig || {});
+      }
+      this.endingLabels.renderForSinglePanel(this, dataGroup);
+    }
+    
     console.log('Data rendered successfully');
   } catch (error) {
     console.error('Error rendering data:', error);
@@ -456,6 +488,53 @@ export default class LineChart extends Chart {
     
     this.options.gradient = gradient;
     return this.update();
+  }
+
+  /**
+   * Toggle ending labels visibility
+   * @public
+   * @param {boolean} show - Whether to show ending labels (null to toggle)
+   * @returns {LineChart} This chart instance
+   */
+  toggleEndingLabels(show = null) {
+    console.log('LineChart.toggleEndingLabels called:', show);
+    
+    if (show === null) {
+      show = !this.options.showEndingLabels;
+    }
+    
+    this.options.showEndingLabels = Boolean(show);
+    
+    if (this.state.rendered) {
+      return this.update();
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Configure ending labels appearance
+   * @public
+   * @param {Object} config - Configuration object
+   * @returns {LineChart} This chart instance
+   */
+  configureEndingLabels(config) {
+    console.log('LineChart.configureEndingLabels called:', config);
+    
+    this.options.endingLabelsConfig = { 
+      ...this.options.endingLabelsConfig, 
+      ...config 
+    };
+    
+    if (this.endingLabels) {
+      this.endingLabels.updateConfig(config);
+    }
+    
+    if (this.options.showEndingLabels && this.state.rendered) {
+      return this.update();
+    }
+    
+    return this;
   }
 
   /**
