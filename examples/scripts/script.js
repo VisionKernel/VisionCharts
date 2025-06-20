@@ -680,80 +680,6 @@ function updateStudyDatasetOptions() {
   }
 }
 
-// =============================================================================
-// ENDING LABELS CONFIGURATION
-// =============================================================================
-
-/**
- * Set up ending labels configuration controls for line chart
- */
-function setupEndingLabelsConfiguration() {
-  // Font size
-  const fontSizeSelect = document.getElementById('line-ending-labels-font-size');
-  if (fontSizeSelect) {
-    fontSizeSelect.addEventListener('change', (e) => {
-      if (lineChart) {
-        lineChart.configureEndingLabels({ fontSize: e.target.value });
-      }
-    });
-  }
-  
-  // Background color
-  const bgColorInput = document.getElementById('line-ending-labels-bg-color');
-  if (bgColorInput) {
-    bgColorInput.addEventListener('change', (e) => {
-      if (lineChart) {
-        lineChart.configureEndingLabels({ backgroundColor: e.target.value });
-      }
-    });
-  }
-  
-  // Border color
-  const borderColorInput = document.getElementById('line-ending-labels-border-color');
-  if (borderColorInput) {
-    borderColorInput.addEventListener('change', (e) => {
-      if (lineChart) {
-        lineChart.configureEndingLabels({ borderColor: e.target.value });
-      }
-    });
-  }
-  
-  // Horizontal offset
-  const offsetXInput = document.getElementById('line-ending-labels-offset-x');
-  const offsetXValue = offsetXInput?.nextElementSibling;
-  if (offsetXInput) {
-    offsetXInput.addEventListener('input', (e) => {
-      const value = e.target.value;
-      if (offsetXValue) {
-        offsetXValue.textContent = `${value}px`;
-      }
-      if (lineChart) {
-        lineChart.configureEndingLabels({ offsetX: parseInt(value) });
-      }
-    });
-  }
-  
-  // Show background checkbox
-  const showBgCheckbox = document.getElementById('line-ending-labels-show-background');
-  if (showBgCheckbox) {
-    showBgCheckbox.addEventListener('change', (e) => {
-      if (lineChart) {
-        lineChart.configureEndingLabels({ showBackground: e.target.checked });
-      }
-    });
-  }
-  
-  // Show border checkbox
-  const showBorderCheckbox = document.getElementById('line-ending-labels-show-border');
-  if (showBorderCheckbox) {
-    showBorderCheckbox.addEventListener('change', (e) => {
-      if (lineChart) {
-        lineChart.configureEndingLabels({ showBorder: e.target.checked });
-      }
-    });
-  }
-}
-
 // Initialize Line Chart
 async function initLineChart() {
   log('Initializing Line Chart');
@@ -802,7 +728,6 @@ async function initLineChart() {
         area: false,
         showZeroLine: false,
         showLegend: true, // Enable legend by default
-        showEndingLabels: false, // Enable ending labels toggle
         gradient: false, // Gradient disabled by default
         recessions: recessions,
         grid: { // Added to enable and configure the grid
@@ -827,9 +752,6 @@ async function initLineChart() {
     
     // Setup event listeners for controls
     setupLineChartControls();
-    
-    // Setup ending labels configuration
-    setupEndingLabelsConfiguration();
   } catch (error) {
     log('Error initializing line chart:', error);
     handleError('line-chart', error);
@@ -919,27 +841,6 @@ function setupLineChartControls() {
     });
   }
   
-  // Toggle ending labels
-  const endingLabelsToggle = document.getElementById('line-toggle-ending-labels');
-  if (endingLabelsToggle) {
-    endingLabelsToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showEndingLabels = e.target.classList.contains('active');
-      console.log('Line ending labels toggle clicked:', showEndingLabels);
-      
-      if (lineChart && typeof lineChart.toggleEndingLabels === 'function') {
-        try {
-          lineChart.toggleEndingLabels(showEndingLabels);
-          console.log('Line ending labels toggled successfully');
-        } catch (error) {
-          console.error('Error toggling line ending labels:', error);
-        }
-      } else {
-        console.error('Line chart or toggleEndingLabels method not available');
-      }
-    });
-  }
-  
   // Curve type
   const curveSelect = document.getElementById('line-curve');
   if (curveSelect) {
@@ -1020,7 +921,6 @@ async function initBarChart() {
         showValues: false,
         showZeroLine: true,
         showLegend: true,
-        showEndingLabels: false, // Enable ending labels toggle for bar chart too
         isLogarithmic: false,
         recessions: recessions,
         dateFormat: { year: 'numeric', month: 'short', day: 'numeric' },
@@ -1234,27 +1134,6 @@ function setupBarChartControls() {
           barChart.options.showLegend = true;
           barChart.render();
         }
-      }
-    });
-  }
-  
-  // Toggle ending labels for bar chart
-  const endingLabelsToggle = document.getElementById('bar-toggle-ending-labels');
-  if (endingLabelsToggle) {
-    endingLabelsToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showEndingLabels = e.target.classList.contains('active');
-      console.log('Bar ending labels toggle clicked:', showEndingLabels);
-      
-      if (barChart && typeof barChart.toggleEndingLabels === 'function') {
-        try {
-          barChart.toggleEndingLabels(showEndingLabels);
-          console.log('Bar ending labels toggled successfully');
-        } catch (error) {
-          console.error('Error toggling bar ending labels:', error);
-        }
-      } else {
-        console.error('Bar chart or toggleEndingLabels method not available');
       }
     });
   }
