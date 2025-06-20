@@ -66,7 +66,26 @@ export default class InteractionManager {
   static initPanelMode(chart) {
     console.log('InteractionManager.initPanelMode called');
     
-    if (!chart.state.chart || !chart.state.panelScales) return;
+    if (!chart.state.chart) {
+      console.error('Cannot init panel mode: chart element is null');
+      return;
+    }
+
+    // FIXED: Better check for panel scales
+    if (!chart.state.panelScales || chart.state.panelScales.length === 0) {
+      console.warn('No panel scales available for hover functionality, waiting for panels to be rendered...');
+      
+      // Try to get panel scales after a short delay (panels might still be rendering)
+      setTimeout(() => {
+        if (chart.state.panelScales && chart.state.panelScales.length > 0) {
+          console.log('Panel scales now available, initializing hover features');
+          InteractionManager.initPanelMode(chart);
+        } else {
+          console.error('Panel scales still not available after delay');
+        }
+      }, 100);
+      return;
+    }
     
     // Create single tooltip for all panels
     chart.state.components.tooltip = new Tooltip({
@@ -89,9 +108,14 @@ export default class InteractionManager {
     // FIXED: Only process regular datasets (not studies) for hover functionality
     const regularDatasets = chart.state.datasets.filter(dataset => dataset.type !== 'study');
     
+    console.log(`Initializing panel hover for ${chart.state.panelScales.length} panels and ${regularDatasets.length} regular datasets`);
+    
     chart.state.panelScales.forEach((panelScale, index) => {
       const panel = chart.state.chart.querySelector(`.panel-${index}`);
-      if (!panel) return;
+      if (!panel) {
+        console.warn(`Panel ${index} not found in DOM`);
+        return;
+      }
       
       // Create crosshair for this panel
       const crosshair = new Crosshair({
@@ -150,10 +174,14 @@ export default class InteractionManager {
       
       // Bind events for this panel
       InteractionManager.bindPanelEvents(chart, panel, index);
+      
+      console.log(`Panel ${index} hover features initialized`);
     });
     
     // Apply flickering fix
     InteractionManager.fixFlickering(chart);
+    
+    console.log('Panel mode interaction features initialized successfully');
   }
   
   /**
@@ -305,24 +333,34 @@ export default class InteractionManager {
   
   /**
    * Bind hover events for a specific panel
+   * FIXED: Better coordinate handling and event reliability
    * @param {Chart} chart - Chart instance
    * @param {Element} panel - Panel element
    * @param {number} panelIndex - Panel index
    */
   static bindPanelEvents(chart, panel, panelIndex) {
     const panelFeatures = chart.state.components.panelHoverFeatures[panelIndex];
-    if (!panelFeatures) return;
+    if (!panelFeatures) {
+      console.warn(`No panel features found for panel ${panelIndex}`);
+      return;
+    }
     
     const { panelScale, dataset, relatedStudies, crosshair, hoverPointsGroup } = panelFeatures;
     const { xField, yField } = chart.options;
     
+    console.log(`Binding events for panel ${panelIndex}`);
+    
     // Mouse move handler for panel
     const mouseMoveHandler = (e) => {
+      // FIXED: Better coordinate calculation
+      const svgRect = chart.state.svg.getBoundingClientRect();
       const panelRect = panel.getBoundingClientRect();
+      
+      // Calculate mouse position relative to the panel
       const mouseX = e.clientX - panelRect.left;
       const mouseY = e.clientY - panelRect.top;
       
-      // Check if within panel bounds
+      // Check if within panel bounds - FIXED: Use proper panel dimensions
       if (mouseX < 0 || mouseX > panelScale.panelWidth || 
           mouseY < 0 || mouseY > panelScale.panelHeight) {
         crosshair.hide();
@@ -376,8 +414,11 @@ export default class InteractionManager {
         }
       });
       
+      // FIXED: More lenient proximity threshold for bar charts
+      const proximityThreshold = chart.options.chartType === 'bar' ? 100 : 50;
+      
       // Show hover points and tooltip if close enough
-      if (closestPoint && minDistance < 50) {
+      if (closestPoint && minDistance < proximityThreshold) {
         const pointX = panelScale.xScale.scale(closestPoint[xField]);
         const pointY = panelScale.yScale.scale(closestPoint[yField]);
         
@@ -426,11 +467,9 @@ export default class InteractionManager {
         };
         
         if (chart.state.components.tooltip) {
-          // Calculate tooltip position relative to the main chart container
-          const containerRect = chart.state.container.getBoundingClientRect();
-          const chartRect = chart.state.chart.getBoundingClientRect();
-          const tooltipX = (chartRect.left - containerRect.left) + mouseX;
-          const tooltipY = (chartRect.top - containerRect.top) + mouseY + panelScale.yPos;
+          // FIXED: Better tooltip positioning relative to the main SVG
+          const tooltipX = e.clientX - svgRect.left;
+          const tooltipY = e.clientY - svgRect.top;
           
           chart.state.components.tooltip.show(closestData, tooltipX, tooltipY, {
             width: chart.state.dimensions.width,
@@ -465,10 +504,13 @@ export default class InteractionManager {
       leave: mouseLeaveHandler,
       panel: panel
     };
+    
+    console.log(`Events bound successfully for panel ${panelIndex}`);
   }
   
   /**
    * Find closest point in a specific dataset
+   * FIXED: More lenient distance threshold for bar charts
    * @param {Object} dataset - Dataset to search
    * @param {number} mouseX - Mouse X position
    * @param {Object} xScale - X scale
@@ -494,7 +536,9 @@ export default class InteractionManager {
       }
     });
     
-    return minDistance < 50 ? closestPoint : null;
+    // FIXED: More lenient threshold for bars
+    const threshold = 100; // Increased from 50
+    return minDistance < threshold ? closestPoint : null;
   }
   
   /**

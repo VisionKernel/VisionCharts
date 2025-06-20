@@ -36,7 +36,7 @@ export default class PanelDataRenderer {
       return;
     }
     
-    // IMPROVED: Create a clipped data area for this panel
+    // FIXED: Create a properly clipped data area for this panel
     const dataGroup = this.createClippedDataGroup(panel, panelWidth, panelHeight, dataset.id);
     
     // Render based on chart type
@@ -54,15 +54,24 @@ export default class PanelDataRenderer {
     
     // Add the data group to the panel
     panel.appendChild(dataGroup);
+    
+    // FIXED: Render ending labels OUTSIDE the clipped data group to avoid clipping
+    if (chart.options.showEndingLabels) {
+      console.log('PanelDataRenderer: Rendering ending label for dataset:', dataset.id, 'outside clipped area');
+      EndingLabels.renderForPanel(
+        chart, 
+        dataset, 
+        panel, // Render directly on panel, not dataGroup
+        xScale, 
+        yScale,
+        chart.options.endingLabelsConfig || {}
+      );
+    }
   }
 
   /**
    * Create a clipped data group to ensure data stays within panel bounds
-   * @param {SVGElement} panel - Panel container
-   * @param {number} panelWidth - Panel width
-   * @param {number} panelHeight - Panel height  
-   * @param {string} datasetId - Dataset ID for unique clipping
-   * @returns {SVGElement} Clipped data group
+   * FIXED: Better clipping setup for bars
    */
   static createClippedDataGroup(panel, panelWidth, panelHeight, datasetId) {
     // Create unique clip path ID
@@ -75,15 +84,15 @@ export default class PanelDataRenderer {
       panel.appendChild(defs);
     }
     
-    // Create clip path - use full panel height to not cut off bars
+    // FIXED: Create clip path that accounts for bar overflow
     const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
     clipPath.setAttribute('id', clipPathId);
     
     const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    clipRect.setAttribute('x', '0');
-    clipRect.setAttribute('y', '0'); 
-    clipRect.setAttribute('width', panelWidth);
-    clipRect.setAttribute('height', panelHeight); // FIXED: Use full panel height
+    clipRect.setAttribute('x', '-10'); // FIXED: Add padding to prevent cutoff at edges
+    clipRect.setAttribute('y', '-10'); // FIXED: Add padding at top
+    clipRect.setAttribute('width', panelWidth + 20); // FIXED: Add padding to width
+    clipRect.setAttribute('height', panelHeight + 20); // FIXED: Add padding to height
     
     clipPath.appendChild(clipRect);
     defs.appendChild(clipPath);
@@ -146,30 +155,12 @@ export default class PanelDataRenderer {
       this.renderPointsForPanel(chart, dataGroup, dataset, xScale, yScale, pointRadius);
     }
     
-    // Render ending label if enabled
-    if (chart.options.showEndingLabels) {
-      console.log('PanelDataRenderer: Rendering ending label for dataset:', dataset.id);
-      EndingLabels.renderForPanel(
-        chart, 
-        dataset, 
-        dataGroup, 
-        xScale, 
-        yScale,
-        chart.options.endingLabelsConfig || {}
-      );
-    }
+    // REMOVED: Ending labels now rendered outside clipped area in main renderForPanel method
   }
   
   /**
    * Render bar data for a panel
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {SVGElement} dataGroup - Clipped data container
-   * @param {Object} dataset - Dataset to render
-   * @param {Object} xScale - X scale for this panel
-   * @param {Object} yScale - Y scale for this panel
-   * @param {number} panelHeight - Panel height
-   * @param {number} datasetIndex - Dataset index for color selection
+   * FIXED: Better bar positioning and bounds checking
    */
   static renderBarDataForPanel(chart, dataGroup, dataset, xScale, yScale, panelHeight, datasetIndex) {
     const { xField, yField, xType, timeBarPixelWidth, colors, showZeroValueBars } = chart.options;
@@ -179,13 +170,18 @@ export default class PanelDataRenderer {
     const color = dataset.color || colors[datasetIndex % colors.length] || colors[0];
     const zeroY = yScale.scale(0);
     
+    // FIXED: Clamp zero line to panel bounds
+    const clampedZeroY = Math.max(0, Math.min(panelHeight, zeroY));
+    
     if (xType === 'time') {
-      this.renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars);
+      this.renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, clampedZeroY, color, timeBarPixelWidth, showZeroValueBars, panelHeight);
     } else if (xType === 'category') {
-      this.renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars);
+      this.renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, clampedZeroY, color, showZeroValueBars, panelHeight);
     } else {
-      this.renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars);
+      this.renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, clampedZeroY, color, showZeroValueBars, panelHeight);
     }
+    
+    // REMOVED: Ending labels now rendered outside clipped area in main renderForPanel method
   }
   
   /**
@@ -254,10 +250,9 @@ export default class PanelDataRenderer {
   }
   
   /**
-   * Render time-based bars for panel - IMPROVED VERSION
-   * @private
+   * Render time-based bars for panel - FIXED VERSION
    */
-  static renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars) {
+  static renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars, panelHeight) {
     const { xField, yField } = chart.options;
     
     dataset.data.forEach(dataPoint => {
@@ -269,39 +264,40 @@ export default class PanelDataRenderer {
       const actualBarWidth = (typeof timeBarPixelWidth === 'number' && timeBarPixelWidth > 0) ? timeBarPixelWidth : 10;
       const barX = barCenter - actualBarWidth / 2;
       
-      // Calculate bar position and height
-      const { barY, barHeight } = this.calculateBarDimensions(yValue, yScale.scale(yValue), zeroY);
+      // FIXED: Calculate bar position and height with proper bounds checking
+      const { barY, barHeight } = this.calculateBarDimensionsWithBounds(yValue, yScale.scale(yValue), zeroY, panelHeight);
       
-      // Create bar - simplified bounds checking
-      const bar = SvgRenderer.createRect(
-        barX,
-        barY,
-        actualBarWidth,
-        Math.max(0, barHeight),
-        {
-          fill: color,
-          class: 'visioncharts-panel-bar',
-          'data-x': xValue,
-          'data-y': yValue
-        }
-      );
-      
-      dataGroup.appendChild(bar);
+      // Create bar only if it has valid dimensions and is within bounds
+      if (barHeight > 0 && barY >= -10 && barY < panelHeight + 10) {
+        const bar = SvgRenderer.createRect(
+          barX,
+          barY,
+          actualBarWidth,
+          barHeight,
+          {
+            fill: color,
+            class: 'visioncharts-panel-bar',
+            'data-x': xValue,
+            'data-y': yValue
+          }
+        );
+        
+        dataGroup.appendChild(bar);
+      }
     });
   }
   
   /**
-   * Render category-based bars for panel - IMPROVED VERSION
-   * @private
+   * Render category-based bars for panel - FIXED VERSION
    */
-  static renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars) {
+  static renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars, panelHeight) {
     const { xField, yField } = chart.options;
     
     // Get unique X values from scale or calculate them
     const uniqueXValues = xScale._uniqueXValues || Array.from(new Set(dataset.data.map(d => d[xField])));
     if (uniqueXValues.length === 0) return;
     
-    // IMPROVED: Better bar width calculation for category scales
+    // FIXED: Better bar width calculation for category scales
     const rangeWidth = xScale.range[1] - xScale.range[0];
     const barWidth = rangeWidth / uniqueXValues.length;
     const actualBarWidth = barWidth * 0.8; // 80% of available space
@@ -311,44 +307,45 @@ export default class PanelDataRenderer {
       const yValue = dataPoint[yField] || 0;
       if (yValue === 0 && !showZeroValueBars) return;
       
-      // IMPROVED: Find category index and position
+      // FIXED: Find category index and position
       const categoryIndex = uniqueXValues.indexOf(xValue);
       if (categoryIndex === -1) return;
       
       const barX = categoryIndex * barWidth + (barWidth - actualBarWidth) / 2;
       
-      // Calculate bar position and height
-      const { barY, barHeight } = this.calculateBarDimensions(yValue, yScale.scale(yValue), zeroY);
+      // FIXED: Calculate bar position and height with proper bounds checking
+      const { barY, barHeight } = this.calculateBarDimensionsWithBounds(yValue, yScale.scale(yValue), zeroY, panelHeight);
       
-      // Create bar - simplified bounds checking
-      const bar = SvgRenderer.createRect(
-        barX,
-        barY,
-        actualBarWidth,
-        Math.max(0, barHeight),
-        {
-          fill: color,
-          class: 'visioncharts-panel-bar',
-          'data-x': xValue,
-          'data-y': yValue
-        }
-      );
-      
-      dataGroup.appendChild(bar);
+      // Create bar only if it has valid dimensions and is within bounds
+      if (barHeight > 0 && barY >= -10 && barY < panelHeight + 10) {
+        const bar = SvgRenderer.createRect(
+          barX,
+          barY,
+          actualBarWidth,
+          barHeight,
+          {
+            fill: color,
+            class: 'visioncharts-panel-bar',
+            'data-x': xValue,
+            'data-y': yValue
+          }
+        );
+        
+        dataGroup.appendChild(bar);
+      }
     });
   }
   
   /**
-   * Render numeric bars for panel - IMPROVED VERSION
-   * @private
+   * Render numeric bars for panel - FIXED VERSION
    */
-  static renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars) {
+  static renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars, panelHeight) {
     const { yField } = chart.options;
     
     const barCount = dataset.data.length;
     if (barCount === 0) return;
 
-    // IMPROVED: Better bar width calculation
+    // FIXED: Better bar width calculation
     const rangeMax = xScale.range[1];
     const categoryWidth = rangeMax / barCount;
     const actualBarWidth = categoryWidth * 0.8;
@@ -359,29 +356,69 @@ export default class PanelDataRenderer {
       
       const barX = i * categoryWidth + (categoryWidth - actualBarWidth) / 2;
       
-      // Calculate bar position and height
-      const { barY, barHeight } = this.calculateBarDimensions(yValue, yScale.scale(yValue), zeroY);
+      // FIXED: Calculate bar position and height with proper bounds checking
+      const { barY, barHeight } = this.calculateBarDimensionsWithBounds(yValue, yScale.scale(yValue), zeroY, panelHeight);
       
-      // Create bar - simplified bounds checking  
-      const bar = SvgRenderer.createRect(
-        barX,
-        barY,
-        actualBarWidth,
-        Math.max(0, barHeight),
-        {
-          fill: color,
-          class: 'visioncharts-panel-bar',
-          'data-x': i,
-          'data-y': yValue
-        }
-      );
-      
-      dataGroup.appendChild(bar);
+      // Create bar only if it has valid dimensions and is within bounds
+      if (barHeight > 0 && barY >= -10 && barY < panelHeight + 10) {
+        const bar = SvgRenderer.createRect(
+          barX,
+          barY,
+          actualBarWidth,
+          barHeight,
+          {
+            fill: color,
+            class: 'visioncharts-panel-bar',
+            'data-x': i,
+            'data-y': yValue
+          }
+        );
+        
+        dataGroup.appendChild(bar);
+      }
     });
   }
   
   /**
-   * Calculate bar dimensions for positive/negative values - FIXED VERSION
+   * Calculate bar dimensions for positive/negative values - FIXED VERSION with bounds checking
+   * @private
+   * @param {number} yValue - Y value
+   * @param {number} valueY - Scaled Y position of value
+   * @param {number} zeroY - Scaled Y position of zero line
+   * @param {number} panelHeight - Panel height for bounds checking
+   * @returns {Object} Object with barY and barHeight
+   */
+  static calculateBarDimensionsWithBounds(yValue, valueY, zeroY, panelHeight) {
+    let barY, barHeight;
+    
+    if (yValue >= 0) {
+      // Positive value - bar goes from zero up to value
+      barY = Math.max(0, Math.min(panelHeight, valueY));
+      barHeight = Math.abs(zeroY - valueY);
+    } else {
+      // Negative value - bar goes from zero down to value  
+      barY = Math.max(0, Math.min(panelHeight, zeroY));
+      barHeight = Math.abs(zeroY - valueY);
+    }
+    
+    // FIXED: Ensure bars don't extend beyond panel bounds
+    if (barY + barHeight > panelHeight) {
+      barHeight = Math.max(1, panelHeight - barY);
+    }
+    
+    if (barY < 0) {
+      barHeight = Math.max(1, barHeight + barY);
+      barY = 0;
+    }
+    
+    return { 
+      barY: barY, 
+      barHeight: Math.max(1, barHeight) // Minimum 1px height for visibility
+    };
+  }
+  
+  /**
+   * Calculate bar dimensions for positive/negative values - ORIGINAL VERSION (kept for compatibility)
    * @private
    * @param {number} yValue - Y value
    * @param {number} valueY - Scaled Y position of value

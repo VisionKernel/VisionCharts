@@ -496,10 +496,9 @@ export default class BarChart extends Chart {
     // and (conditionally, due to our changes) renderAxes and renderData.
     super.render(); 
 
-    if (this.options.isPanelView) { // Changed from panelView
-      // If isPanelView is true, call renderPanels after super.render()
-      // has prepared the main chart container.
-      // renderPanels will draw its own axes and data per panel.
+    if (this.options.isPanelView) {
+      // FIXED: Ensure panel scales are properly stored for BarChart
+      console.log('BarChart: Rendering panels and storing panel scales');
       this.renderPanels();
     }
     
@@ -673,7 +672,24 @@ export default class BarChart extends Chart {
     return super.update();
   }
   
-  
+  /**
+   * FIXED: Override renderPanels to ensure proper panel scales storage
+   * @private
+   */
+  renderPanels() {
+    console.log('BarChart.renderPanels called - ensuring panel scales are stored');
+    
+    // Call Panel.renderForChart which should return panel scales
+    const panelScales = Panel.renderForChart(this);
+    
+    // FIXED: Ensure panel scales are stored properly for BarChart
+    if (panelScales && panelScales.length > 0) {
+      this.state.panelScales = panelScales;
+      console.log('BarChart: Panel scales stored successfully:', panelScales.length, 'panels');
+    } else {
+      console.warn('BarChart: No panel scales returned from Panel.renderForChart');
+    }
+  }
   
   /**
    * Toggle studies rendering mode
