@@ -36,32 +36,77 @@ export default class PanelDataRenderer {
       return;
     }
     
+    // IMPROVED: Create a clipped data area for this panel
+    const dataGroup = this.createClippedDataGroup(panel, panelWidth, panelHeight, dataset.id);
+    
     // Render based on chart type
     switch (chart.options.chartType) {
       case 'line':
-        this.renderLineDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, panelWidth);
+        this.renderLineDataForPanel(chart, dataGroup, dataset, xScale, yScale, panelHeight, panelWidth);
         break;
       case 'bar':
-        this.renderBarDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, datasetIndex);
+        this.renderBarDataForPanel(chart, dataGroup, dataset, xScale, yScale, panelHeight, datasetIndex);
         break;
       default:
         console.warn('Unknown chart type for panel rendering:', chart.options.chartType);
         break;
     }
+    
+    // Add the data group to the panel
+    panel.appendChild(dataGroup);
   }
 
+  /**
+   * Create a clipped data group to ensure data stays within panel bounds
+   * @param {SVGElement} panel - Panel container
+   * @param {number} panelWidth - Panel width
+   * @param {number} panelHeight - Panel height  
+   * @param {string} datasetId - Dataset ID for unique clipping
+   * @returns {SVGElement} Clipped data group
+   */
+  static createClippedDataGroup(panel, panelWidth, panelHeight, datasetId) {
+    // Create unique clip path ID
+    const clipPathId = `panel-data-clip-${datasetId}-${Date.now()}`;
+    
+    // Get or create defs element
+    let defs = panel.querySelector('defs');
+    if (!defs) {
+      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      panel.appendChild(defs);
+    }
+    
+    // Create clip path - use full panel height to not cut off bars
+    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+    clipPath.setAttribute('id', clipPathId);
+    
+    const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    clipRect.setAttribute('x', '0');
+    clipRect.setAttribute('y', '0'); 
+    clipRect.setAttribute('width', panelWidth);
+    clipRect.setAttribute('height', panelHeight); // FIXED: Use full panel height
+    
+    clipPath.appendChild(clipRect);
+    defs.appendChild(clipPath);
+    
+    // Create data group with clipping
+    const dataGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    dataGroup.setAttribute('class', 'visioncharts-panel-data');
+    dataGroup.setAttribute('clip-path', `url(#${clipPathId})`);
+    
+    return dataGroup;
+  }
   
   /**
    * Render line/area data for a panel
    * @private
    * @param {Object} chart - Chart instance
-   * @param {SVGElement} panel - Panel container
+   * @param {SVGElement} dataGroup - Clipped data container
    * @param {Object} dataset - Dataset to render
    * @param {Object} xScale - X scale for this panel
    * @param {Object} yScale - Y scale for this panel
    * @param {number} panelHeight - Panel height
    */
-  static renderLineDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, panelWidth) {
+  static renderLineDataForPanel(chart, dataGroup, dataset, xScale, yScale, panelHeight, panelWidth) {
     const { xField, yField, curve, showPoints, pointRadius, areaOpacity, gradient } = chart.options;
     
     console.log('Rendering line data for panel, dataset:', dataset.id);
@@ -81,7 +126,7 @@ export default class PanelDataRenderer {
     
     // Render area if enabled for this dataset
     if (dataset.area) {
-      this.renderAreaForPanel(chart, panel, dataset, points, panelHeight, panelWidth, gradient, areaOpacity);
+      this.renderAreaForPanel(chart, dataGroup, dataset, points, panelHeight, panelWidth, gradient, areaOpacity, yScale);
     }
     
     // Generate and render line path based on curve type
@@ -93,12 +138,12 @@ export default class PanelDataRenderer {
       lineElement.setAttribute('stroke-width', dataset.width);
       lineElement.setAttribute('fill', 'none');
       lineElement.setAttribute('class', 'visioncharts-panel-line');
-      panel.appendChild(lineElement);
+      dataGroup.appendChild(lineElement);
     }
     
     // Render points if enabled
     if (showPoints) {
-      this.renderPointsForPanel(chart, panel, dataset, xScale, yScale, pointRadius);
+      this.renderPointsForPanel(chart, dataGroup, dataset, xScale, yScale, pointRadius);
     }
     
     // Render ending label if enabled
@@ -107,7 +152,7 @@ export default class PanelDataRenderer {
       EndingLabels.renderForPanel(
         chart, 
         dataset, 
-        panel, 
+        dataGroup, 
         xScale, 
         yScale,
         chart.options.endingLabelsConfig || {}
@@ -119,14 +164,14 @@ export default class PanelDataRenderer {
    * Render bar data for a panel
    * @private
    * @param {Object} chart - Chart instance
-   * @param {SVGElement} panel - Panel container
+   * @param {SVGElement} dataGroup - Clipped data container
    * @param {Object} dataset - Dataset to render
    * @param {Object} xScale - X scale for this panel
    * @param {Object} yScale - Y scale for this panel
    * @param {number} panelHeight - Panel height
    * @param {number} datasetIndex - Dataset index for color selection
    */
-  static renderBarDataForPanel(chart, panel, dataset, xScale, yScale, panelHeight, datasetIndex) {
+  static renderBarDataForPanel(chart, dataGroup, dataset, xScale, yScale, panelHeight, datasetIndex) {
     const { xField, yField, xType, timeBarPixelWidth, colors, showZeroValueBars } = chart.options;
     
     console.log('Rendering bar data for panel, dataset:', dataset.id, 'xType:', xType);
@@ -135,11 +180,11 @@ export default class PanelDataRenderer {
     const zeroY = yScale.scale(0);
     
     if (xType === 'time') {
-      this.renderTimeBarsForPanel(chart, panel, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars);
+      this.renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars);
     } else if (xType === 'category') {
-      this.renderCategoryBarsForPanel(chart, panel, dataset, xScale, yScale, zeroY, color, showZeroValueBars);
+      this.renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars);
     } else {
-      this.renderNumericBarsForPanel(chart, panel, dataset, xScale, yScale, zeroY, color, showZeroValueBars);
+      this.renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars);
     }
   }
   
@@ -147,7 +192,7 @@ export default class PanelDataRenderer {
    * Render area for panel (line chart)
    * @private
    */
-  static renderAreaForPanel(chart, panel, dataset, points, panelHeight, panelWidth, gradient, areaOpacity) {
+  static renderAreaForPanel(chart, dataGroup, dataset, points, panelHeight, panelWidth, gradient, areaOpacity, yScale) {
     console.log('Rendering area for panel with clipping');
     
     const pathD = this.generateLinePathForPanel(points, chart.options.curve);
@@ -159,37 +204,12 @@ export default class PanelDataRenderer {
       const [lastPoint] = [...points].reverse();
       const [lastX] = lastPoint;
       
-      const areaPath = `${pathD} L ${lastX},${panelHeight} L ${firstX},${panelHeight} Z`;
-      
-      // CREATE CLIP PATH FOR THIS PANEL
-      const clipPathId = `panel-clip-${dataset.id}-${Date.now()}`;
-      
-      // Check if defs element already exists
-      let defsElement = panel.querySelector('defs');
-      if (!defsElement) {
-        // Create defs element if it doesn't exist
-        defsElement = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-        panel.appendChild(defsElement);
-      }
-      
-      // Create a unique clip path ID for this dataset
-      const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-      clipPath.setAttribute('id', clipPathId);
-      
-      // Create a rectangle for clipping
-      const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      clipRect.setAttribute('x', 0);
-      clipRect.setAttribute('y', 0);
-      clipRect.setAttribute('width', panelWidth);
-      clipRect.setAttribute('height', panelHeight);
-      clipRect.setAttribute('fill', 'white');
-      
-      clipPath.appendChild(clipRect);
-      defsElement.appendChild(clipPath);
+      // FIXED: Use proper baseline for area
+      const baselineY = yScale.scale(0); // FIXED: Use actual zero line position
+      const areaPath = `${pathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
       
       const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       areaElement.setAttribute('d', areaPath);
-      areaElement.setAttribute('clip-path', `url(#${clipPathId})`);
       
       // Apply fill (either gradient or color)
       if (gradient) {
@@ -203,7 +223,7 @@ export default class PanelDataRenderer {
       areaElement.setAttribute('stroke', 'none');
       areaElement.setAttribute('class', 'visioncharts-panel-area');
       
-      panel.appendChild(areaElement);
+      dataGroup.appendChild(areaElement);
     }
   }
   
@@ -211,7 +231,7 @@ export default class PanelDataRenderer {
    * Render points for panel (line chart)
    * @private
    */
-  static renderPointsForPanel(chart, panel, dataset, xScale, yScale, pointRadius) {
+  static renderPointsForPanel(chart, dataGroup, dataset, xScale, yScale, pointRadius) {
     const { xField, yField } = chart.options;
     
     dataset.data.forEach(d => {
@@ -229,15 +249,15 @@ export default class PanelDataRenderer {
       point.setAttribute('stroke-width', dataset.width / 2);
       point.setAttribute('class', 'visioncharts-panel-point');
       
-      panel.appendChild(point);
+      dataGroup.appendChild(point);
     });
   }
   
   /**
-   * Render time-based bars for panel
+   * Render time-based bars for panel - IMPROVED VERSION
    * @private
    */
-  static renderTimeBarsForPanel(chart, panel, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars) {
+  static renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, timeBarPixelWidth, showZeroValueBars) {
     const { xField, yField } = chart.options;
     
     dataset.data.forEach(dataPoint => {
@@ -252,7 +272,7 @@ export default class PanelDataRenderer {
       // Calculate bar position and height
       const { barY, barHeight } = this.calculateBarDimensions(yValue, yScale.scale(yValue), zeroY);
       
-      // Create bar using SvgRenderer
+      // Create bar - simplified bounds checking
       const bar = SvgRenderer.createRect(
         barX,
         barY,
@@ -266,38 +286,41 @@ export default class PanelDataRenderer {
         }
       );
       
-      panel.appendChild(bar);
+      dataGroup.appendChild(bar);
     });
   }
   
   /**
-   * Render category-based bars for panel
+   * Render category-based bars for panel - IMPROVED VERSION
    * @private
    */
-  static renderCategoryBarsForPanel(chart, panel, dataset, xScale, yScale, zeroY, color, showZeroValueBars) {
+  static renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars) {
     const { xField, yField } = chart.options;
     
-    // Category bars using stored unique values
-    const uniqueXValues = xScale._uniqueXValues || [];
+    // Get unique X values from scale or calculate them
+    const uniqueXValues = xScale._uniqueXValues || Array.from(new Set(dataset.data.map(d => d[xField])));
     if (uniqueXValues.length === 0) return;
     
-    const barWidth = xScale.range()[1] / uniqueXValues.length;
-    const actualBarWidth = barWidth * 0.8;
+    // IMPROVED: Better bar width calculation for category scales
+    const rangeWidth = xScale.range[1] - xScale.range[0];
+    const barWidth = rangeWidth / uniqueXValues.length;
+    const actualBarWidth = barWidth * 0.8; // 80% of available space
     
     dataset.data.forEach(dataPoint => {
       const xValue = dataPoint[xField];
       const yValue = dataPoint[yField] || 0;
       if (yValue === 0 && !showZeroValueBars) return;
       
-      const xIndex = uniqueXValues.indexOf(xValue);
-      if (xIndex === -1) return;
+      // IMPROVED: Find category index and position
+      const categoryIndex = uniqueXValues.indexOf(xValue);
+      if (categoryIndex === -1) return;
       
-      const barX = xIndex * barWidth + (barWidth - actualBarWidth) / 2;
+      const barX = categoryIndex * barWidth + (barWidth - actualBarWidth) / 2;
       
       // Calculate bar position and height
       const { barY, barHeight } = this.calculateBarDimensions(yValue, yScale.scale(yValue), zeroY);
       
-      // Create bar using SvgRenderer
+      // Create bar - simplified bounds checking
       const bar = SvgRenderer.createRect(
         barX,
         barY,
@@ -311,21 +334,22 @@ export default class PanelDataRenderer {
         }
       );
       
-      panel.appendChild(bar);
+      dataGroup.appendChild(bar);
     });
   }
   
   /**
-   * Render numeric bars for panel
+   * Render numeric bars for panel - IMPROVED VERSION
    * @private
    */
-  static renderNumericBarsForPanel(chart, panel, dataset, xScale, yScale, zeroY, color, showZeroValueBars) {
+  static renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars) {
     const { yField } = chart.options;
     
     const barCount = dataset.data.length;
     if (barCount === 0) return;
 
-    const rangeMax = xScale.range()[1];
+    // IMPROVED: Better bar width calculation
+    const rangeMax = xScale.range[1];
     const categoryWidth = rangeMax / barCount;
     const actualBarWidth = categoryWidth * 0.8;
     
@@ -338,7 +362,7 @@ export default class PanelDataRenderer {
       // Calculate bar position and height
       const { barY, barHeight } = this.calculateBarDimensions(yValue, yScale.scale(yValue), zeroY);
       
-      // Create bar using SvgRenderer
+      // Create bar - simplified bounds checking  
       const bar = SvgRenderer.createRect(
         barX,
         barY,
@@ -352,12 +376,12 @@ export default class PanelDataRenderer {
         }
       );
       
-      panel.appendChild(bar);
+      dataGroup.appendChild(bar);
     });
   }
   
   /**
-   * Calculate bar dimensions for positive/negative values
+   * Calculate bar dimensions for positive/negative values - FIXED VERSION
    * @private
    * @param {number} yValue - Y value
    * @param {number} valueY - Scaled Y position of value
@@ -372,12 +396,16 @@ export default class PanelDataRenderer {
       barY = valueY;
       barHeight = Math.abs(zeroY - valueY);
     } else {
-      // Negative value - bar goes from zero down to value
+      // Negative value - bar goes from zero down to value  
       barY = zeroY;
       barHeight = Math.abs(zeroY - valueY);
     }
     
-    return { barY, barHeight };
+    // FIXED: Ensure valid dimensions without overly restrictive bounds
+    return { 
+      barY: barY, 
+      barHeight: Math.max(1, barHeight) // Minimum 1px height for visibility
+    };
   }
   
   /**

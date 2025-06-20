@@ -46,16 +46,16 @@ export default class Panel {
             
             // Create panel for each regular dataset
             regularDatasets.forEach((dataset, index) => {
-                // Calculate panel dimensions
+                // IMPROVED: Calculate panel dimensions with space for axes on each panel
                 const panelHeight = innerHeight / panelCount;
-                const panelMargin = index === 0 ? 30 : 20;  // Extra margin for first panel
-                const effectivePanelHeight = panelHeight - panelMargin;
+                const axisMargin = 35; // Space needed for X and Y axes on each panel
+                const effectivePanelHeight = panelHeight - axisMargin;
                 
                 // Create panel group
                 const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
                 panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-                // Add top margin of 10px for the first panel
-                const yPos = index * panelHeight + (index === 0 ? 20 : 0);
+                // Position panels with consistent spacing
+                const yPos = index * panelHeight;
                 panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
                 
                 // Create panel background
@@ -249,7 +249,7 @@ export default class Panel {
     static renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, options, isLastPanel = false) {
         console.log('Panel.renderPanelAxes called for panel, isLastPanel:', isLastPanel);
         
-        // Render axes using the static Axis method
+        // FIXED: Render axes using the static Axis method - ALL panels get full axes
         Axis.renderForPanel(
             panelGroup, 
             xScale, 
@@ -257,12 +257,12 @@ export default class Panel {
             innerWidth, 
             effectivePanelHeight,
             {
-                // Axis configuration
-                showXAxis: isLastPanel, // Only show X axis on bottom panel
+                // CHANGED: All panels now get X axes and labels
+                showXAxis: true, // FIXED: Show X axis on ALL panels 
                 showYAxis: true,
-                showXLabels: isLastPanel, // Only show X labels on bottom panel
+                showXLabels: true, // FIXED: Show X labels on ALL panels
                 showYLabels: true,
-                xAxisName: isLastPanel ? options.xAxisName : '',
+                xAxisName: options.xAxisName || '', // Could show on all or just bottom
                 yAxisName: options.yAxisName,
                 isLogarithmic: options.isLogarithmic || false,
                 
