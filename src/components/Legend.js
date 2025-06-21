@@ -14,14 +14,15 @@ export default class Legend {
       position: 'bottom', // 'top', 'right', 'bottom', 'left'
       align: 'center',    // 'start', 'center', 'end'
       orientation: 'horizontal', // 'horizontal', 'vertical'
-      itemMargin: 10,
+      itemMargin: 20, // Increased from 10 to 20 for better spacing
       symbolSize: 12,
       fontSize: 12,
       fontFamily: 'sans-serif',
       interactive: true,
       wrapText: true,
       maxWidth: null,
-      padding: { top: 5, right: 10, bottom: 5, left: 10 }
+      padding: { top: 8, right: 15, bottom: 8, left: 15 }, // Increased padding
+      titleOffset: 0 // New: offset for title space
     }, options);
     
     this.items = [];
@@ -60,29 +61,13 @@ export default class Legend {
     
     if (!this.items.length) return this.element;
     
-    // Create background
-    const background = SvgRenderer.createRect(0, 0, 0, 0, {
-      class: 'visioncharts-legend-bg',
-      fill: '#fff',
-      'fill-opacity': 0.85,
-      stroke: '#e0e0e0',
-      'stroke-width': 1,
-      rx: 4,
-      ry: 4
-    });
+    // Create items with better width calculation (inspired by your old code)
+    const itemElements = [];
+    const itemSpacing = this.options.itemMargin;
+    let totalWidth = 0;
     
-    // Add items
-    const itemsGroup = SvgRenderer.createGroup({
-      class: 'visioncharts-legend-items'
-    });
-    
-    const isHorizontal = this.options.orientation === 'horizontal';
-    let x = this.options.padding.left;
-    let y = this.options.padding.top;
-    let rowHeight = 0;
-    let maxWidth = 0;
-    
-    this.items.forEach(item => {
+    // First pass - create all items and calculate total width using your approach
+    this.items.forEach((item, index) => {
       // Create item group
       const itemGroup = SvgRenderer.createGroup({
         class: 'visioncharts-legend-item',
@@ -94,10 +79,8 @@ export default class Legend {
       let symbol;
       if (item.type === 'line') {
         symbol = SvgRenderer.createLine(
-          x,
-          y + this.options.symbolSize / 2,
-          x + this.options.symbolSize,
-          y + this.options.symbolSize / 2,
+          0, this.options.symbolSize / 2,
+          this.options.symbolSize, this.options.symbolSize / 2,
           {
             class: 'visioncharts-legend-symbol',
             stroke: item.color,
@@ -106,10 +89,8 @@ export default class Legend {
         );
       } else {
         symbol = SvgRenderer.createRect(
-          x,
-          y,
-          this.options.symbolSize,
-          this.options.symbolSize,
+          0, 0,
+          this.options.symbolSize, this.options.symbolSize,
           {
             class: 'visioncharts-legend-symbol',
             fill: item.color
@@ -117,22 +98,27 @@ export default class Legend {
         );
       }
       
-      // Create label
+      // Create label with proper spacing
       const label = SvgRenderer.createText(
         item.label,
-        x + this.options.symbolSize + 5,
-        y + this.options.symbolSize / 2,
+        this.options.symbolSize + 8,
+        this.options.symbolSize / 2,
         {
           class: 'visioncharts-legend-label',
           'dominant-baseline': 'middle',
           'font-family': this.options.fontFamily,
-          'font-size': this.options.fontSize
+          'font-size': this.options.fontSize,
+          fill: '#333'
         }
       );
       
       // Add to item group
       itemGroup.appendChild(symbol);
       itemGroup.appendChild(label);
+      
+      // Calculate width using your reliable method (character-based calculation)
+      const labelWidth = item.label ? item.label.length * (this.options.fontSize * 0.7) : 50;
+      const itemWidth = this.options.symbolSize + 8 + labelWidth + 10; // symbol + spacing + text + padding
       
       // Add interactivity
       if (this.options.interactive) {
@@ -149,82 +135,127 @@ export default class Legend {
         });
       }
       
-      // Add to items group
-      itemsGroup.appendChild(itemGroup);
+      itemElements.push({
+        element: itemGroup,
+        width: itemWidth,
+        item: item
+      });
       
-      // Calculate dimensions for next item
-      const labelBBox = label.getBBox();
-      const itemWidth = this.options.symbolSize + 5 + labelBBox.width;
-      const itemHeight = Math.max(this.options.symbolSize, labelBBox.height);
-      
-      // Update max width
-      maxWidth = Math.max(maxWidth, itemWidth);
-      rowHeight = Math.max(rowHeight, itemHeight);
-      
-      // Update position for next item
-      if (isHorizontal) {
-        x += itemWidth + this.options.itemMargin;
-        
-        // Wrap to next row if needed
-        if (this.options.wrapText && 
-            this.options.maxWidth && 
-            x > this.options.maxWidth - this.options.padding.right) {
-          x = this.options.padding.left;
-          y += rowHeight + 5;
-          rowHeight = 0;
-        }
-      } else {
-        y += itemHeight + 5;
-      }
+      totalWidth += itemWidth + itemSpacing;
     });
     
-    // Add items to legend
-    this.element.appendChild(background);
-    this.element.appendChild(itemsGroup);
+    // Remove last spacing
+    totalWidth -= itemSpacing;
     
-    // Calculate legend dimensions
-    const legendBBox = itemsGroup.getBBox();
-    const legendWidth = legendBBox.width + this.options.padding.left + this.options.padding.right;
-    const legendHeight = legendBBox.height + this.options.padding.top + this.options.padding.bottom;
+    // Add padding
+    totalWidth += this.options.padding.left + this.options.padding.right;
+    const legendHeight = this.options.symbolSize + this.options.padding.top + this.options.padding.bottom;
     
-    // Update background dimensions
-    background.setAttribute('width', legendWidth);
-    background.setAttribute('height', legendHeight);
+    // Create background
+    const background = SvgRenderer.createRect(0, 0, totalWidth, legendHeight, {
+      class: 'visioncharts-legend-bg',
+      fill: '#fff',
+      'fill-opacity': 0.85,
+      stroke: '#e0e0e0',
+      'stroke-width': 1,
+      rx: 4,
+      ry: 4
+    });
     
-    // Position legend
+    // Check if we need wrapping (similar to your old approach)
+    const maxWidthPerRow = width * 0.9;
+    const needsWrapping = totalWidth > maxWidthPerRow;
+    
+    if (needsWrapping && this.options.wrapText) {
+      // Multi-row layout (inspired by your wrapping logic)
+      let currentX = this.options.padding.left;
+      let currentY = this.options.padding.top;
+      let rowWidth = 0;
+      let maxRowWidth = 0;
+      const rowHeight = this.options.symbolSize + 10; // Extra spacing between rows
+      
+      itemElements.forEach(itemData => {
+        // Check if adding this item would exceed max width
+        if (rowWidth + itemData.width > maxWidthPerRow - this.options.padding.left - this.options.padding.right && rowWidth > 0) {
+          // Start new row
+          maxRowWidth = Math.max(maxRowWidth, rowWidth);
+          currentY += rowHeight;
+          currentX = this.options.padding.left;
+          rowWidth = 0;
+        }
+        
+        // Position item
+        itemData.element.setAttribute('transform', `translate(${currentX}, ${currentY})`);
+        this.element.appendChild(itemData.element);
+        
+        // Update for next item
+        currentX += itemData.width + itemSpacing;
+        rowWidth += itemData.width + itemSpacing;
+      });
+      
+      // Update final dimensions
+      maxRowWidth = Math.max(maxRowWidth, rowWidth);
+      const finalWidth = maxRowWidth + this.options.padding.left + this.options.padding.right;
+      const finalHeight = currentY + this.options.symbolSize + this.options.padding.bottom;
+      
+      // Update background size
+      background.setAttribute('width', finalWidth);
+      background.setAttribute('height', finalHeight);
+      
+      totalWidth = finalWidth;
+    } else {
+      // Single row layout (your original approach)
+      let currentX = this.options.padding.left;
+      const currentY = this.options.padding.top;
+      
+      itemElements.forEach(itemData => {
+        itemData.element.setAttribute('transform', `translate(${currentX}, ${currentY})`);
+        this.element.appendChild(itemData.element);
+        currentX += itemData.width + itemSpacing;
+      });
+    }
+    
+    // Add background first
+    this.element.insertBefore(background, this.element.firstChild);
+    
+    // Position legend using your reliable centering approach
     let legendX = 0;
     let legendY = 0;
     
     switch (this.options.position) {
       case 'top':
-        legendY = 0;
+        legendY = this.options.titleOffset + 5;
         break;
       case 'bottom':
-        legendY = height - legendHeight;
+        legendY = height - parseInt(background.getAttribute('height'));
         break;
       case 'left':
-        legendY = (height - legendHeight) / 2;
+        legendY = (height - parseInt(background.getAttribute('height'))) / 2;
         break;
       case 'right':
-        legendX = width - legendWidth;
-        legendY = (height - legendHeight) / 2;
+        legendX = width - totalWidth;
+        legendY = (height - parseInt(background.getAttribute('height'))) / 2;
         break;
     }
     
-    // Adjust horizontal alignment
+    // Center horizontally for top and bottom positions (your approach)
     if (this.options.position === 'top' || this.options.position === 'bottom') {
       switch (this.options.align) {
         case 'start':
           legendX = 0;
           break;
         case 'center':
-          legendX = (width - legendWidth) / 2;
+          legendX = Math.max(0, (width - totalWidth) / 2);
           break;
         case 'end':
-          legendX = width - legendWidth;
+          legendX = Math.max(0, width - totalWidth);
           break;
       }
     }
+    
+    // Ensure legend doesn't go outside container bounds
+    legendX = Math.max(0, Math.min(legendX, width - totalWidth));
+    legendY = Math.max(0, legendY);
     
     // Update legend position
     this.element.setAttribute('transform', `translate(${legendX},${legendY})`);

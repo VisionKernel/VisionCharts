@@ -2,7 +2,7 @@
  * VisionCharts - A modern, high-performance JavaScript charting library
  * optimized for financial and economic data visualization.
  * 
- * @version 0.2.0
+ * @version 1.2.0
  * @license MIT
  */
 
@@ -17,6 +17,7 @@ import Tooltip from './components/Tooltip.js';
 import Legend from './components/Legend.js';
 import Crosshair from './components/Crosshair.js';
 import RecessionLines from './components/RecessionLines.js';
+import EndingLabels from './components/EndingLabels.js';
 
 // Renderers
 import SvgRenderer from './renderers/SvgRenderer.js';
@@ -24,7 +25,6 @@ import SvgRenderer from './renderers/SvgRenderer.js';
 // Chart types
 import LineChart from './charts/LineChart.js';
 import BarChart from './charts/BarChart.js';
-import AreaChart from './charts/AreaChart.js';
 
 // Utility functions
 import { 
@@ -34,7 +34,7 @@ import {
 
 /**
  * Create a chart instance based on type
- * @param {string} type - Chart type ('line', 'bar', 'area')
+ * @param {string} type - Chart type ('line', 'bar')
  * @param {Object} config - Chart configuration
  * @returns {Chart} Chart instance
  */
@@ -45,7 +45,9 @@ export function createChart(type, config) {
     case 'bar':
       return new BarChart(config);
     case 'area':
-      return new AreaChart(config);
+      // For backward compatibility, map area to line
+      console.warn('AreaChart is deprecated. Use LineChart with dataset.area = true instead.');
+      return new LineChart(config);
     default:
       throw new Error(`Unsupported chart type: ${type}`);
   }
@@ -68,6 +70,8 @@ export function parseChartConfig(config) {
     isPanelView: false,
     showRecessionLines: false,
     showZeroLine: false,
+    showPoints: false,
+    showEndingLabels: false,
     studies: [],
     datasets: []
   };
@@ -121,6 +125,7 @@ export {
   Legend,
   Crosshair,
   RecessionLines,
+  EndingLabels,
   
   // Renderers
   SvgRenderer,
@@ -128,7 +133,6 @@ export {
   // Charts
   LineChart,
   BarChart,
-  AreaChart,
   
   // Utils
   calculateIndicator,
@@ -136,7 +140,7 @@ export {
 };
 
 // Export library version
-export const version = '0.2.0';
+export const version = '1.2.0';
 
 // Default export
 export default {
@@ -156,12 +160,12 @@ export default {
   Legend,
   Crosshair,
   RecessionLines,
+  EndingLabels,
   
   SvgRenderer,
   
   LineChart,
   BarChart,
-  AreaChart,
   
   calculateIndicator,
   formatDateValue,

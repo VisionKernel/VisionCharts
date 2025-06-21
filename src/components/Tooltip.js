@@ -84,31 +84,33 @@ export default class Tooltip {
    * @param {Object} containerBounds - Container bounds
    */
   show(data, x, y, containerBounds) {
-    if (!this.elements.tooltip) return;
-    
-    this.data = data;
-    
-    // Clear existing content
-    this.elements.content.textContent = '';
-    
-    // Format content
-    let content;
-    if (typeof this.options.formatter === 'function') {
-      content = this.options.formatter(data);
-    } else {
-      content = JSON.stringify(data);
-    }
-    
-    // Create text elements for multiline support
-    const lines = Array.isArray(content) ? content : String(content).split('\n');
-    
-    lines.forEach((line, i) => {
-      const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-      tspan.textContent = line;
-      tspan.setAttribute('x', this.options.padding.left);
-      tspan.setAttribute('dy', i === 0 ? this.options.padding.top + 16 : 16);
-      this.elements.content.appendChild(tspan);
-    });
+  if (!this.elements.tooltip) return;
+  
+  this.data = data;
+  
+  // Clear existing content
+  while (this.elements.content.firstChild) {
+    this.elements.content.removeChild(this.elements.content.firstChild);
+  }
+  
+  // Format content
+  let content;
+  if (typeof this.options.formatter === 'function') {
+    content = this.options.formatter(data);
+  } else {
+    content = JSON.stringify(data);
+  }
+  
+  // Create text elements for multiline support
+  const lines = Array.isArray(content) ? content : String(content).split('\n');
+  
+  lines.forEach((line, i) => {
+    const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    tspan.textContent = line; // Use textContent to prevent HTML injection
+    tspan.setAttribute('x', this.options.padding.left);
+    tspan.setAttribute('dy', i === 0 ? this.options.padding.top + 16 : 16);
+    this.elements.content.appendChild(tspan);
+  });
     
     // Calculate dimensions
     const contentBBox = this.elements.content.getBBox();
@@ -147,7 +149,7 @@ export default class Tooltip {
     
     // Update tooltip position
     this.elements.tooltip.setAttribute('transform', `translate(${tooltipX},${tooltipY})`);
-    
+
     // Show tooltip
     this.elements.tooltip.setAttribute('opacity', 1);
     this.visible = true;

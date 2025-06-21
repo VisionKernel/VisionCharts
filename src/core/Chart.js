@@ -1,3 +1,22 @@
+import Axis from '../core/Axis.js';
+import InteractionManager from '../core/InteractionManager.js';
+import ScaleManager from '../core/ScaleManager.js';
+import StudiesManager from '../core/StudiesManager.js';
+import SvgRenderer from '../renderers/SvgRenderer.js';
+import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
+import Crosshair from '../components/Crosshair.js';
+import StatisticalLines from '../components/StatisticalLines.js';
+import Tooltip from '../components/Tooltip.js';
+import RecessionLines from '../components/RecessionLines.js';
+import ZeroLine from '../components/ZeroLine.js';
+import { AverageLine } from '../components/AverageLine.js';
+import { MedianLine } from '../components/MedianLine.js';
+import Legend from '../components/Legend.js';
+import Grid from '../components/Grid.js';
+import Panel from '../components/Panel.js';
+import { calculateIndicator } from '../utils/math.js';
+import ChartExporter from '../utils/ChartExporter.js';
+
 /**
  * Base Chart class that handles common chart functionality
  */
@@ -10,46 +29,76 @@ export default class Chart {
    * @param {Object} config.options - Chart options
    */
   constructor(config) {
-    console.log('Chart constructor called');
-    
-    // Store the configuration
-    this.config = Object.assign({
-      // Default configuration
-      container: null,
-      data: [],
-      options: {}
-    }, config);
+  console.log('Chart constructor called');
+  
+  // Store the configuration
+  this.config = Object.assign({
+    // Default configuration
+    container: null,
+    data: [],
+    options: {}
+  }, config);
 
-    // Merge options with defaults
+  // Import themes
+  let lightTheme, darkTheme;
+  try {
+    lightTheme = require('../themes/light.js').default;
+    darkTheme = require('../themes/dark.js').default;
+  } catch (e) {
+    console.warn('Chart themes could not be loaded:', e);
+    lightTheme = {};
+    darkTheme = {};
+  }
+
+  // Determine if dark mode is active
+  const isDarkMode = (
+    this.config.options.theme === 'dark' || 
+    (this.config.options.theme === 'auto' && darkTheme.isDarkMode?.())
+  );
+  
+  // Select active theme
+  const activeTheme = isDarkMode ? darkTheme : lightTheme;
+  
+  // Merge options with defaults and theme
+  this.options = Object.assign({
+    // Default options
+    width: null,
+    height: null,
+    margins: { top: 50, right: 40, bottom: 70, left: 60 },
+    title: '',
+    xAxisName: '',
+    yAxisName: '',
+    isLogarithmic: false,
+    isPanelView: false,
+    showRecessionLines: false,
+    recessions: [],
+    showZeroLine: false,
+    showAverageLine: false,
+    showMedianLine: false,
     
-    this.options = Object.assign({
-      // Default options
-      width: null,
-      height: null,
-      // Increase top margin to 50px and bottom margin to 70px
-      margins: { top: 50, right: 20, bottom: 70, left: 60 },
-      title: '',
-      xAxisName: '',
-      yAxisName: '',
-      isLogarithmic: false,
-      isPanelView: false,
-      showRecessionLines: false,
-      recessions: [],
-      showZeroLine: false,
-      
-      // Keep other options
-      responsive: true,
-      colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-      lineWidth: 2,
-      studies: [],
-      theme: 'light',
-      fontFamily: 'sans-serif',
-      textColor: '#333',
-      animation: {
-        duration: 300,
-        easing: 'ease'
-      }
-    }, this.config.options);
+    // Theme application
+    theme: 'auto', // 'light', 'dark', or 'auto'
+    
+    // Apply theme colors if available
+    colors: activeTheme.palette || ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
+    backgroundColor: activeTheme.colors?.background || '#ffffff',
+    textColor: activeTheme.colors?.text || '#333',
+    axisColor: activeTheme.colors?.axis || '#666',
+    gridColor: activeTheme.colors?.grid || '#eee',
+    fontFamily: 'sans-serif',
+    
+    // Keep other options
+    responsive: true,
+    lineWidth: 2,
+    studies: [],
+    animation: {
+      duration: 300,
+      easing: 'ease'
+    }
+  }, this.config.options);
+
+  // Store active theme for use in rendering
+  this.theme = activeTheme;
 
     // Initialize state
     this.state = {
@@ -70,9 +119,12 @@ export default class Chart {
       components: {
         recessionLines: null,
         zeroLine: null,
+        averageLine: null,
+        medianLine: null,
         tooltip: null,
         legend: null,
-        panels: []
+        panels: [],
+        grid: null
       }
     };
 
@@ -220,32 +272,6 @@ export default class Chart {
     }
   }
   
-  // Modify destroy method to clean up the ResizeObserver
-  destroy() {
-    console.log('destroy called');
-    
-    // Remove event listeners
-    window.removeEventListener('resize', this.resizeHandler);
-    
-    // Clean up resize observer
-    if (this.state.resizeObserver) {
-      this.state.resizeObserver.disconnect();
-      this.state.resizeObserver = null;
-    }
-    
-    // Remove SVG
-    if (this.state.svg && this.state.container) {
-      if (this.state.container.contains(this.state.svg)) {
-        this.state.container.removeChild(this.state.svg);
-      }
-    }
-    
-    // Reset state
-    this.state.rendered = false;
-    this.state.svg = null;
-    this.state.chart = null;
-  }
-  
   /**
    * Process datasets into a standardized format
    * @private
@@ -261,60 +287,84 @@ export default class Chart {
       return;
     }
     
+    // Store existing dataset settings to preserve area, areaOpacity, etc.
+    const existingSettings = {};
+    if (this.state.datasets) {
+      this.state.datasets.forEach(dataset => {
+        existingSettings[dataset.id] = {
+          area: dataset.area,
+          areaOpacity: dataset.areaOpacity,
+          width: dataset.width,
+          color: dataset.color,
+          visible: dataset.visible
+        };
+      });
+    }
+    
     // Handle array of objects (single dataset) vs array of datasets
     if (Array.isArray(data)) {
       if (data.length === 0) {
         this.state.datasets = [];
       } else if (data[0] && data[0].hasOwnProperty('data')) {
         // Array of datasets
-        this.state.datasets = data.map((dataset, index) => ({
-          id: dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`,
-          name: dataset.name || `Dataset ${index + 1}`,
-          color: dataset.color || this.options.colors[index % this.options.colors.length],
-          width: dataset.width || this.options.lineWidth,
-          type: dataset.type || 'line',
-          data: Array.isArray(dataset.data) ? dataset.data : []
-        }));
+        this.state.datasets = data.map((dataset, index) => {
+          const id = dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`;
+          const existing = existingSettings[id] || {};
+          
+          return {
+            id: id,
+            name: dataset.name || `Dataset ${index + 1}`,
+            color: existing.color || dataset.color || this.options.colors[index % this.options.colors.length],
+            width: existing.width || dataset.width || this.options.lineWidth,
+            type: dataset.type || 'line',
+            area: existing.area !== undefined ? existing.area : (dataset.area || false),
+            areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : (dataset.areaOpacity || 0.2),
+            visible: existing.visible !== undefined ? existing.visible : (dataset.visible !== false),
+            data: Array.isArray(dataset.data) ? dataset.data : []
+          };
+        });
       } else {
         // Array of data points (single dataset)
+        const existing = existingSettings['dataset-1'] || {};
+        
         this.state.datasets = [{
           id: 'dataset-1',
           name: 'Dataset',
-          color: this.options.colors[0],
-          width: this.options.lineWidth,
+          color: existing.color || this.options.colors[0],
+          width: existing.width || this.options.lineWidth,
           type: 'line',
+          area: existing.area !== undefined ? existing.area : false,
+          areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : 0.2,
+          visible: existing.visible !== undefined ? existing.visible : true,
           data: data
         }];
       }
     } else {
       // Object with data property
+      const existing = existingSettings['dataset-1'] || {};
+      
       this.state.datasets = [{
         id: 'dataset-1',
         name: 'Dataset',
-        color: this.options.colors[0],
-        width: this.options.lineWidth,
+        color: existing.color || this.options.colors[0],
+        width: existing.width || this.options.lineWidth,
         type: 'line',
+        area: existing.area !== undefined ? existing.area : false,
+        areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : 0.2,
+        visible: existing.visible !== undefined ? existing.visible : true,
         data: data.data || []
       }];
     }
     
     // Process studies if present
     if (this.options.studies && this.options.studies.length) {
-      this.processStudies();
+      StudiesManager.processStudies(this);
     }
     
     // Apply date filtering if needed
     this.applyDateFilter();
     
     console.log('Datasets processed:', this.state.datasets.length);
-  }
-  
-  /**
-   * Process studies/indicators
-   * @private
-   */
-  processStudies() {
-    // To be implemented by subclasses
   }
   
   /**
@@ -361,23 +411,19 @@ export default class Chart {
   }
 
   /**
-   * Create scales for the chart
+   * Create scales for the chart using ScaleManager
    * @private
-   * This should be implemented by subclasses
    */
   createScales() {
-    console.log('createScales called - to be implemented by subclass');
-    // To be implemented by subclasses
-  }
-
-  /**
-   * Create axes for the chart
-   * @private
-   * This should be implemented by subclasses
-   */
-  createAxes() {
-    console.log('createAxes called - to be implemented by subclass');
-    // To be implemented by subclasses
+    console.log('Chart.createScales called - using ScaleManager');
+    
+    // Use ScaleManager to create scales
+    const scales = ScaleManager.createScales(this);
+    
+    // Store scales in state
+    this.state.scales = scales;
+    
+    console.log('Chart scales created via ScaleManager');
   }
 
   /**
@@ -388,6 +434,11 @@ export default class Chart {
     console.log('updateDimensions called');
     
     this.setDimensionsWithoutUpdatingAxes();
+    
+    // Update scale ranges when dimensions change
+    if (this.state.scales && Object.keys(this.state.scales).length > 0) {
+      ScaleManager.updateScaleRanges(this.state.scales, this.state.dimensions);
+    }
     
     // IMPORTANT: Only update axes if the chart has already been rendered
     if (this.state.rendered && this.state.chart) {
@@ -454,20 +505,17 @@ export default class Chart {
       return;
     }
     
-    // Create SVG element
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', this.state.dimensions.width);
-    svg.setAttribute('height', this.state.dimensions.height);
-    svg.setAttribute('class', 'visioncharts-svg');
+    // Create SVG element using SvgRenderer
+    const svg = SvgRenderer.createSvg(this.state.dimensions.width, this.state.dimensions.height);
     
-    // Add viewport - Increase extra space for axis labels to 40px
-    svg.setAttribute('viewBox', `0 0 ${this.state.dimensions.width} ${this.state.dimensions.height + 40}`);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    // Apply background color from theme
+    SvgRenderer.applyStyles(svg, { background: this.options.backgroundColor });
     
     // Create chart group with transform for margins
-    const chart = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    chart.setAttribute('transform', `translate(${this.options.margins.left},${this.options.margins.top})`);
-    chart.setAttribute('class', 'visioncharts-chart');
+    const chart = SvgRenderer.createGroup({
+      transform: `translate(${this.options.margins.left},${this.options.margins.top})`,
+      class: 'visioncharts-chart'
+    });
     
     // Add chart group to SVG
     svg.appendChild(chart);
@@ -483,8 +531,7 @@ export default class Chart {
   }
 
   /**
-   * Modified render method to enforce strict panel mode
-   * @public
+   * Modified render method to enforce proper rendering order
    */
   render() {
     console.log('render called with isPanelView =', this.options.isPanelView);
@@ -507,31 +554,30 @@ export default class Chart {
     
     console.log('About to render chart content');
     
-    // Strict panel mode enforcement
+    // Completely separate rendering modes
     if (this.options.isPanelView) {
-      console.log('STRICTLY rendering only panel content');
-      // Render ONLY panels - no other chart components
-      this.renderPanels();
+      console.log('PANEL MODE: Rendering panel-only content');
+      
+      // Ensure we have datasets for panel mode
+      if (!this.state.datasets || this.state.datasets.length === 0) {
+        console.warn('No datasets for panel mode, falling back to single mode');
+        this.options.isPanelView = false;
+        this.renderSingleMode();
+      } else {
+        this.renderPanelMode();
+      }
     } else {
-      // Standard view mode
-      this.renderAxes();
-      this.renderData();
-      
-      // Render zero line if enabled
-      if (this.options.showZeroLine) {
-        this.renderZeroLine();
-      }
-      
-      // Render recession lines if enabled
-      if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-        this.renderRecessionLines();
-      }
+      console.log('SINGLE MODE: Rendering single-panel content');
+      this.renderSingleMode();
     }
-    
+
     // Common components for both modes
     this.renderLegend();
     this.renderTitle();
     this.renderAxisNames();
+
+    // Render statistical lines
+    StatisticalLines.renderForChart(this);
     
     // Update state
     this.state.rendered = true;
@@ -540,269 +586,189 @@ export default class Chart {
     
     return this;
   }
+
   
   /**
-   * Render panels for multi-panel view
+ * Render chart in single-panel mode
+ * @private
+ */
+  renderSingleMode() {
+    console.log('renderSingleMode called');
+    
+    // Standard view mode
+    this.renderAxes();
+
+    if (this.options.grid?.show) {
+      this.state.components.grid = new Grid(this.options.grid);
+      this.state.components.grid.render(
+        this.state.chart,
+        this.state.scales.x,
+        this.state.scales.y,
+        this.state.dimensions.innerWidth,
+        this.state.dimensions.innerHeight,
+        this.options
+      );
+    }
+
+    this.renderData();
+
+    // Render legend if enabled
+    if (this.options.showLegend) {
+      this.renderLegend();
+    }
+    
+    // Render zero line if enabled
+    if (this.options.showZeroLine) {
+      this.state.components.zeroLine = new ZeroLine(this.options.zeroLineOptions || {});
+      if (this.state.scales.y) {
+        this.state.components.zeroLine.render(
+          this.state.chart, 
+          this.state.scales.y, 
+          this.state.dimensions.innerWidth
+        );
+      }
+    }
+    
+    // Render recession lines if enabled
+    if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
+      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+      this.state.components.recessionLines.render(
+        this.state.chart, 
+        this.options.recessions, 
+        this.state.scales.x, 
+        this.state.dimensions.innerHeight
+      );
+    }
+    
+    // Initialize hover features using InteractionManager
+    InteractionManager.initSingleMode(this);
+  }
+  
+  /**
+   * Render chart in panel mode
+   * @private
+   */
+  renderPanelMode() {
+    console.log('renderPanelMode called');
+    
+    // Make sure we have datasets to render
+    if (!this.state.datasets || this.state.datasets.length === 0) {
+      console.warn('No datasets available for panel mode');
+      return;
+    }
+    
+    // Render panels using the Panel component
+    Panel.renderForChart(this);
+    
+    // Initialize hover features using InteractionManager
+    InteractionManager.initPanelMode(this);
+  }
+
+  /**
+   * Render panels for multi-panel view - UPDATED VERSION
    * @private
    */
   renderPanels() {
-    console.log('renderPanels called');
-    // To be implemented by subclasses
-  }
-  
-  /**
-   * Render zero line
-   * @private
-   */
-  renderZeroLine() {
-    console.log('renderZeroLine called');
-    
-    if (!this.state.chart) return;
-    
-    const yScale = this.state.scales.y;
-    if (!yScale) return;
-    
-    const zeroY = yScale.scale(0);
-    
-    // Only render if zero is within the visible range
-    if (zeroY >= 0 && zeroY <= this.state.dimensions.innerHeight) {
-      const zeroLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      zeroLine.setAttribute('x1', 0);
-      zeroLine.setAttribute('y1', zeroY);
-      zeroLine.setAttribute('x2', this.state.dimensions.innerWidth);
-      zeroLine.setAttribute('y2', zeroY);
-      zeroLine.setAttribute('stroke', '#666');
-      zeroLine.setAttribute('stroke-width', 1);
-      zeroLine.setAttribute('stroke-dasharray', '4,4');
-      zeroLine.setAttribute('class', 'visioncharts-zero-line');
-      
-      this.state.chart.appendChild(zeroLine);
-    }
-  }
-  
-  /**
-   * Render recession lines
-   * @private
-   */
-  renderRecessionLines() {
-    console.log('renderRecessionLines called');
-    
-    if (!this.state.chart) return;
-    
-    const { recessions } = this.options;
-    const { innerHeight, innerWidth } = this.state.dimensions;
-    const xScale = this.state.scales.x;
-    
-    if (!xScale) return;
-    
-    // Create recession lines group
-    const recessionsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    recessionsGroup.setAttribute('class', 'visioncharts-recession-lines');
-    
-    // Process each recession period
-    recessions.forEach((recession, index) => {
-      // Extract dates
-      const startDate = recession.start instanceof Date ? 
-                      recession.start : new Date(recession.start);
-      const endDate = recession.end instanceof Date ? 
-                      recession.end : (recession.end ? new Date(recession.end) : new Date());
-      
-      // Validate dates
-      if (!startDate || isNaN(startDate.getTime())) {
-        console.warn('Invalid recession start date:', recession.start);
-        return;
-      }
-      
-      if (!endDate || isNaN(endDate.getTime())) {
-        console.warn('Invalid recession end date:', recession.end);
-        return;
-      }
-      
-      try {
-        // Get x coordinates using the scale
-        const startX = xScale.scale(startDate);
-        const endX = xScale.scale(endDate);
-        
-        // Create recession area
-        const recessionArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        recessionArea.setAttribute('x', startX);
-        recessionArea.setAttribute('y', 0);
-        recessionArea.setAttribute('width', endX - startX);
-        recessionArea.setAttribute('height', innerHeight);
-        recessionArea.setAttribute('fill', 'rgba(235, 54, 54, 0.15)');
-        recessionArea.setAttribute('stroke', 'rgba(235, 54, 54, 0.3)');
-        recessionArea.setAttribute('stroke-width', 1);
-        recessionArea.setAttribute('class', `visioncharts-recession-area recession-${index}`);
-        
-        // Add to group
-        recessionsGroup.appendChild(recessionArea);
-        
-        // Add label if there's enough space
-        if (endX - startX > 30) {
-          const labelText = `${startDate.getFullYear()}${endDate ? '-' + endDate.getFullYear() : ''}`;
-          const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          label.textContent = labelText;
-          label.setAttribute('x', startX + (endX - startX) / 2);
-          label.setAttribute('y', 15);
-          label.setAttribute('text-anchor', 'middle');
-          label.setAttribute('font-size', '10px');
-          label.setAttribute('fill', '#888');
-          label.setAttribute('class', 'visioncharts-recession-label');
-          
-          recessionsGroup.appendChild(label);
-        }
-      } catch (error) {
-        console.error('Error rendering recession area:', error);
-      }
-    });
-    
-    // Add to chart
-    this.state.chart.appendChild(recessionsGroup);
+    console.log('renderPanels called - delegating to renderPanelMode');
+    // Delegate to the proper panel rendering
+    this.renderPanelMode();
   }
 
   /**
-   * Render axes
-   * @private
-   * This should be implemented by subclasses
-   */
-  renderAxes() {
-    console.log('renderAxes called - to be implemented by subclass');
-    // To be implemented by subclasses
-  }
-
-  /**
- * Render chart legend - centered under title
- * @private
+ * Render chart legend using Legend component
  */
-  renderLegend() {
-    console.log('Chart.renderLegend called');
+renderLegend() {
+  console.log('renderLegend called');
+  
+  if (!this.options.showLegend || !this.config.data.length) {
+    return;
+  }
+  
+  // Clean up existing legend
+  if (this.state.components.legend) {
+    this.state.components.legend.destroy();
+    this.state.components.legend = null;
+  }
+  
+  // Prepare legend items from chart data
+  const legendItems = this.config.data.map(dataset => ({
+    id: dataset.id,
+    label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
+    color: dataset.color || '#1468a8',
+    visible: dataset.visible !== false,
+    type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
+  }));
+  
+  // Calculate title height offset
+  const titleHeight = this.options.title ? 35 : 0; // Title takes ~35px including spacing
+  
+  // Create legend with appropriate options
+  const legendOptions = Object.assign({
+    position: 'top', // Changed to 'top' to position under title
+    align: 'center',
+    orientation: 'horizontal',
+    itemMargin: 25, // Increased spacing between items
+    symbolSize: 12,
+    fontSize: 12,
+    fontFamily: 'sans-serif',
+    interactive: true,
+    padding: { top: 10, right: 15, bottom: 10, left: 15 }, // Better padding
+    titleOffset: titleHeight // Pass title offset to legend
+  }, this.options.legendOptions || {});
+  
+  // Create and configure legend
+  this.state.components.legend = new Legend(legendOptions);
+  this.state.components.legend.setItems(legendItems);
+  
+  // Render legend with correct dimensions
+  this.state.components.legend.render(
+    this.state.svg, 
+    this.state.dimensions.width,  // Fixed: was totalWidth
+    this.state.dimensions.height  // Fixed: was totalHeight
+  );
+  
+  // Add event listener for legend interactions
+  this.state.components.legend.element.addEventListener('legend-item-click', (event) => {
+    const { id, visible } = event.detail;
+    console.log(`Legend item ${id} clicked, visible: ${visible}`);
     
-    if (!this.state.svg) return;
-    
-    // Only render legend if we have multiple datasets
-    if (this.state.datasets.length <= 1) return;
-    
-    // Create legend group
-    const legendGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    legendGroup.setAttribute('class', 'visioncharts-legend');
-    
-    // Calculate legend position - explicitly below title with increased spacing
-    const titleHeight = 40; // Standard height for title across all charts
-    const legendY = titleHeight + 5; // Increased space between title and legend
-    
-    // Create legend items
-    const itemElements = [];
-    const itemSpacing = 40; // Spacing between items
-    const rowHeight = 25; // Height of each row for wrapping
-    let totalWidth = 0;
-    
-    // First pass - create all items and calculate total width
-    this.state.datasets.forEach(dataset => {
-      // Create item group
-      const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    // Find the dataset and update its visibility
+    const dataset = this.config.data.find(d => d.id === id);
+    if (dataset) {
+      dataset.visible = visible;
       
-      // Create symbol based on dataset type
-      if (dataset.type === 'line' || dataset.type === 'area') {
-        // Line symbol
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', 0);
-        line.setAttribute('y1', 10);
-        line.setAttribute('x2', 20);
-        line.setAttribute('y2', 10);
-        line.setAttribute('stroke', dataset.color);
-        line.setAttribute('stroke-width', 2);
-        itemGroup.appendChild(line);
-      } else {
-        // Rectangle symbol for bar or other types
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', 0);
-        rect.setAttribute('y', 5);
-        rect.setAttribute('width', 20);
-        rect.setAttribute('height', 10);
-        rect.setAttribute('fill', dataset.color);
-        itemGroup.appendChild(rect);
-      }
+      // Update the chart
+      this.update();
       
-      // Create label
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.textContent = dataset.name || 'Dataset';
-      label.setAttribute('x', 25);
-      label.setAttribute('y', 10);
-      label.setAttribute('dominant-baseline', 'middle');
-      label.setAttribute('font-size', '14px'); // Reduced font size slightly
-      label.setAttribute('font-family', this.options.fontFamily || 'sans-serif');
-      label.setAttribute('fill', this.options.textColor || '#333');
-      itemGroup.appendChild(label);
-      
-      // Calculate width more accurately
-      // Add a bit more space for each character
-      const labelWidth = dataset.name ? dataset.name.length * 8 : 70;
-      const itemWidth = 30 + labelWidth; // symbol + text + padding
-      
-      itemElements.push({
-        element: itemGroup,
-        width: itemWidth
+      // Dispatch custom event for external listeners
+      const chartEvent = new CustomEvent('dataset-visibility-changed', {
+        detail: { datasetId: id, visible: visible, dataset: dataset }
       });
-      
-      totalWidth += itemWidth + itemSpacing;
-    });
-    
-    // Account for last spacing
-    totalWidth -= itemSpacing;
-    
-    // Calculate if we need to wrap legends to multiple rows
-    const svgWidth = this.state.dimensions.width;
-    const maxWidthPerRow = svgWidth * 0.9; // Use 90% of available width
-    const needsWrapping = totalWidth > maxWidthPerRow;
-    
-    if (needsWrapping) {
-      // Wrap to multiple rows
-      let currentX = 0;
-      let currentY = 0;
-      let rowWidth = 0;
-      
-      itemElements.forEach(item => {
-        // Check if adding this item would exceed max width
-        if (rowWidth + item.width > maxWidthPerRow && rowWidth > 0) {
-          // Start new row
-          currentY += rowHeight;
-          currentX = 0;
-          rowWidth = 0;
-        }
-        
-        // Position item
-        item.element.setAttribute('transform', `translate(${currentX}, ${currentY})`);
-        legendGroup.appendChild(item.element);
-        
-        // Update for next item
-        currentX += item.width + itemSpacing;
-        rowWidth += item.width + itemSpacing;
-      });
-      
-      // Adjust legend Y to center it vertically if multiple rows
-      const totalHeight = currentY + rowHeight;
-      const centerY = legendY - totalHeight / 2 + rowHeight / 2;
-      
-      // Position the legend below the title, centered
-      legendGroup.setAttribute('transform', `translate(${(svgWidth - maxWidthPerRow) / 2}, ${legendY})`);
-    } else {
-      // Single row - center horizontally
-      const startX = Math.max(0, (svgWidth - totalWidth) / 2);
-      
-      // Position items horizontally
-      let currentX = 0;
-      itemElements.forEach(item => {
-        item.element.setAttribute('transform', `translate(${currentX}, 0)`);
-        legendGroup.appendChild(item.element);
-        currentX += item.width + itemSpacing;
-      });
-      
-      // Position the legend below the title, centered
-      legendGroup.setAttribute('transform', `translate(${startX}, ${legendY})`);
+      this.state.container.dispatchEvent(chartEvent);
+    }
+  });
+}
+
+  /**
+   * Update legend to reflect current chart state
+   */
+  updateLegend() {
+    if (!this.state.components.legend || !this.options.showLegend) {
+      return;
     }
     
-    // Add to SVG
-    this.state.svg.appendChild(legendGroup);
+    // Update legend items with current dataset state
+    const legendItems = this.config.data.map(dataset => ({
+      id: dataset.id,
+      label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
+      color: dataset.color || '#1468a8',
+      visible: dataset.visible !== false,
+      type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
+    }));
+    
+    // Update legend items and re-render
+    this.state.components.legend.setItems(legendItems);
+    this.state.components.legend.update();
   }
 
   /**
@@ -815,23 +781,202 @@ export default class Chart {
     if (!this.state.svg) return;
     
     if (this.options.title) {
-      const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      title.textContent = this.options.title;
-      title.setAttribute('x', this.state.dimensions.width / 2);
-      title.setAttribute('y', 25); // Increased from 15 to 25
-      title.setAttribute('text-anchor', 'middle');
-      title.setAttribute('font-size', '16px');
-      title.setAttribute('font-weight', 'bold');
-      title.setAttribute('font-family', this.options.fontFamily);
-      title.setAttribute('fill', this.options.textColor);
-      title.setAttribute('class', 'visioncharts-title');
+      const title = SvgRenderer.createText(
+        this.options.title,
+        this.state.dimensions.width / 2,
+        25,
+        {
+          'text-anchor': 'middle',
+          'font-size': '16px',
+          'font-weight': 'bold',
+          'font-family': this.options.fontFamily,
+          fill: this.options.textColor,
+          class: 'visioncharts-title'
+        }
+      );
       
       this.state.svg.appendChild(title);
     }
     
-    // Render axis names if provided
     this.renderAxisNames();
   }
+
+  /**
+ * Create and configure axes using Axis component - FIXED VERSION
+ */
+createAxes() {
+  console.log('createAxes called');
+  
+  // Initialize axes storage
+  this.state.components.axes = {
+    x: null,
+    y: null
+  };
+  
+  // Create X axis
+  if (this.state.scales.x) {
+    const xAxisOptions = {
+      orientation: 'bottom', // FIXED: Ensure bottom orientation
+      scale: this.state.scales.x,
+      tickCount: this.options.xTickCount || 5,
+      tickFormat: this.options.xTickFormat,
+      formatType: this.options.xType === 'time' ? 'time' : 'number', // FIXED: Proper format type
+      formatOptions: this.options.xFormatOptions || {}, // FIXED: Pass format options
+      label: this.options.xAxisName || '',
+      isLogarithmic: false, // X-axis typically not logarithmic
+      showTickLabels: this.options.showXLabels !== false,
+      tickRotation: this.options.xTickRotation || 0,
+      showAxisLabel: false // FIXED: Disable to prevent duplicate with Chart.renderAxisNames()
+    };
+    
+    this.state.components.axes.x = new Axis(xAxisOptions);
+  }
+  
+  // Create Y axis  
+  if (this.state.scales.y) {
+    const yAxisOptions = {
+      orientation: 'left',
+      scale: this.state.scales.y,
+      tickCount: this.options.yTickCount || 5,
+      tickFormat: this.options.yTickFormat,
+      formatType: this.options.yType === 'time' ? 'time' : 'number',
+      formatOptions: this.options.yFormatOptions || {},
+      label: this.options.yAxisName || '',
+      isLogarithmic: this.options.isLogarithmic || false,
+      showTickLabels: this.options.showYLabels !== false,
+      tickRotation: this.options.yTickRotation || 0,
+      showAxisLabel: false // FIXED: Disable to prevent duplicate with Chart.renderAxisNames()
+    };
+    
+    this.state.components.axes.y = new Axis(yAxisOptions);
+  }
+}
+
+
+/**
+ * Render axes using Axis component - FIXED VERSION
+ */
+renderAxes() {
+  console.log('renderAxes called');
+  
+  if (!this.state.chart) return;
+  
+  const { innerWidth, innerHeight } = this.state.dimensions;
+  
+  // Render X axis
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.render(
+      this.state.chart, 
+      innerWidth, 
+      innerHeight
+    );
+  }
+  
+  // Render Y axis
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.render(
+      this.state.chart, 
+      innerWidth, 
+      innerHeight
+    );
+  }
+}
+
+/**
+ * Update axes with new scales or dimensions - FIXED VERSION
+ */
+updateAxes() {
+  console.log('updateAxes called');
+  
+  const { innerWidth, innerHeight } = this.state.dimensions;
+  
+  // Update X axis
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.setScale(this.state.scales.x);
+    // FIXED: Update format type based on current options
+    this.state.components.axes.x.setOptions({ 
+      formatType: this.options.xType === 'time' ? 'time' : 'number',
+      formatOptions: this.options.xFormatOptions || {}
+    });
+    this.state.components.axes.x.update(innerWidth, innerHeight);
+  }
+  
+  // Update Y axis
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.setScale(this.state.scales.y);
+    this.state.components.axes.y.setOptions({ 
+      isLogarithmic: this.options.isLogarithmic || false,
+      formatType: this.options.yType === 'time' ? 'time' : 'number',
+      formatOptions: this.options.yFormatOptions || {}
+    });
+    this.state.components.axes.y.update(innerWidth, innerHeight);
+  }
+
+  if (this.state.components.grid && this.options.grid?.show) {
+    this.state.components.grid.update(
+      this.state.scales.x,
+      this.state.scales.y,
+      innerWidth,
+      innerHeight,
+      this.options
+    );
+  } else if (this.options.grid?.show) {
+    this.state.components.grid = new Grid(this.options.grid);
+    this.state.components.grid.render(
+      this.state.chart,
+      this.state.scales.x,
+      this.state.scales.y,
+      innerWidth,
+      innerHeight,
+      this.options
+    );
+  }
+}
+
+/**
+ * Set X axis name
+ * @param {string} name - X axis name
+ */
+setXAxisName(name) {
+  this.options.xAxisName = name;
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.setOptions({ label: name });
+    this.state.components.axes.x.update(
+      this.state.dimensions.innerWidth, 
+      this.state.dimensions.innerHeight
+    );
+  }
+}
+
+/**
+ * Set Y axis name  
+ * @param {string} name - Y axis name
+ */
+setYAxisName(name) {
+  this.options.yAxisName = name;
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.setOptions({ label: name });
+    this.state.components.axes.y.update(
+      this.state.dimensions.innerWidth, 
+      this.state.dimensions.innerHeight
+    );
+  }
+}
+
+/**
+ * Clean up axes components
+ */
+cleanupAxes() {
+  if (this.state.components.axes?.x) {
+    this.state.components.axes.x.destroy();
+    this.state.components.axes.x = null;
+  }
+  
+  if (this.state.components.axes?.y) {
+    this.state.components.axes.y.destroy();
+    this.state.components.axes.y = null;
+  }
+}
   
   /**
    * Render axis names
@@ -844,110 +989,108 @@ export default class Chart {
     
     const { xAxisName, yAxisName } = this.options;
     const { width, height, innerWidth, innerHeight } = this.state.dimensions;
-    const { left, top, right, bottom } = this.options.margins;
+    const { left, top } = this.options.margins;
     
-    // X-axis name - position it lower
+    // X-axis name
     if (xAxisName) {
-      const xAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      xAxisNameElement.textContent = xAxisName;
-      xAxisNameElement.setAttribute('x', left + innerWidth / 2);
-      xAxisNameElement.setAttribute('y', height + 5); // Position it below the chart
-      xAxisNameElement.setAttribute('text-anchor', 'middle');
-      xAxisNameElement.setAttribute('font-size', '14px');
-      xAxisNameElement.setAttribute('font-family', this.options.fontFamily);
-      xAxisNameElement.setAttribute('fill', this.options.textColor);
-      xAxisNameElement.setAttribute('class', 'visioncharts-axis-name x-axis-name');
+      const xAxisNameElement = SvgRenderer.createText(
+        xAxisName,
+        left + innerWidth / 2,
+        height + 5,
+        {
+          'text-anchor': 'middle',
+          'font-size': '14px',
+          'font-family': this.options.fontFamily,
+          fill: this.options.textColor,
+          class: 'visioncharts-axis-name x-axis-name'
+        }
+      );
       
       this.state.svg.appendChild(xAxisNameElement);
     }
     
-    // Y-axis name - position it further left
+    // Y-axis name
     if (yAxisName) {
-      const yAxisNameElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      yAxisNameElement.textContent = yAxisName;
-      yAxisNameElement.setAttribute('x', 10); // Move further left from 15
-      yAxisNameElement.setAttribute('y', top + innerHeight / 2);
-      yAxisNameElement.setAttribute('text-anchor', 'middle');
-      yAxisNameElement.setAttribute('transform', `rotate(-90, 10, ${top + innerHeight / 2})`);
-      yAxisNameElement.setAttribute('font-size', '14px');
-      yAxisNameElement.setAttribute('font-family', this.options.fontFamily);
-      yAxisNameElement.setAttribute('fill', this.options.textColor);
-      yAxisNameElement.setAttribute('class', 'visioncharts-axis-name y-axis-name');
+      const yAxisNameElement = SvgRenderer.createText(
+        yAxisName,
+        10,
+        top + innerHeight / 2,
+        {
+          'text-anchor': 'middle',
+          transform: `rotate(-90, 10, ${top + innerHeight / 2})`,
+          'font-size': '14px',
+          'font-family': this.options.fontFamily,
+          fill: this.options.textColor,
+          class: 'visioncharts-axis-name y-axis-name'
+        }
+      );
       
       this.state.svg.appendChild(yAxisNameElement);
     }
   }
 
   /**
-   * Update the chart
-   * @public
-   */
-  update() {
-    console.log('update called with isPanelView =', this.options.isPanelView);
-    
-    if (!this.state.rendered) {
-      console.log('Chart not rendered yet, calling render instead');
-      return this.render();
-    }
-    
-    if (!this.state.chart) {
-      console.error('Cannot update chart: chart element is null');
-      return this;
-    }
-    
-    // Process datasets
-    this.processDatasets();
-    
-    // Update scales
-    this.updateScales();
-    
-    // Handle panel view mode specially
-    if (this.options.isPanelView) {
-      // Clear existing chart content - important for panel mode
-      if (this.state.chart) {
-        this.state.chart.innerHTML = '';
-      }
-      
-      // Only render panels in panel mode - no regular chart elements
-      this.renderPanels();
-      
-      // Update common elements
-      // We already have the legend and title from the initial render,
-      // but we'll update them in case dataset names changed
-      const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
-      if (oldLegend) {
-        oldLegend.parentNode.removeChild(oldLegend);
-      }
-      this.renderLegend();
-      
-      return this;
-    }
-    
-    // Standard view mode updates
-    this.updateAxes();
-    this.updateData();
-    
-    // Update zero line if enabled
-    if (this.options.showZeroLine) {
-      this.updateZeroLine();
-    }
-    
-    // Update recession lines if enabled
-    if (this.options.showRecessionLines) {
-      this.updateRecessionLines();
-    }
-    
+ * FIXED: Update method to include statistical lines
+ */
+update() {
+  console.log('update called with isPanelView =', this.options.isPanelView);
+  
+  if (!this.state.rendered) {
+    console.log('Chart not rendered yet, calling render instead');
+    return this.render();
+  }
+  
+  if (!this.state.chart) {
+    console.error('Cannot update chart: chart element is null');
     return this;
   }
+  
+  // Process datasets
+  this.processDatasets();
+  
+  // Update scales
+  this.updateScales();
+  
+  // Clear existing chart content completely
+  if (this.state.chart) {
+    this.state.chart.innerHTML = '';
+  }
+  
+  // Clean up any existing hover components
+  this.cleanupHoverFeatures();
+  
+  // Re-render based on current mode
+  if (this.options.isPanelView) {
+    console.log('UPDATE: Re-rendering in panel mode');
+    this.renderPanelMode();
+  } else {
+    console.log('UPDATE: Re-rendering in single mode');
+    this.renderSingleMode();
+  }
+  
+  // Update common elements
+  const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
+  if (oldLegend) {
+    oldLegend.parentNode.removeChild(oldLegend);
+  }
+  this.renderLegend();
+  
+  StatisticalLines.updateForChart(this);
+  
+  return this;
+}
 
   /**
-   * Update scales
+   * Update scales using ScaleManager
    * @private
-   * This should be implemented by subclasses
    */
   updateScales() {
-    console.log('updateScales called - to be implemented by subclass');
-    // To be implemented by subclasses
+    console.log('Chart.updateScales called - using ScaleManager');
+    
+    // Use ScaleManager to update scales
+    ScaleManager.updateScales(this, this.state.scales);
+    
+    console.log('Chart scales updated via ScaleManager');
   }
 
   /**
@@ -980,14 +1123,19 @@ export default class Chart {
     if (!this.state.chart) return;
     
     // Remove existing zero line
-    const existingZeroLine = this.state.chart.querySelector('.visioncharts-zero-line');
-    if (existingZeroLine) {
-      existingZeroLine.parentNode.removeChild(existingZeroLine);
+    if (this.state.components.zeroLine) {
+      this.state.components.zeroLine.destroy();
+      this.state.components.zeroLine = null;
     }
     
-    // Re-render zero line
-    if (this.options.showZeroLine) {
-      this.renderZeroLine();
+    // Re-render zero line if enabled
+    if (this.options.showZeroLine && this.state.scales.y) {
+      this.state.components.zeroLine = new ZeroLine(this.options.zeroLineOptions || {});
+      this.state.components.zeroLine.render(
+        this.state.chart, 
+        this.state.scales.y, 
+        this.state.dimensions.innerWidth
+      );
     }
   }
   
@@ -995,20 +1143,26 @@ export default class Chart {
    * Update recession lines
    * @private
    */
-  updateRecessionLines() {
+    updateRecessionLines() {
     console.log('updateRecessionLines called');
     
     if (!this.state.chart) return;
     
     // Remove existing recession lines
-    const existingRecessionLines = this.state.chart.querySelector('.visioncharts-recession-lines');
-    if (existingRecessionLines) {
-      existingRecessionLines.parentNode.removeChild(existingRecessionLines);
+    if (this.state.components.recessionLines) {
+      this.state.components.recessionLines.destroy();
+      this.state.components.recessionLines = null;
     }
     
     // Re-render recession lines if enabled
     if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-      this.renderRecessionLines();
+      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
+      this.state.components.recessionLines.render(
+        this.state.chart, 
+        this.options.recessions, 
+        this.state.scales.x, 
+        this.state.dimensions.innerHeight
+      );
     }
   }
 
@@ -1055,41 +1209,142 @@ export default class Chart {
   }
   
   /**
-   * Toggle logarithmic scale
+   * Toggle logarithmic scale using data transformation approach
    * @public
    * @param {boolean} isLogarithmic - Whether to use logarithmic scale
    * @returns {Chart} This chart instance
    */
   toggleLogarithmic(isLogarithmic) {
-    console.log('toggleLogarithmic called:', isLogarithmic);
-    
-    this.options.isLogarithmic = isLogarithmic;
-    return this.update();
-  }
-  
-  /**
-   * Panel toggle that enforces strict panel mode
-   * @public
-   * @param {boolean} isPanelView - Whether to use panel view
-   */
-  togglePanelView(isPanelView) {
-    console.log('togglePanelView called with value:', isPanelView);
-    
+    console.log('Chart.toggleLogarithmic called:', isLogarithmic);
+
     // Update option
-    this.options.isPanelView = Boolean(isPanelView);
-    
-    // Force complete re-rendering
-    if (this.state.svg && this.state.container) {
-      // Remove existing SVG completely
-      this.state.container.removeChild(this.state.svg);
-      this.state.svg = null;
-      this.state.chart = null;
+    this.options.isLogarithmic = isLogarithmic;
+
+    // Transform data for all datasets
+    this.handleLogarithmicDataTransformation(isLogarithmic);
+
+    if (this.state.chart) {
+    // Remove all existing axes
+      this.state.chart.innerHTML = '';
     }
-    
-    // Re-render from scratch to enforce the correct mode
-    return this.render();
+
+
+    this.updateScales(); // Update scales after data transformation
+    // Update axes to reflect new scale
+    this.updateData(); // Update axes after scale change
+    this.updateAxes(); // Update axes after data transformation
+
+    // Update the chart with transformed data
+    return this;
   }
-  
+
+  /**
+   * Handle logarithmic data transformation for all datasets
+   * @private
+   * @param {boolean} isLogarithmic - Whether to apply logarithmic transformation
+   */
+  handleLogarithmicDataTransformation(isLogarithmic) {
+    console.log('handleLogarithmicDataTransformation called:', isLogarithmic);
+
+    if (!this.state.datasets || !this.state.datasets.length) {
+      console.log('No datasets to transform');
+      return;
+    }
+
+    const yField = this.options.yField;
+
+    this.state.datasets.forEach((dataset, index) => {
+      if (!dataset.data || !dataset.data.length) {
+        console.log(`Skipping empty dataset ${index}`);
+        return;
+      }
+
+      if (isLogarithmic) {
+        // GOING TO LOG: Store original data and transform
+        if (!dataset._originalData) {
+          // Store deep copy of original data
+          dataset._originalData = dataset.data.map(point => ({ ...point }));
+          console.log(`Stored original data for dataset ${index}:`, dataset._originalData.length, 'points');
+        }
+
+        // Transform current data to logarithmic
+        dataset.data = this.transformDataToLogarithmic(dataset.data, yField);
+        console.log(`Transformed dataset ${index} to logarithmic`);
+
+      } else {
+        // GOING TO LINEAR: Restore original data  
+        if (dataset._originalData) {
+          // Restore from backup
+          dataset.data = dataset._originalData.map(point => ({ ...point }));
+          console.log(`Restored original data for dataset ${index}:`, dataset.data.length, 'points');
+
+          // Clean up backup
+          delete dataset._originalData;
+        } else {
+          console.log(`No original data to restore for dataset ${index}`);
+        }
+      }
+    });
+  }
+
+  /**
+   * Transform dataset to logarithmic values
+   * @private
+   * @param {Array} data - Original data points
+   * @param {string} yField - Y field name to transform
+   * @returns {Array} Transformed data points
+   */
+  transformDataToLogarithmic(data, yField) {
+    return data.map(point => {
+      const originalValue = point[yField];
+
+      // Handle edge cases for logarithmic transformation
+      const transformedValue = this.validateAndTransformLogValue(originalValue);
+
+      return {
+        ...point,
+        [yField]: transformedValue
+      };
+    });
+  }
+
+  /**
+   * Validate and transform a single value for logarithmic scale
+   * @private
+   * @param {number} value - Original value
+   * @returns {number} Transformed value safe for log10
+   */
+  validateAndTransformLogValue(value) {
+    // Handle null, undefined, or non-numeric values
+    if (value == null || typeof value !== 'number' || isNaN(value)) {
+      console.warn('Invalid value for log transformation:', value, '- using 0.01');
+      return Math.log10(0.01); // ≈ -2
+    }
+
+    // Handle negative values - convert to positive
+    if (value < 0) {
+      console.warn('Negative value for log transformation:', value, '- using absolute value');
+      value = Math.abs(value);
+    }
+
+    // Handle zero or very small values - set minimum threshold
+    if (value <= 0 || value < 0.01) {
+      console.warn('Zero/small value for log transformation:', value, '- using 0.01');
+      value = 0.01;
+    }
+
+    // Apply log10 transformation
+    const logValue = Math.log10(value);
+
+    // Validate result
+    if (isNaN(logValue) || !isFinite(logValue)) {
+      console.error('Invalid log transformation result for value:', value, '- using -2');
+      return -2; // log10(0.01)
+    }
+
+    return logValue;
+  }
+
   /**
    * Toggle recession lines
    * @public
@@ -1102,7 +1357,54 @@ export default class Chart {
     this.options.showRecessionLines = showRecessionLines;
     
     if (this.state.rendered) {
-      this.updateRecessionLines();
+      if (this.options.isPanelView) {
+        // In panel mode, we need to re-render all panels
+        return this.update();
+      } else {
+        // In single mode, just update recession lines
+        this.updateRecessionLines();
+      }
+    }
+    
+    return this;
+  }
+
+  /**
+   * Toggle panel view mode
+   * @public
+   * @param {boolean} isPanelView - Whether to enable panel view
+   * @returns {Chart} This chart instance
+   */
+  togglePanelView(isPanelView) {
+    console.log('Chart.togglePanelView called:', isPanelView);
+    
+    this.options.isPanelView = Boolean(isPanelView);
+    
+    if (this.state.rendered) {
+      // Panel view requires a complete re-render
+      return this.render();
+    }
+    
+    return this;
+  }
+
+  /**
+   * Toggle ending labels visibility - ALSO ADD THIS if it's missing
+   * @public
+   * @param {boolean} show - Whether to show ending labels (null to toggle)
+   * @returns {Chart} This chart instance
+   */
+  toggleEndingLabels(show = null) {
+    console.log('Chart.toggleEndingLabels called:', show);
+    
+    if (show === null) {
+      show = !this.options.showEndingLabels;
+    }
+    
+    this.options.showEndingLabels = Boolean(show);
+    
+    if (this.state.rendered) {
+      return this.update();
     }
     
     return this;
@@ -1120,12 +1422,125 @@ export default class Chart {
     this.options.showZeroLine = showZeroLine;
     
     if (this.state.rendered) {
-      this.updateZeroLine();
+      if (this.options.isPanelView) {
+        // In panel mode, we need to re-render all panels
+        return this.update();
+      } else {
+        // In single mode, just update zero line
+        this.updateZeroLine();
+      }
     }
     
     return this;
   }
-  
+
+  /**
+   * Toggle average line visibility - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {boolean} show - Whether to show the average line
+   * @param {string} datasetId - Optional: specific dataset to calculate average from
+   * @returns {Chart} This chart instance
+   */
+  toggleAverageLine(show = null, datasetId = null) {
+    console.log('Chart.toggleAverageLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.toggleAverageLine(this, show, datasetId);
+    return this;
+  }
+
+  /**
+   * Toggle median line visibility - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {boolean} show - Whether to show the median line
+   * @param {string} datasetId - Optional: specific dataset to calculate median from
+   * @returns {Chart} This chart instance
+   */
+  toggleMedianLine(show = null, datasetId = null) {
+    console.log('Chart.toggleMedianLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.toggleMedianLine(this, show, datasetId);
+    return this;
+  }
+
+  /**
+   * Configure average line appearance - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {Object} config - Configuration object
+   * @returns {Chart} This chart instance
+   */
+  configureAverageLine(config) {
+    console.log('Chart.configureAverageLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.configureAverageLine(this, config);
+    return this;
+  }
+
+  /**
+   * Configure median line appearance - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {Object} config - Configuration object
+   * @returns {Chart} This chart instance
+   */
+  configureMedianLine(config) {
+    console.log('Chart.configureMedianLine called - delegating to StatisticalLines');
+    
+    StatisticalLines.configureMedianLine(this, config);
+    return this;
+  }
+
+  /**
+   * Get statistical information about the current dataset - UPDATED VERSION using StatisticalLines
+   * @public
+   * @param {string} datasetId - Optional: specific dataset ID
+   * @returns {Object} - Statistical information
+   */
+    getStatisticalInfo(datasetId = null) {
+      return StatisticalLines.getStatisticalInfo(this, datasetId);
+    }
+
+    /**
+   * Remove all statistical lines
+   * @public
+   * @returns {Chart} This chart instance
+   */
+  removeAllStatisticalLines() {
+    console.log('Chart.removeAllStatisticalLines called');
+    
+    StatisticalLines.removeAllLines(this);
+    return this.update();
+  }
+
+  /**
+   * Check if any statistical lines are visible
+   * @public
+   * @returns {boolean} True if any statistical lines are visible
+   */
+  hasStatisticalLines() {
+    return StatisticalLines.hasVisibleLines(this);
+  }
+
+  /**
+   * Get statistical lines configuration
+   * @public
+   * @returns {Object} Configuration object
+   */
+  getStatisticalLinesConfig() {
+    return StatisticalLines.getConfiguration(this);
+  }
+
+  /**
+   * Apply statistical lines configuration
+   * @public
+   * @param {Object} configuration - Configuration object
+   * @returns {Chart} This chart instance
+   */
+  applyStatisticalLinesConfig(configuration) {
+    console.log('Chart.applyStatisticalLinesConfig called');
+    
+    StatisticalLines.applyConfiguration(this, configuration);
+    return this.update();
+  }
+
   /**
    * Set X axis name
    * @public
@@ -1283,470 +1698,275 @@ export default class Chart {
     // Update chart
     return this.update();
   }
-  
+
   /**
-   * Add a study/indicator
+   * Add a study/indicator - UPDATED VERSION using StudiesManager
    * @public
    * @param {string} datasetId - Dataset ID to apply the study to
    * @param {Object} study - Study configuration
    * @returns {Chart} This chart instance
    */
   addStudy(datasetId, study) {
-    console.log('addStudy called:', datasetId, study);
+    console.log('Chart.addStudy called - delegating to StudiesManager');
     
-    // Add study to options
-    this.options.studies = this.options.studies || [];
-    this.options.studies.push({
-      ...study,
-      datasetId
-    });
+    StudiesManager.addStudy(this, datasetId, study);
     
     // Update chart
     return this.update();
   }
-  
+
   /**
-   * Remove a study/indicator
+   * Remove a study/indicator - UPDATED VERSION using StudiesManager
    * @public
-   * @param {string} datasetId - Dataset ID
+   * @param {string} datasetId - Dataset ID (for compatibility)
    * @param {string} studyId - Study ID to remove
    * @returns {Chart} This chart instance
    */
   removeStudy(datasetId, studyId) {
-    console.log('removeStudy called:', datasetId, studyId);
+    console.log('Chart.removeStudy called - delegating to StudiesManager');
     
-    // Remove study from options
-    if (this.options.studies) {
-      this.options.studies = this.options.studies.filter(
-        s => !(s.datasetId === datasetId && s.id === studyId)
-      );
-    }
+    StudiesManager.removeStudy(this, datasetId, studyId);
     
     // Update chart
     return this.update();
   }
-  
+
   /**
-   * Export chart as SVG string
-   * @public
-   * @returns {string} SVG string
-   */
-  exportSVG() {
-    console.log('exportSVG called');
-    
-    if (!this.state.svg) return '';
-    
-    // Clone the SVG to avoid modifying the original
-    const svgClone = this.state.svg.cloneNode(true);
-    
-    // Set explicit dimensions
-    svgClone.setAttribute('width', this.state.dimensions.width);
-    svgClone.setAttribute('height', this.state.dimensions.height);
-    
-    // Convert to string
-    const serializer = new XMLSerializer();
-    return serializer.serializeToString(svgClone);
+ * Update study configuration
+ * @public
+ * @param {string} studyId - Study ID
+ * @param {Object} updates - Configuration updates
+ * @returns {Chart} This chart instance
+ */
+updateStudy(studyId, updates) {
+  console.log('Chart.updateStudy called');
+  
+  if (StudiesManager.updateStudy(this, studyId, updates)) {
+    return this.update();
   }
   
+  return this;
+}
+
+/**
+ * Clear all studies
+ * @public
+ * @returns {Chart} This chart instance
+ */
+  clearAllStudies() {
+    console.log('Chart.clearAllStudies called');
+    
+    StudiesManager.clearAllStudies(this);
+    return this.update();
+  }
+
   /**
-   * Export chart as PNG data URL
+   * Get studies for a dataset
    * @public
-   * @param {number} scale - Scale factor for higher resolution
-   * @returns {Promise<string>} PNG data URL
+   * @param {string} datasetId - Dataset ID
+   * @returns {Array} Array of studies
    */
-  exportPNG(scale = 2) {
-    console.log('exportPNG called');
+  getStudiesForDataset(datasetId) {
+    return StudiesManager.getStudiesForDataset(this, datasetId);
+  }
+
+  /**
+   * Get study by ID
+   * @public
+   * @param {string} studyId - Study ID
+   * @returns {Object|null} Study configuration
+   */
+  getStudyById(studyId) {
+    return StudiesManager.getStudyById(this, studyId);
+  }
+
+  /**
+ * Export chart as SVG - UPDATED VERSION using ChartExporter
+ * @public
+ * @param {Object} options - Export options
+ * @returns {string} SVG content as string
+ */
+  exportSVG(options = {}) {
+    console.log('Chart.exportSVG called - delegating to ChartExporter');
+    return ChartExporter.exportSVG(this, options);
+  }
+
+  /**
+   * Export chart as PNG - UPDATED VERSION using ChartExporter
+   * @public
+   * @param {Object} options - Export options
+   * @returns {Promise<string>} PNG data URL
+ */
+  async exportPNG(options = {}) {
+    console.log('Chart.exportPNG called - delegating to ChartExporter');
+    return await ChartExporter.exportPNG(this, options);
+  }
+
+  /**
+   * Serialize chart configuration and data - UPDATED VERSION using ChartExporter
+   * @public
+   * @param {Object} options - Serialization options
+   * @returns {string} Serialized chart configuration as JSON string
+   */
+  serialize(options = {}) {
+    console.log('Chart.serialize called - delegating to ChartExporter');
+    return ChartExporter.serialize(this, options);
+  }
+
+  /**
+   * Load chart configuration from serialized data - UPDATED VERSION using ChartExporter
+   * @public
+   * @param {string|Object} configData - Serialized configuration
+   * @param {Object} options - Loading options
+   * @returns {Chart} This chart instance
+   */
+  loadConfig(configData, options = {}) {
+    console.log('Chart.loadConfig called - delegating to ChartExporter');
+    return ChartExporter.loadConfig(this, configData, options);
+  }
+
+  /**
+   * Download chart as SVG file
+   * @public
+   * @param {string} filename - Filename (optional)
+   * @param {Object} options - Export options
+   */
+  downloadSVG(filename = 'chart.svg', options = {}) {
+    console.log('Chart.downloadSVG called');
+    ChartExporter.downloadSVG(this, filename, options);
+    return this;
+  }
+
+  /**
+   * Download chart as PNG file
+   * @public
+   * @param {string} filename - Filename (optional)
+   * @param {Object} options - Export options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async downloadPNG(filename = 'chart.png', options = {}) {
+    console.log('Chart.downloadPNG called');
+    await ChartExporter.downloadPNG(this, filename, options);
+    return this;
+  }
+
+  /**
+   * Download chart configuration as JSON file
+   * @public
+   * @param {string} filename - Filename (optional)
+   * @param {Object} options - Serialization options
+   */
+  downloadConfig(filename = 'chart-config.json', options = {}) {
+    console.log('Chart.downloadConfig called');
+    ChartExporter.downloadConfig(this, filename, options);
+    return this;
+  }
+
+  /**
+   * Load configuration from file input
+   * @public
+   * @param {File} file - File object from input element
+   * @param {Object} options - Loading options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async loadConfigFromFile(file, options = {}) {
+    console.log('Chart.loadConfigFromFile called');
     
     return new Promise((resolve, reject) => {
-      if (!this.state.svg) {
-        reject(new Error('Chart is not rendered'));
-        return;
-      }
+      const reader = new FileReader();
       
-      // Get SVG data
-      const svgData = this.exportSVG();
-      const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
-      const svgUrl = URL.createObjectURL(svgBlob);
-      
-      // Create image
-      const img = new Image();
-      img.onload = () => {
+      reader.onload = (e) => {
         try {
-          // Create canvas
-          const canvas = document.createElement('canvas');
-          canvas.width = this.state.dimensions.width * scale;
-          canvas.height = this.state.dimensions.height * scale;
-          
-          // Get context and scale
-          const ctx = canvas.getContext('2d');
-          ctx.scale(scale, scale);
-          
-          // Draw image
-          ctx.drawImage(img, 0, 0);
-          
-          // Get data URL
-          const pngUrl = canvas.toDataURL('image/png');
-          
-          // Clean up
-          URL.revokeObjectURL(svgUrl);
-          
-          resolve(pngUrl);
-        } catch (err) {
-          reject(err);
+          const configData = e.target.result;
+          this.loadConfig(configData, options);
+          resolve(this);
+        } catch (error) {
+          reject(error);
         }
       };
       
-      img.onerror = () => {
-        URL.revokeObjectURL(svgUrl);
-        reject(new Error('Error loading SVG'));
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
       };
       
-      img.src = svgUrl;
+      reader.readAsText(file);
     });
   }
 
   /**
- * Initialize hover functionality
- * @private
- */
-initHoverFeatures() {
-  // Skip if no SVG or chart present
-  if (!this.state.svg || !this.state.chart) return;
-  
-  // Create crosshair component
-  this.state.components.crosshair = new Crosshair({
-    showX: true,
-    showY: false, // Only show vertical line
-    stroke: '#666',
-    strokeWidth: 1,
-    strokeDasharray: '4,4',
-    snapToData: true
-  });
-  
-  // Create tooltip component
-  this.state.components.tooltip = new Tooltip({
-    followCursor: true,
-    offset: { x: 15, y: 10 },
-    background: '#fff',
-    border: '#ccc',
-    borderRadius: 4,
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    formatter: this.formatTooltip.bind(this)
-  });
-  
-  // Render components
-  this.state.components.crosshair.render(this.state.chart, 
-    this.state.dimensions.innerWidth, 
-    this.state.dimensions.innerHeight);
-  
-  this.state.components.tooltip.render(this.state.chart);
-  
-  // Hide by default
-  this.state.components.crosshair.hide();
-  this.state.components.tooltip.hide();
-  
-  // Create hover points for each dataset
-  this.createHoverPoints();
-  
-  // Bind mouse events
-  this.bindHoverEvents();
-}
-
-/**
- * Create hover points for each dataset
- * @private
- */
-createHoverPoints() {
-  // Create a group for hover points
-  this.state.components.hoverPointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  this.state.components.hoverPointsGroup.setAttribute('class', 'visioncharts-hover-points');
-  this.state.components.hoverPointsGroup.style.display = 'none';
-  this.state.chart.appendChild(this.state.components.hoverPointsGroup);
-  
-  // Create hover points for each dataset
-  this.state.components.hoverPoints = this.state.datasets.map(dataset => {
-    const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    point.setAttribute('r', 4); // Slightly larger than normal points
-    point.setAttribute('fill', '#fff');
-    point.setAttribute('stroke', dataset.color);
-    point.setAttribute('stroke-width', 2);
-    point.setAttribute('class', `visioncharts-hover-point-${dataset.id}`);
-    point.style.display = 'none';
-    
-    this.state.components.hoverPointsGroup.appendChild(point);
-    
-    return {
-      element: point,
-      dataset: dataset
-    };
-  });
-}
-
-/**
- * Bind hover events
- * @private
- */
-bindHoverEvents() {
-  // Only bind if chart is rendered
-  if (!this.state.chart) return;
-  
-  const chartRect = this.state.chart.getBoundingClientRect();
-  
-  // Mouse move handler
-  const mouseMoveHandler = (e) => {
-    // Get mouse position relative to chart
-    const rect = this.state.chart.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Check if within chart bounds
-    if (x < 0 || x > this.state.dimensions.innerWidth || 
-        y < 0 || y > this.state.dimensions.innerHeight) {
-      this.hideHoverElements();
-      return;
-    }
-    
-    // Show crosshair
-    this.state.components.crosshair.update(x, 0);
-    this.state.components.crosshair.show();
-    
-    // Update hover points
-    this.updateHoverPoints(x);
-    
-    // Show tooltip with closest data
-    const closestData = this.findClosestData(x);
-    if (closestData) {
-      this.state.components.tooltip.show(closestData, x, y, {
-        width: this.state.dimensions.innerWidth,
-        height: this.state.dimensions.innerHeight
-      });
-    }
-  };
-  
-  // Mouse leave handler
-  const mouseLeaveHandler = () => {
-    this.hideHoverElements();
-  };
-  
-  // Add event listeners
-  this.state.chart.addEventListener('mousemove', mouseMoveHandler);
-  this.state.chart.addEventListener('mouseleave', mouseLeaveHandler);
-  
-  // Store handlers for cleanup
-  this.state.eventHandlers = this.state.eventHandlers || {};
-  this.state.eventHandlers.hover = {
-    move: mouseMoveHandler,
-    leave: mouseLeaveHandler
-  };
-}
-
-/**
- * Hide hover elements
- * @private
- */
-hideHoverElements() {
-  if (this.state.components.crosshair) {
-    this.state.components.crosshair.hide();
-  }
-  
-  if (this.state.components.tooltip) {
-    this.state.components.tooltip.hide();
-  }
-  
-  if (this.state.components.hoverPointsGroup) {
-    this.state.components.hoverPointsGroup.style.display = 'none';
-  }
-}
-
-/**
- * Update hover points
- * @private
- * @param {number} mouseX - Mouse X position
- */
-updateHoverPoints(mouseX) {
-  // Skip if no hover points
-  if (!this.state.components.hoverPoints) return;
-  
-  // Show hover points group
-  if (this.state.components.hoverPointsGroup) {
-    this.state.components.hoverPointsGroup.style.display = 'block';
-  }
-  
-  // Convert mouse position to domain value
-  const xValue = this.state.scales.x.invert(mouseX);
-  
-  // Find closest data points for each dataset
-  this.state.components.hoverPoints.forEach(hoverPoint => {
-    const dataset = hoverPoint.dataset;
-    const { xField, yField } = this.options;
-    
-    // Find closest data point
-    let closestPoint = null;
-    let minDistance = Infinity;
-    
-    dataset.data.forEach(point => {
-      if (point[xField] === undefined || point[yField] === undefined) return;
-      
-      const xVal = point[xField] instanceof Date ? 
-                  point[xField].getTime() : point[xField];
-      const xPos = this.state.scales.x.scale(point[xField]);
-      
-      const distance = Math.abs(mouseX - xPos);
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestPoint = point;
-      }
-    });
-    
-    // Update hover point position
-    if (closestPoint && minDistance < 50) { // Only show if reasonably close
-      const x = this.state.scales.x.scale(closestPoint[xField]);
-      const y = this.state.scales.y.scale(closestPoint[yField]);
-      
-      hoverPoint.element.setAttribute('cx', x);
-      hoverPoint.element.setAttribute('cy', y);
-      hoverPoint.element.style.display = 'block';
-      
-      // Store data for tooltip
-      hoverPoint.data = closestPoint;
-    } else {
-      // Hide if no close point
-      hoverPoint.element.style.display = 'none';
-      hoverPoint.data = null;
-    }
-  });
-}
-
-/**
- * Find closest data to mouse position
- * @private
- * @param {number} mouseX - Mouse X position
- * @returns {Object} Closest data points
- */
-findClosestData(mouseX) {
-  // Skip if no hover points
-  if (!this.state.components.hoverPoints) return null;
-  
-  // Get visible hover points with data
-  const visiblePoints = this.state.components.hoverPoints
-    .filter(hp => hp.element.style.display !== 'none' && hp.data)
-    .map(hp => ({
-      dataset: hp.dataset,
-      data: hp.data
-    }));
-  
-  if (!visiblePoints.length) return null;
-  
-  // Find x value (date or number)
-  const xValue = visiblePoints[0].data[this.options.xField];
-  
-  // Format x value
-  let xText;
-  if (xValue instanceof Date) {
-    xText = xValue.toLocaleDateString();
-  } else {
-    xText = String(xValue);
-  }
-  
-  // Return data for tooltip
-  return {
-    x: xText,
-    points: visiblePoints
-  };
-}
-
-/**
- * Format tooltip content
- * @private
- * @param {Object} data - Tooltip data
- * @returns {string} Formatted tooltip content
- */
-formatTooltip(data) {
-  if (!data || !data.points || !data.points.length) return '';
-  
-  const { yField } = this.options;
-  const lines = [];
-  
-  // Add header (X value)
-  lines.push(`<tspan font-weight="bold">${data.x}</tspan>`);
-  
-  // Add data points
-  data.points.forEach(point => {
-    const value = point.data[yField];
-    let formattedValue;
-    
-    // Format value based on type
-    if (this.options.yType === 'currency') {
-      formattedValue = '$' + value.toFixed(2);
-    } else if (this.options.yType === 'percent') {
-      formattedValue = (value * 100).toFixed(2) + '%';
-    } else {
-      formattedValue = value.toFixed(2);
-    }
-    
-    // Create line with color indicator
-    const line = `<tspan x="10" dy="18">
-      <tspan fill="${point.dataset.color}">●</tspan> 
-      <tspan font-weight="bold">${point.dataset.name}:</tspan> 
-      ${formattedValue}
-    </tspan>`;
-    
-    lines.push(line);
-  });
-  
-  return lines;
-}
-  
-  /**
-   * Get chart configuration for saving
+   * Copy SVG to clipboard
    * @public
-   * @returns {Object} Serialized chart configuration
+   * @param {Object} options - Export options
+   * @returns {Promise<Chart>} This chart instance
    */
-  serialize() {
-    console.log('serialize called');
+  async copySVGToClipboard(options = {}) {
+    console.log('Chart.copySVGToClipboard called');
     
-    // Create a clean object with configuration for saving
-    return {
-      id: this.options.id || 'chart',
-      title: this.options.title || 'Chart',
-      chartType: this.options.chartType || 'line',
-      chartLibrary: 'VisionCharts',
-      isLogarithmic: this.options.isLogarithmic || false,
-      isPanelView: this.options.isPanelView || false,
-      showRecessionLines: this.options.showRecessionLines || false,
-      showZeroLine: this.options.showZeroLine || false,
-      xAxisName: this.options.xAxisName || '',
-      yAxisName: this.options.yAxisName || '',
-      studies: this.options.studies || [],
-      // Store datasets without the data array to save space
-      datasets: this.state.datasets.map(dataset => {
-        const { data, ...rest } = dataset;
-        return rest;
-      })
-    };
-  }
-  
-  /**
-   * Load chart configuration
-   * @public
-   * @param {Object} config - Chart configuration
-   * @returns {Chart} This chart instance
-   */
-  loadConfig(config) {
-    console.log('loadConfig called');
+    try {
+      const svgContent = this.exportSVG(options);
+      await navigator.clipboard.writeText(svgContent);
+      console.log('SVG copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy SVG to clipboard:', error);
+      throw error;
+    }
     
-    // Update options with loaded configuration
-    Object.assign(this.options, config);
-    
-    // Datasets are handled separately since they typically
-    // need to be reloaded with actual data
-    
-    // Update chart
-    return this.update();
+    return this;
   }
 
   /**
+   * Copy PNG to clipboard
+   * @public
+   * @param {Object} options - Export options
+   * @returns {Promise<Chart>} This chart instance
+   */
+  async copyPNGToClipboard(options = {}) {
+    console.log('Chart.copyPNGToClipboard called');
+    
+    try {
+      const pngDataUrl = await this.exportPNG(options);
+      
+      // Convert data URL to blob
+      const response = await fetch(pngDataUrl);
+      const blob = await response.blob();
+      
+      // Copy to clipboard
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob })
+      ]);
+      
+      console.log('PNG copied to clipboard');
+    } catch (error) {
+      console.error('Failed to copy PNG to clipboard:', error);
+      throw error;
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Clean up hover features using InteractionManager
+   * @private
+   */
+  cleanupHoverFeatures() {
+    console.log('cleanupHoverFeatures called');
+    
+    // Clean up recession lines and zero lines (not handled by InteractionManager)
+    if (this.state.components.recessionLines) {
+      this.state.components.recessionLines.destroy();
+      this.state.components.recessionLines = null;
+    }
+
+    if (this.state.components.zeroLine) {
+      this.state.components.zeroLine.destroy();
+      this.state.components.zeroLine = null;
+    }
+    
+    // Use InteractionManager for all interaction cleanup
+    InteractionManager.cleanup(this);
+  }
+  
+ /**
  * Destroy the chart and clean up
  * @public
  */
@@ -1756,21 +1976,31 @@ destroy() {
   // Remove event listeners
   window.removeEventListener('resize', this.resizeHandler);
   
-  // Remove hover event listeners
-  if (this.state.eventHandlers && this.state.eventHandlers.hover) {
-    if (this.state.chart) {
-      this.state.chart.removeEventListener('mousemove', this.state.eventHandlers.hover.move);
-      this.state.chart.removeEventListener('mouseleave', this.state.eventHandlers.hover.leave);
-    }
+  // Clean up resize observer
+  if (this.state.resizeObserver) {
+    this.state.resizeObserver.disconnect();
+    this.state.resizeObserver = null;
   }
   
-  // Destroy components
-  if (this.state.components.crosshair) {
-    this.state.components.crosshair.destroy();
+  // Clean up hover features
+  this.cleanupHoverFeatures();
+
+  // Remove statistical lines
+  StatisticalLines.cleanup(this);
+
+  // Destroy axes
+  this.cleanupAxes();
+
+  // Destroy grids
+  if (this.state.components.grid) {
+    this.state.components.grid.destroy();
+    this.state.components.grid = null;
   }
-  
-  if (this.state.components.tooltip) {
-    this.state.components.tooltip.destroy();
+
+  // Destroy legend
+  if (this.state.components.legend) {
+    this.state.components.legend.destroy();
+    this.state.components.legend = null;
   }
   
   // Remove SVG
@@ -1786,4 +2016,3 @@ destroy() {
   this.state.chart = null;
  }
 }
-
