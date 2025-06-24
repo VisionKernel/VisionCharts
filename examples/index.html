@@ -70,7 +70,27 @@
         <div class="dataset-manager" id="line-datasets">
           <!-- Dataset items will be added here dynamically -->
         </div>
-        <button id="line-add-dataset">Add Dataset</button>
+        <div class="dataset-selector">
+          <h4>Add New Dataset</h4>
+          <div class="control-row">
+            <div class="control-group">
+              <label for="line-dataset-source">Source Dataset</label>
+              <select id="line-dataset-source">
+                <option value="timeseries">Time Series Data (Default)</option>
+                <option value="daily-returns">Daily Returns Data</option>
+                <option value="monthly">Monthly Time Series Data</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="line-randomize">Apply Random Variation</label>
+              <input type="checkbox" id="line-randomize" checked>
+            </div>
+          </div>
+          <div class="dataset-preview" id="line-dataset-preview">
+            Select a dataset to see preview...
+          </div>
+          <button id="line-add-dataset">Add Dataset</button>
+        </div>
         
         <div class="accordion">
           <div class="accordion-header">
@@ -164,7 +184,27 @@
         <div class="dataset-manager" id="bar-datasets">
           <!-- Dataset items will be added here dynamically -->
         </div>
-        <button id="bar-add-dataset">Add Dataset</button>
+        <div class="dataset-selector">
+          <h4>Add New Dataset</h4>
+          <div class="control-row">
+            <div class="control-group">
+              <label for="bar-dataset-source">Source Dataset</label>
+              <select id="bar-dataset-source">
+                <option value="timeseries">Time Series Data (Default)</option>
+                <option value="daily-returns">Daily Returns Data</option>
+                <option value="monthly">Monthly Time Series Data</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="bar-randomize">Apply Random Variation</label>
+              <input type="checkbox" id="bar-randomize" checked>
+            </div>
+          </div>
+          <div class="dataset-preview" id="bar-dataset-preview">
+            Select a dataset to see preview...
+          </div>
+          <button id="bar-add-dataset">Add Dataset</button>
+        </div>
         
         <div class="accordion">
           <div class="accordion-header">
