@@ -758,14 +758,15 @@ export default class InteractionManager {
     
     console.log('First pass: finding closest X coordinate...');
     
-    // First pass: find the closest X coordinate across ALL datasets
+    // First pass: find the closest X coordinate across ALL datasets (including studies)
     chart.state.datasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length || dataset.type === 'study') {
-        console.log(`Dataset ${index} skipped: no data or is study`);
+      // FIXED: Include studies - only filter out datasets with no data
+      if (!dataset.data || !dataset.data.length) {
+        console.log(`Dataset ${index} skipped: no data`);
         return;
       }
       
-      console.log(`Checking dataset ${index} (${dataset.id}) with ${dataset.data.length} points`);
+      console.log(`Checking dataset ${index} (${dataset.id}) type: ${dataset.type || 'regular'} with ${dataset.data.length} points`);
       
       dataset.data.forEach(point => {
         if (point[xField] === undefined) return;
@@ -789,16 +790,17 @@ export default class InteractionManager {
       return null;
     }
     
-    // Second pass: collect data from ALL datasets at this X value
+    // Second pass: collect data from ALL datasets at this X value (including studies)
     const allDatasets = [];
     const tolerance = minGlobalDistance + 1;
     
-    console.log('Second pass: collecting data from all datasets...');
+    console.log('Second pass: collecting data from all datasets including studies...');
     
     chart.state.datasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length || dataset.type === 'study') return;
+      // FIXED: Include studies - only filter out datasets with no data
+      if (!dataset.data || !dataset.data.length) return;
       
-      console.log(`Processing dataset ${index} (${dataset.id})`);
+      console.log(`Processing dataset ${index} (${dataset.id}) type: ${dataset.type || 'regular'}`);
       
       // Find the data point in this dataset closest to our target X
       let closestPointInDataset = null;
@@ -827,8 +829,9 @@ export default class InteractionManager {
         };
         
         allDatasets.push(dataInfo);
-        console.log(`Added data for dataset ${dataset.id}:`, {
+        console.log(`Added data for dataset ${dataset.id} (${dataset.type || 'regular'}):`, {
           name: dataset.name,
+          type: dataset.type,
           value: closestPointInDataset[yField],
           distance: minDistanceInDataset
         });
@@ -837,7 +840,7 @@ export default class InteractionManager {
       }
     });
     
-    console.log('Total datasets with data:', allDatasets.length);
+    console.log('Total datasets with data (including studies):', allDatasets.length);
     
     // Return all datasets if we found any, otherwise null
     return allDatasets.length > 0 ? {
