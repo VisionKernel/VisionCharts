@@ -2,7 +2,7 @@
  * VisionCharts - A modern, high-performance JavaScript charting library
  * optimized for financial and economic data visualization.
  * 
- * @version 1.2.0
+ * @version 1.2.1
  * @license MIT
  */
 
