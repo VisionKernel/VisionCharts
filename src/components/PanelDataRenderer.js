@@ -70,8 +70,8 @@ export default class PanelDataRenderer {
   }
 
   /**
-   * Create a clipped data group to ensure data stays within panel bounds
-   * FIXED: Better clipping setup for bars
+   * Create a clipped data group with proper boundaries (no overflow padding)
+   * FIXED: Remove padding that was causing overflow
    */
   static createClippedDataGroup(panel, panelWidth, panelHeight, datasetId) {
     // Create unique clip path ID
@@ -84,15 +84,15 @@ export default class PanelDataRenderer {
       panel.appendChild(defs);
     }
     
-    // FIXED: Create clip path that accounts for bar overflow
+    // FIXED: Create clip path that EXACTLY matches panel boundaries
     const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
     clipPath.setAttribute('id', clipPathId);
     
     const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    clipRect.setAttribute('x', '-10'); // FIXED: Add padding to prevent cutoff at edges
-    clipRect.setAttribute('y', '-10'); // FIXED: Add padding at top
-    clipRect.setAttribute('width', panelWidth + 20); // FIXED: Add padding to width
-    clipRect.setAttribute('height', panelHeight + 20); // FIXED: Add padding to height
+    clipRect.setAttribute('x', '0'); // FIXED: No negative padding
+    clipRect.setAttribute('y', '0'); // FIXED: No negative padding
+    clipRect.setAttribute('width', panelWidth); // FIXED: Exact panel width
+    clipRect.setAttribute('height', panelHeight); // FIXED: Exact panel height
     
     clipPath.appendChild(clipRect);
     defs.appendChild(clipPath);
@@ -185,42 +185,42 @@ export default class PanelDataRenderer {
   }
   
   /**
-   * Render area for panel (line chart)
+   * Render area for panel with proper boundary constraints
    * @private
    */
   static renderAreaForPanel(chart, dataGroup, dataset, points, panelHeight, panelWidth, gradient, areaOpacity, yScale) {
-    console.log('Rendering area for panel with clipping');
+    if (points.length === 0) return;
     
     const pathD = this.generateLinePathForPanel(points, chart.options.curve);
+    if (!pathD) return;
     
-    if (pathD) {
-      // Complete area path
-      const [firstPoint] = points;
-      const [firstX] = firstPoint;
-      const [lastPoint] = [...points].reverse();
-      const [lastX] = lastPoint;
-      
-      // FIXED: Use proper baseline for area
-      const baselineY = yScale.scale(0); // FIXED: Use actual zero line position
-      const areaPath = `${pathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
-      
-      const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      areaElement.setAttribute('d', areaPath);
-      
-      // Apply fill (either gradient or color)
-      if (gradient) {
-        const gradientId = `area-gradient-panel-${dataset.id}`;
-        areaElement.setAttribute('fill', `url(#${gradientId})`);
-      } else {
-        areaElement.setAttribute('fill', dataset.color);
-        areaElement.setAttribute('fill-opacity', dataset.areaOpacity || areaOpacity);
-      }
-      
-      areaElement.setAttribute('stroke', 'none');
-      areaElement.setAttribute('class', 'visioncharts-panel-area');
-      
-      dataGroup.appendChild(areaElement);
+    // Calculate baseline Y position
+    const baselineY = yScale.scale(0);
+    
+    // FIXED: Constrain first and last X coordinates to chart boundaries
+    const firstX = Math.max(0, Math.min(panelWidth, points[0][0])); // Clamp to [0, panelWidth]
+    const lastX = Math.max(0, Math.min(panelWidth, points[points.length - 1][0])); // Clamp to [0, panelWidth]
+    
+    // Create area path - close the path to form a filled area
+    // Use constrained coordinates to prevent overflow
+    const areaPath = `${pathD} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
+    
+    const areaElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    areaElement.setAttribute('d', areaPath);
+    
+    // Apply fill (either gradient or color)
+    if (gradient) {
+      const gradientId = `area-gradient-panel-${dataset.id}`;
+      areaElement.setAttribute('fill', `url(#${gradientId})`);
+    } else {
+      areaElement.setAttribute('fill', dataset.color);
+      areaElement.setAttribute('fill-opacity', dataset.areaOpacity || areaOpacity);
     }
+    
+    areaElement.setAttribute('stroke', 'none');
+    areaElement.setAttribute('class', 'visioncharts-panel-area');
+    
+    dataGroup.appendChild(areaElement);
   }
   
   /**

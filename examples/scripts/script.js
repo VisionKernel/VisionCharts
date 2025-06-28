@@ -1,6 +1,9 @@
 // Import the VisionCharts library
 import { LineChart, BarChart, calculateIndicator } from '../../src/index.js';
 
+// Global datasets storage
+let availableDatasets = {};
+
 // Debug helper function - logs to console only
 function log(message, obj = null) {
   // Only log to console, not to UI
@@ -22,15 +25,16 @@ function handleError(containerId, error) {
   console.error(`Error in ${containerId}:`, error);
 }
 
-// Function to load time series data
-async function loadTimeSeriesData() {
+// Function to load all available datasets
+async function loadAllDatasets() {
+  const datasets = {};
+  
   try {
-    // In a real application, this would be an API call or fetch
-    return fetch('../examples/data/timeseries.json')
+    // Load timeseries data
+    datasets.timeseries = await fetch('../examples/data/timeseries.json')
       .then(response => response.json())
       .catch(error => {
-        console.error('Error loading time series data:', error);
-        // Fall back to embedded data if fetch fails
+        console.error('Error loading timeseries data:', error);
         return [
           {"x": 1325397600000, "y": 395047.21724},
           {"x": 1333256400000, "y": 383193.04203},
@@ -59,9 +63,53 @@ async function loadTimeSeriesData() {
           {"x": 1514768400000, "y": 234567.89012}
         ];
       });
+
+    // Load daily returns data
+    datasets['daily-returns'] = await fetch('../examples/data/daily-returns.json')
+      .then(response => response.json())
+      .catch(error => {
+        console.error('Error loading daily returns data:', error);
+        return [
+          {"x": 1704067200000, "y": 0.0234},
+          {"x": 1704153600000, "y": -0.0156},
+          {"x": 1704240000000, "y": 0.0089},
+          {"x": 1704326400000, "y": 0.0234},
+          {"x": 1704412800000, "y": -0.0078},
+          {"x": 1704499200000, "y": 0.0156},
+          {"x": 1704585600000, "y": -0.0234},
+          {"x": 1704672000000, "y": 0.0098},
+          {"x": 1704758400000, "y": 0.0187},
+          {"x": 1704844800000, "y": -0.0065}
+        ];
+      });
+
+    // Load monthly data
+    datasets.monthly = await fetch('../examples/data/timeseries-monthly.json')
+      .then(response => response.json())
+      .catch(error => {
+        console.error('Error loading monthly data:', error);
+        return [
+          {"x": 1420070400000, "y": 345000},
+          {"x": 1422748800000, "y": 378000},
+          {"x": 1425168000000, "y": 312000},
+          {"x": 1427846400000, "y": 389000},
+          {"x": 1430438400000, "y": 423000},
+          {"x": 1433116800000, "y": 456000},
+          {"x": 1435708800000, "y": 398000},
+          {"x": 1438387200000, "y": 434000},
+          {"x": 1441065600000, "y": 467000},
+          {"x": 1443657600000, "y": 412000}
+        ];
+      });
+
+    return datasets;
   } catch (error) {
-    console.error('Error in loadTimeSeriesData:', error);
-    return [];
+    console.error('Error in loadAllDatasets:', error);
+    return {
+      timeseries: [],
+      'daily-returns': [],
+      monthly: []
+    };
   }
 }
 
@@ -443,6 +491,38 @@ function createRandomizedDataset(sourceDataset, index) {
   };
 }
 
+// Helper function to format datasets for preview
+function formatDatasetPreview(data, maxItems = 3) {
+  if (!data || !data.length) return 'No data available';
+  
+  const preview = data.slice(0, maxItems).map(item => {
+    const date = new Date(item.x).toLocaleDateString();
+    const value = typeof item.y === 'number' ? item.y.toLocaleString() : item.y;
+    return `${date}: ${value}`;
+  }).join('\n');
+  
+  return preview + (data.length > maxItems ? `\n... and ${data.length - maxItems} more items` : '');
+}
+
+// Setup dataset selector functionality
+function setupDatasetSelector(chartType) {
+  const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+  const randomizeCheckbox = document.getElementById(`${chartType}-randomize`);
+  const previewDiv = document.getElementById(`${chartType}-dataset-preview`);
+  
+  if (!sourceSelect || !previewDiv) return;
+  
+  // Update preview when source changes
+  sourceSelect.addEventListener('change', () => {
+    const selectedDataset = availableDatasets[sourceSelect.value];
+    previewDiv.textContent = formatDatasetPreview(selectedDataset);
+  });
+  
+  // Initialize preview
+  const initialDataset = availableDatasets[sourceSelect.value];
+  previewDiv.textContent = formatDatasetPreview(initialDataset);
+}
+
 // =============================================================================
 // STUDIES/TECHNICAL INDICATORS IMPLEMENTATION
 // =============================================================================
@@ -685,8 +765,11 @@ async function initLineChart() {
   log('Initializing Line Chart');
   
   try {
-    // Load the time series data
-    const timeSeriesData = await loadTimeSeriesData();
+    // Load all datasets
+    availableDatasets = await loadAllDatasets();
+    
+    // Use timeseries data for initial chart
+    const timeSeriesData = availableDatasets.timeseries;
     
     // Format data for the line chart
     const formattedData = timeSeriesData.map(item => ({
@@ -752,6 +835,9 @@ async function initLineChart() {
     
     // Setup event listeners for controls
     setupLineChartControls();
+    
+    // Setup dataset selector
+    setupDatasetSelector('line');
   } catch (error) {
     log('Error initializing line chart:', error);
     handleError('line-chart', error);
@@ -860,13 +946,38 @@ function setupLineChartControls() {
   const addDatasetBtn = document.getElementById('line-add-dataset');
   if (addDatasetBtn) {
     addDatasetBtn.addEventListener('click', () => {
-      if (!lineChart || !lineChart.config.data.length) return;
+      if (!lineChart) return;
       
-      // Get the source dataset (the first one)
-      const sourceDataset = lineChart.config.data[0];
+      const sourceSelect = document.getElementById('line-dataset-source');
+      const randomizeCheckbox = document.getElementById('line-randomize');
       
-      // Create a new randomized dataset
-      const newDataset = createRandomizedDataset(sourceDataset, lineChart.config.data.length);
+      const selectedDatasetKey = sourceSelect.value;
+      const selectedDataset = availableDatasets[selectedDatasetKey];
+      const applyRandomization = randomizeCheckbox.checked;
+      
+      if (!selectedDataset) return;
+      
+      // Transform data for line chart
+      const transformedData = selectedDataset.map(item => ({
+        date: new Date(item.x),
+        price: item.y
+      }));
+      
+      // Create new dataset
+      const newDataset = createRandomizedDataset({data: transformedData}, lineChart.config.data.length);
+      
+      // Override randomization if not wanted
+      if (!applyRandomization) {
+        newDataset.data = transformedData;
+      }
+      
+      // Set appropriate name based on source
+      const sourceNames = {
+        'timeseries': 'Time Series',
+        'daily-returns': 'Daily Returns',
+        'monthly': 'Monthly Data'
+      };
+      newDataset.name = `${sourceNames[selectedDatasetKey]} ${lineChart.config.data.length + 1}`;
       
       // Add to chart
       lineChart.config.data.push(newDataset);
@@ -874,8 +985,6 @@ function setupLineChartControls() {
       
       // Update UI
       updateDatasetManager('line');
-      
-      // Update study dataset options
       updateStudyDatasetOptions();
     });
 
@@ -898,7 +1007,12 @@ function setupLineChartControls() {
 async function initBarChart() {
   log('Initializing Bar Chart with Time Series Data and Studies Support');
   try {
-    const timeSeriesData = await loadTimeSeriesData();
+    // Load all datasets if not already loaded
+    if (!availableDatasets.timeseries) {
+      availableDatasets = await loadAllDatasets();
+    }
+    
+    const timeSeriesData = availableDatasets.timeseries;
     
     // Transform data: 'x' should be Date objects for xType: 'time'
     const transformedData = timeSeriesData.map(item => ({
@@ -950,6 +1064,7 @@ async function initBarChart() {
     log('Bar chart with studies support rendered successfully');
     updateDatasetManager('bar');
     setupBarChartControls();
+    setupDatasetSelector('bar');
   } catch (error) {
     log('Error initializing bar chart:', error);
     handleError('bar-chart', error);
@@ -1178,13 +1293,38 @@ function setupBarChartControls() {
   const addDatasetBtn = document.getElementById('bar-add-dataset');
   if (addDatasetBtn) {
     addDatasetBtn.addEventListener('click', () => {
-      if (!barChart || !barChart.config.data.length) return;
+      if (!barChart) return;
       
-      // Get the source dataset (the first one)
-      const sourceDataset = barChart.config.data[0];
+      const sourceSelect = document.getElementById('bar-dataset-source');
+      const randomizeCheckbox = document.getElementById('bar-randomize');
       
-      // Create a new randomized dataset
-      const newDataset = createRandomizedDataset(sourceDataset, barChart.config.data.length);
+      const selectedDatasetKey = sourceSelect.value;
+      const selectedDataset = availableDatasets[selectedDatasetKey];
+      const applyRandomization = randomizeCheckbox.checked;
+      
+      if (!selectedDataset) return;
+      
+      // Transform data for bar chart
+      const transformedData = selectedDataset.map(item => ({
+        x: new Date(item.x),
+        y: item.y
+      }));
+      
+      // Create new dataset
+      const newDataset = createRandomizedDataset({data: transformedData}, barChart.config.data.length);
+      
+      // Override randomization if not wanted
+      if (!applyRandomization) {
+        newDataset.data = transformedData;
+      }
+      
+      // Set appropriate name based on source
+      const sourceNames = {
+        'timeseries': 'Time Series',
+        'daily-returns': 'Daily Returns',
+        'monthly': 'Monthly Data'
+      };
+      newDataset.name = `${sourceNames[selectedDatasetKey]} ${barChart.config.data.length + 1}`;
       
       // Add to chart
       barChart.config.data.push(newDataset);
@@ -1192,8 +1332,6 @@ function setupBarChartControls() {
       
       // Update UI
       updateDatasetManager('bar');
-      
-      // Update study dataset options
       updateStudyDatasetOptions();
     });
   }

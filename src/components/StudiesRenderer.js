@@ -1,4 +1,5 @@
 import SvgRenderer from '../renderers/SvgRenderer.js';
+import EndingLabels from './EndingLabels.js';
 
 /**
  * StudiesRenderer - Centralized component for rendering all types of studies/indicators
@@ -154,7 +155,8 @@ export default class StudiesRenderer {
     lineElement.setAttribute('stroke', dataset.color);
     lineElement.setAttribute('stroke-width', dataset.width || studyLineWidth);
     lineElement.setAttribute('fill', 'none');
-    lineElement.setAttribute('class', 'visioncharts-panel-study-line');
+    lineElement.setAttribute('class', 'visioncharts-study-line');
+    lineElement.setAttribute('stroke-dasharray', '3,3'); // Dashed line for studies
     lineElement.setAttribute('data-study-id', dataset.id);
     panel.appendChild(lineElement);
     
@@ -177,6 +179,23 @@ export default class StudiesRenderer {
         
         panel.appendChild(point);
       });
+    }
+    
+    // ENHANCED: Add ending labels for studies in panel mode
+    if (chart.options.showEndingLabels) {
+      console.log('StudiesRenderer: Adding ending label for study:', dataset.id);
+      
+      try {
+        // Create ending labels instance - it will handle study styling automatically
+        const studyEndingLabels = new EndingLabels(chart.options.endingLabelsConfig || {});
+        
+        // Render ending label for this study (isStudy=true will be detected automatically)
+        studyEndingLabels.renderForPanel(chart, dataset, panel, xScale, yScale);
+        
+        console.log('StudiesRenderer: Ending label rendered for study:', dataset.id);
+      } catch (error) {
+        console.error('StudiesRenderer: Error rendering ending label for study:', dataset.id, error);
+      }
     }
   }
   

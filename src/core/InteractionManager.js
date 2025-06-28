@@ -243,6 +243,89 @@ export default class InteractionManager {
   }
   
   /**
+   * Update hover points for ALL datasets in single mode
+   * @param {Chart} chart - Chart instance
+   * @param {number} mouseX - Mouse X position (relative to chart area)
+   */
+  static updateSingleModeHoverPoints(chart, mouseX) {
+    console.log('updateSingleModeHoverPoints called with mouseX:', mouseX);
+    
+    // Skip if no hover points
+    if (!chart.state.components.hoverPoints) {
+      console.log('No hover points available');
+      return;
+    }
+    
+    console.log('Hover points available:', chart.state.components.hoverPoints.length);
+    
+    // Show hover points group
+    if (chart.state.components.hoverPointsGroup) {
+      chart.state.components.hoverPointsGroup.style.display = 'block';
+      console.log('Hover points group made visible');
+    }
+    
+    // Use the correct scales
+    const xScale = chart.state.scales.x;
+    const yScale = chart.state.scales.y;
+    
+    if (!xScale || !yScale) {
+      console.warn('Scales not available for hover points');
+      return;
+    }
+    
+    console.log('Scales available, processing hover points...');
+    
+    // Update each hover point
+    chart.state.components.hoverPoints.forEach((hoverPoint, index) => {
+      const dataset = hoverPoint.dataset;
+      console.log(`Processing hover point ${index} for dataset:`, dataset.id);
+      
+      if (!dataset.data || !dataset.data.length) {
+        console.log(`Dataset ${dataset.id} has no data`);
+        hoverPoint.element.style.display = 'none';
+        return;
+      }
+      
+      const { xField, yField } = chart.options;
+      
+      // Find closest data point
+      let closestPoint = null;
+      let minDistance = Infinity;
+      
+      dataset.data.forEach(point => {
+        if (point[xField] === undefined || point[yField] === undefined) return;
+        
+        const xPos = xScale.scale(point[xField]);
+        const distance = Math.abs(mouseX - xPos);
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPoint = point;
+        }
+      });
+      
+      console.log(`Dataset ${dataset.id} closest point:`, { closestPoint, minDistance });
+      
+      // Show hover point if close enough
+      if (closestPoint && minDistance < 50) {
+        const x = xScale.scale(closestPoint[xField]);
+        const y = yScale.scale(closestPoint[yField]);
+        
+        hoverPoint.element.setAttribute('cx', x);
+        hoverPoint.element.setAttribute('cy', y);
+        hoverPoint.element.style.display = 'block';
+        hoverPoint.data = closestPoint;
+        
+        console.log(`Hover point ${index} positioned at:`, { x, y });
+      } else {
+        hoverPoint.element.style.display = 'none';
+        hoverPoint.data = null;
+        console.log(`Hover point ${index} hidden (too far or no data)`);
+      }
+    });
+  }
+  
+  /**
    * Bind mouse events for single mode
    * @param {Chart} chart - Chart instance
    */
@@ -255,14 +338,16 @@ export default class InteractionManager {
     // Use SVG as the main event target for more reliable event handling
     const eventTarget = chart.state.svg;
     
-    // Mouse move handler
+    /**
+     * SIMPLE FIX: Updated mouse move handler that bypasses formatter issues
+     */
     const mouseMoveHandler = (e) => {
       // Get mouse position relative to the SVG
       const svgRect = chart.state.svg.getBoundingClientRect();
-      const mouseX = e.clientX - svgRect.left - chart.options.margins.left; // Account for margins
-      const mouseY = e.clientY - svgRect.top - chart.options.margins.top;   // Account for margins
+      const mouseX = e.clientX - svgRect.left - chart.options.margins.left;
+      const mouseY = e.clientY - svgRect.top - chart.options.margins.top;
       
-      // Check if within chart bounds (inner chart area)
+      // Check if within chart bounds
       if (mouseX < 0 || mouseX > chart.state.dimensions.innerWidth || 
           mouseY < 0 || mouseY > chart.state.dimensions.innerHeight) {
         InteractionManager.hideSingleModeElements(chart);
@@ -272,7 +357,7 @@ export default class InteractionManager {
         return;
       }
       
-      // Always show crosshair for line charts when in bounds
+      // Show crosshair
       if (chart.options.chartType === 'line' || chart.options.chartType === 'area') {
         if (chart.state.components.crosshair) {
           chart.state.components.crosshair.update(mouseX, 0);
@@ -283,32 +368,135 @@ export default class InteractionManager {
       // Update hover points
       InteractionManager.updateSingleModeHoverPoints(chart, mouseX);
       
-      // Show tooltip with closest data
-      const closestData = InteractionManager.findClosestData(chart, mouseX);
-      if (closestData && chart.state.components.tooltip) {
-        // Convert back to SVG coordinates for tooltip positioning
+      // Find data for ALL datasets
+      const allData = InteractionManager.findAllDataAtPosition(chart, mouseX);
+      
+      if (allData && chart.state.components.tooltip) {
+        console.log('🎯 SIMPLE TOOLTIP FIX - Found data for', allData.datasets.length, 'datasets');
+        
+        // COMPLETE: Multi-dataset tooltip formatter
+        chart.state.components.tooltip.options.formatter = (data) => {
+          console.log('🎯 Multi-dataset formatter called with:', data);
+          
+          try {
+            const lines = [];
+            
+            // Check if we have the expected data structure
+            if (!data || !data.datasets || !Array.isArray(data.datasets) || data.datasets.length === 0) {
+              console.log('❌ Invalid data structure');
+              return ['No data available'];
+            }
+            
+            console.log('✅ Processing', data.datasets.length, 'datasets');
+            
+            // Add date header from first dataset
+            const firstPoint = data.datasets[0].point;
+            if (firstPoint) {
+              const date = firstPoint.date || firstPoint.x;
+              if (date) {
+                try {
+                  const dateObj = date instanceof Date ? date : new Date(date);
+                  const dateStr = dateObj.toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                  });
+                  lines.push(`Date: ${dateStr}`);
+                  lines.push(''); // Empty line for spacing
+                  console.log('✅ Added date header:', dateStr);
+                } catch (dateError) {
+                  console.log('⚠️ Date formatting error, using raw value');
+                  lines.push(`Date: ${String(date)}`);
+                  lines.push('');
+                }
+              }
+            }
+            
+            // Add each dataset's value
+            data.datasets.forEach((dataInfo, index) => {
+              const point = dataInfo.point;
+              const dataset = dataInfo.dataset;
+              
+              if (!point || !dataset) {
+                console.log(`⚠️ Skipping dataset ${index} - missing point or dataset info`);
+                return;
+              }
+              
+              // Get the value - try multiple field names
+              const value = point.price || point.y || point.value || 0;
+              
+              // Format the value nicely
+              let formattedValue;
+              if (typeof value === 'number') {
+                // Format numbers with commas and appropriate decimal places
+                if (value >= 1000) {
+                  formattedValue = value.toLocaleString('en-US', { 
+                    maximumFractionDigits: 0,
+                    minimumFractionDigits: 0
+                  });
+                } else {
+                  formattedValue = value.toLocaleString('en-US', { 
+                    maximumFractionDigits: 2,
+                    minimumFractionDigits: 0
+                  });
+                }
+              } else {
+                formattedValue = String(value);
+              }
+              
+              // Create the line with dataset name and formatted value
+              const datasetName = dataset.name || `Series ${index + 1}`;
+              const line = `${datasetName}: ${formattedValue}`;
+              lines.push(line);
+              
+              console.log(`✅ Added dataset ${index}: ${line}`);
+            });
+            
+            console.log('🎯 Final tooltip lines:', lines);
+            return lines;
+            
+          } catch (error) {
+            console.error('❌ Formatter error:', error);
+            return ['Formatting error occurred'];
+          }
+        };
+        
+        // Position tooltip
         const tooltipX = mouseX + chart.options.margins.left;
         const tooltipY = mouseY + chart.options.margins.top;
         
-        chart.state.components.tooltip.show(closestData, tooltipX, tooltipY, {
-          width: chart.state.dimensions.width,
-          height: chart.state.dimensions.height
-        });
-      } else if (chart.state.components.tooltip) {
-        chart.state.components.tooltip.hide();
+        console.log('🎯 Calling tooltip.show() with corrected formatter...');
+        
+        try {
+          // Call show with our data
+          chart.state.components.tooltip.show(allData, tooltipX, tooltipY, {
+            width: chart.state.dimensions.width,
+            height: chart.state.dimensions.height
+          });
+          
+          console.log('🎯 tooltip.show() completed');
+          
+        } catch (error) {
+          console.error('🎯 Error in tooltip.show():', error);
+        }
+      } else {
+        console.log('No data found or no tooltip component');
+        if (chart.state.components.tooltip) {
+          chart.state.components.tooltip.hide();
+        }
       }
     };
     
     // Mouse leave handler
     const mouseLeaveHandler = (e) => {
-      // Only hide if we're actually leaving the SVG area
+      console.log('Mouse leave event');
       const svgRect = chart.state.svg.getBoundingClientRect();
       const mouseX = e.clientX - svgRect.left;
       const mouseY = e.clientY - svgRect.top;
       
-      // Check if mouse is outside SVG bounds
       if (mouseX < 0 || mouseX > chart.state.dimensions.width || 
           mouseY < 0 || mouseY > chart.state.dimensions.height) {
+        console.log('Mouse fully outside SVG, hiding elements');
         InteractionManager.hideSingleModeElements(chart);
         if (chart.state.components.tooltip) {
           chart.state.components.tooltip.hide();
@@ -316,19 +504,19 @@ export default class InteractionManager {
       }
     };
     
-    // Add event listeners to SVG for more reliable event handling
+    // Bind events
     eventTarget.addEventListener('mousemove', mouseMoveHandler);
     eventTarget.addEventListener('mouseleave', mouseLeaveHandler);
     
     // Store handlers for cleanup
     chart.state.eventHandlers = chart.state.eventHandlers || {};
     chart.state.eventHandlers.hover = {
+      target: eventTarget,
       move: mouseMoveHandler,
-      leave: mouseLeaveHandler,
-      target: eventTarget // Store target for cleanup
+      leave: mouseLeaveHandler
     };
     
-    console.log('Single mode hover events bound to SVG element');
+    console.log('Single mode events bound successfully');
   }
   
   /**
@@ -542,92 +730,81 @@ export default class InteractionManager {
   }
   
   /**
-   * Update hover points for single mode
-   * @param {Chart} chart - Chart instance
-   * @param {number} mouseX - Mouse X position (relative to chart area)
-   */
-  static updateSingleModeHoverPoints(chart, mouseX) {
-    // Skip if no hover points
-    if (!chart.state.components.hoverPoints) return;
-    
-    // Show hover points group
-    if (chart.state.components.hoverPointsGroup) {
-      chart.state.components.hoverPointsGroup.style.display = 'block';
-    }
-    
-    // Use the correct scales
-    const xScale = chart.state.scales.x;
-    const yScale = chart.state.scales.y;
-    
-    if (!xScale || !yScale) {
-      console.warn('Scales not available for hover points');
-      return;
-    }
-    
-    // Find closest data points for each dataset
-    chart.state.components.hoverPoints.forEach(hoverPoint => {
-      const dataset = hoverPoint.dataset;
-      const { xField, yField } = chart.options;
-      
-      // Find closest data point
-      let closestPoint = null;
-      let minDistance = Infinity;
-      
-      dataset.data.forEach(point => {
-        if (point[xField] === undefined || point[yField] === undefined) return;
-        
-        const xPos = xScale.scale(point[xField]);
-        const distance = Math.abs(mouseX - xPos);
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestPoint = point;
-        }
-      });
-      
-      // Show hover point if we found a close point
-      // For line charts, be more generous with the threshold
-      const proximityThreshold = (chart.options.chartType === 'line' || chart.options.chartType === 'area') ? 100 : 25;
-      
-      if (closestPoint && minDistance < proximityThreshold) {
-        const x = xScale.scale(closestPoint[xField]);
-        const y = yScale.scale(closestPoint[yField]);
-        
-        hoverPoint.element.setAttribute('cx', x);
-        hoverPoint.element.setAttribute('cy', y);
-        hoverPoint.element.style.display = 'block';
-        
-        // Store data for tooltip
-        hoverPoint.data = closestPoint;
-      } else {
-        // Hide hover point if too far
-        hoverPoint.element.style.display = 'none';
-        hoverPoint.data = null;
-      }
-    });
-  }
-  
-  /**
-   * Find closest data point to mouse position
+   * Find data for ALL datasets at the current X position
    * @param {Chart} chart - Chart instance
    * @param {number} mouseX - Mouse X position
-   * @returns {Object|null} Closest data point info
+   * @returns {Object|null} All dataset data at position
    */
-  static findClosestData(chart, mouseX) {
-    if (!chart.state.datasets || !chart.state.datasets.length) return null;
+  static findAllDataAtPosition(chart, mouseX) {
+    console.log('findAllDataAtPosition called with mouseX:', mouseX);
+    
+    if (!chart.state.datasets || !chart.state.datasets.length) {
+      console.log('No datasets available');
+      return null;
+    }
     
     const { xField, yField } = chart.options;
     const xScale = chart.state.scales.x;
     const yScale = chart.state.scales.y;
     
-    if (!xScale || !yScale) return null;
+    if (!xScale || !yScale) {
+      console.log('No scales available');
+      return null;
+    }
     
-    let closestData = null;
-    let minDistance = Infinity;
+    // Find the closest X value across all data points
+    let globalClosestX = null;
+    let minGlobalDistance = Infinity;
     
-    // Check all datasets
-    chart.state.datasets.forEach(dataset => {
+    console.log('First pass: finding closest X coordinate...');
+    
+    // First pass: find the closest X coordinate across ALL datasets (including studies)
+    chart.state.datasets.forEach((dataset, index) => {
+      // FIXED: Include studies - only filter out datasets with no data
+      if (!dataset.data || !dataset.data.length) {
+        console.log(`Dataset ${index} skipped: no data`);
+        return;
+      }
+      
+      console.log(`Checking dataset ${index} (${dataset.id}) type: ${dataset.type || 'regular'} with ${dataset.data.length} points`);
+      
+      dataset.data.forEach(point => {
+        if (point[xField] === undefined) return;
+        
+        const pointX = xScale.scale(point[xField]);
+        const distance = Math.abs(mouseX - pointX);
+        
+        if (distance < minGlobalDistance) {
+          minGlobalDistance = distance;
+          globalClosestX = point[xField];
+        }
+      });
+    });
+    
+    console.log('Global closest X found:', { globalClosestX, minGlobalDistance });
+    
+    // Only proceed if we found a reasonable match
+    const threshold = chart.options.chartType === 'line' ? 50 : 25;
+    if (minGlobalDistance > threshold) {
+      console.log('Distance too far, threshold:', threshold);
+      return null;
+    }
+    
+    // Second pass: collect data from ALL datasets at this X value (including studies)
+    const allDatasets = [];
+    const tolerance = minGlobalDistance + 1;
+    
+    console.log('Second pass: collecting data from all datasets including studies...');
+    
+    chart.state.datasets.forEach((dataset, index) => {
+      // FIXED: Include studies - only filter out datasets with no data
       if (!dataset.data || !dataset.data.length) return;
+      
+      console.log(`Processing dataset ${index} (${dataset.id}) type: ${dataset.type || 'regular'}`);
+      
+      // Find the data point in this dataset closest to our target X
+      let closestPointInDataset = null;
+      let minDistanceInDataset = Infinity;
       
       dataset.data.forEach(point => {
         if (point[xField] === undefined || point[yField] === undefined) return;
@@ -635,22 +812,42 @@ export default class InteractionManager {
         const pointX = xScale.scale(point[xField]);
         const distance = Math.abs(mouseX - pointX);
         
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestData = {
-            dataset: dataset,
-            point: point,
-            x: pointX,
-            y: yScale.scale(point[yField]),
-            distance: distance
-          };
+        if (distance < minDistanceInDataset && distance <= tolerance) {
+          minDistanceInDataset = distance;
+          closestPointInDataset = point;
         }
       });
+      
+      // If we found a point in this dataset, add it to our results
+      if (closestPointInDataset) {
+        const dataInfo = {
+          dataset: dataset,
+          point: closestPointInDataset,
+          x: xScale.scale(closestPointInDataset[xField]),
+          y: yScale.scale(closestPointInDataset[yField]),
+          distance: minDistanceInDataset
+        };
+        
+        allDatasets.push(dataInfo);
+        console.log(`Added data for dataset ${dataset.id} (${dataset.type || 'regular'}):`, {
+          name: dataset.name,
+          type: dataset.type,
+          value: closestPointInDataset[yField],
+          distance: minDistanceInDataset
+        });
+      } else {
+        console.log(`No matching point found for dataset ${dataset.id}`);
+      }
     });
     
-    // Only return if reasonably close (within 50 pixels for line charts)
-    const threshold = chart.options.chartType === 'line' ? 50 : 25;
-    return (closestData && minDistance < threshold) ? closestData : null;
+    console.log('Total datasets with data (including studies):', allDatasets.length);
+    
+    // Return all datasets if we found any, otherwise null
+    return allDatasets.length > 0 ? {
+      datasets: allDatasets,
+      globalX: globalClosestX,
+      globalDistance: minGlobalDistance
+    } : null;
   }
   
   /**
@@ -695,6 +892,67 @@ export default class InteractionManager {
       `Date: ${xLabel}`,
       `Value: ${yLabel}`
     ];
+  }
+  
+  /**
+   * Format tooltip content for multiple datasets
+   * @param {Chart} chart - Chart instance
+   * @param {Object} allData - All dataset information at position
+   * @returns {Array} Formatted text lines
+   */
+  static formatMultiDatasetTooltip(chart, allData) {
+    console.log('formatMultiDatasetTooltip called with:', allData);
+    
+    if (!allData || !allData.datasets || !allData.datasets.length) {
+      console.log('No data to format');
+      return '';
+    }
+    
+    const { xField, yField, xType, yType } = chart.options;
+    const lines = [];
+    
+    // Format the X value (same for all datasets)
+    const firstPoint = allData.datasets[0].point;
+    let xLabel = '';
+    const xValue = firstPoint[xField];
+    
+    if (xType === 'time') {
+      const date = xValue instanceof Date ? xValue : new Date(xValue);
+      xLabel = formatDateValue(date, 'MMM dd, yyyy');
+    } else {
+      xLabel = typeof xValue === 'number' ? formatLargeNumber(xValue) : xValue;
+    }
+    
+    console.log('Formatted X label:', xLabel);
+    
+    // Add date/time header
+    lines.push(`Date: ${xLabel}`);
+    lines.push(''); // Empty line for spacing
+    
+    // Add each dataset's value
+    allData.datasets.forEach((dataInfo, index) => {
+      const point = dataInfo.point;
+      const dataset = dataInfo.dataset;
+      
+      // Format Y value
+      const yValue = point[yField];
+      let yLabel = '';
+      
+      if (yType === 'percent' || yType === 'percentage') {
+        yLabel = (yValue * 100).toFixed(1) + '%';
+      } else if (yType === 'currency') {
+        yLabel = '$' + formatLargeNumber(yValue);
+      } else {
+        yLabel = formatLargeNumber(yValue);
+      }
+      
+      const line = `${dataset.name || 'Series'}: ${yLabel}`;
+      lines.push(line);
+      console.log(`Added line ${index}:`, line);
+    });
+    
+    console.log('Final tooltip lines:', lines);
+    return lines;
   }
   
   /**

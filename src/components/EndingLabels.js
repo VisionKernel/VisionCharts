@@ -50,15 +50,25 @@ export default class EndingLabels {
     // Clear existing elements
     this.remove();
     
-    // Only render for regular datasets (not studies)
-    const regularDatasets = chart.state.datasets.filter(dataset => 
-      dataset.type !== 'study' && dataset.data && dataset.data.length > 0
+    // FIXED: Include ALL datasets (regular + studies) with data
+    const allDatasets = chart.state.datasets.filter(dataset => 
+      dataset.data && dataset.data.length > 0
     );
     
-    console.log('EndingLabels: Rendering for', regularDatasets.length, 'datasets');
+    // Separate regular datasets and studies for proper ordering
+    const regularDatasets = allDatasets.filter(dataset => dataset.type !== 'study');
+    const studyDatasets = allDatasets.filter(dataset => dataset.type === 'study');
     
+    console.log('EndingLabels: Rendering for', regularDatasets.length, 'regular datasets and', studyDatasets.length, 'studies');
+    
+    // Render regular datasets first
     regularDatasets.forEach(dataset => {
-      this.renderDatasetEndingLabel(chart, dataset, container, chart.state.scales);
+      this.renderDatasetEndingLabel(chart, dataset, container, chart.state.scales, false);
+    });
+    
+    // Then render studies with visual distinction
+    studyDatasets.forEach(dataset => {
+      this.renderDatasetEndingLabel(chart, dataset, container, chart.state.scales, true);
     });
   }
   
@@ -71,21 +81,19 @@ export default class EndingLabels {
    * @param {Object} yScale - Y scale for this panel
    */
   renderForPanel(chart, dataset, container, xScale, yScale) {
-    console.log('EndingLabels.renderForPanel called for dataset:', dataset.id);
+    console.log('EndingLabels.renderForPanel called for dataset:', dataset.id, 'type:', dataset.type || 'regular');
     
     if (!this.options.show || !dataset || !container) {
       console.log('EndingLabels: Skipping panel render - missing requirements');
       return;
     }
     
-    // Don't render for study datasets
-    if (dataset.type === 'study') {
-      console.log('EndingLabels: Skipping study dataset');
-      return;
-    }
+    // FIXED: Remove the study filter - now includes studies
+    // Old code: if (dataset.type === 'study') { return; }
     
     const scales = { x: xScale, y: yScale };
-    this.renderDatasetEndingLabel(chart, dataset, container, scales);
+    const isStudy = dataset.type === 'study';
+    this.renderDatasetEndingLabel(chart, dataset, container, scales, isStudy);
   }
   
   /**
@@ -95,8 +103,9 @@ export default class EndingLabels {
    * @param {Object} dataset - Dataset to render label for
    * @param {SVGElement} container - Container element
    * @param {Object} scales - Chart scales {x, y}
+   * @param {boolean} isStudy - Whether this is a study dataset
    */
-  renderDatasetEndingLabel(chart, dataset, container, scales) {
+  renderDatasetEndingLabel(chart, dataset, container, scales, isStudy = false) {
     if (!dataset.data || dataset.data.length === 0) {
       console.log('EndingLabels: No data for dataset', dataset.id);
       return;
@@ -115,7 +124,7 @@ export default class EndingLabels {
     const x = scales.x.scale(lastPoint[xField]);
     const y = scales.y.scale(lastPoint[yField]);
     
-    // Check if coordinates are valid and within bounds
+    // Check if coordinates are valid
     if (isNaN(x) || isNaN(y)) {
       console.log('EndingLabels: Invalid coordinates for dataset', dataset.id);
       return;
@@ -124,27 +133,32 @@ export default class EndingLabels {
     // Format the value
     const formattedValue = this.formatValue(lastPoint[yField], chart.options);
     
-    console.log('EndingLabels: Creating label for dataset', dataset.id, 'value:', formattedValue);
+    console.log('EndingLabels: Creating label for', isStudy ? 'study' : 'dataset', dataset.id, 'value:', formattedValue);
+    
+    // ENHANCED: Study-specific styling
+    const labelOptions = this.getStudyAwareLabelOptions(isStudy);
     
     // Create label group
     const labelGroup = SvgRenderer.createGroup({
-      class: 'visioncharts-ending-label',
-      'data-dataset-id': dataset.id
+      class: `visioncharts-ending-label ${isStudy ? 'study-label' : 'regular-label'}`,
+      'data-dataset-id': dataset.id,
+      'data-is-study': isStudy
     });
     
-    // Calculate label position
-    const labelX = x + this.options.offsetX;
-    const labelY = y + this.options.offsetY;
+    // ENHANCED: Check for overlapping labels and add vertical offset
+    const verticalOffset = this.calculateVerticalOffset(container, x, y, isStudy);
+    const adjustedY = y + verticalOffset;
     
     // Create text element first to measure dimensions
+    const displayText = isStudy ? `📊 ${formattedValue}` : formattedValue;
     const textElement = SvgRenderer.createText(
-      formattedValue,
+      displayText,
       0, 0,
       {
-        'font-size': this.options.fontSize,
-        'font-family': this.options.fontFamily,
-        'font-weight': this.options.fontWeight,
-        fill: this.options.textColor || dataset.color,
+        'font-size': labelOptions.fontSize,
+        'font-family': labelOptions.fontFamily,
+        'font-weight': labelOptions.fontWeight,
+        fill: labelOptions.textColor || dataset.color,
         'dominant-baseline': 'middle',
         'text-anchor': 'start',
         class: 'visioncharts-ending-label-text'
@@ -163,8 +177,8 @@ export default class EndingLabels {
     } catch (error) {
       // Fallback dimensions if getBBox fails
       textBBox = {
-        width: formattedValue.length * 7, // Approximate width
-        height: 12 // Approximate height
+        width: displayText.length * (isStudy ? 6 : 7), // Slightly smaller for studies
+        height: isStudy ? 10 : 12
       };
     }
     
@@ -172,31 +186,63 @@ export default class EndingLabels {
     container.removeChild(tempGroup);
     
     // Calculate background dimensions
-    const bgWidth = textBBox.width + this.options.padding.left + this.options.padding.right;
-    const bgHeight = textBBox.height + this.options.padding.top + this.options.padding.bottom;
+    const bgWidth = textBBox.width + labelOptions.padding.left + labelOptions.padding.right;
+    const bgHeight = textBBox.height + labelOptions.padding.top + labelOptions.padding.bottom;
+    
+    // Get container bounds for boundary checking
+    const containerWidth = chart.state.dimensions?.innerWidth || 800;
+    const availableRightSpace = containerWidth - x;
+    
+    // Calculate label position with boundary checking
+    let labelX, labelY;
+    let textAnchor = 'start';
+    
+    if (availableRightSpace >= bgWidth + labelOptions.offsetX) {
+      // Enough space to the right - position normally
+      labelX = x + labelOptions.offsetX;
+      textAnchor = 'start';
+    } else {
+      // Not enough space to the right - position to the left
+      labelX = x - labelOptions.offsetX - bgWidth;
+      textAnchor = 'start';
+      
+      // If still goes off the left edge, clamp to minimum position
+      if (labelX < 0) {
+        labelX = Math.max(5, x - bgWidth/2);
+        textAnchor = 'start';
+      }
+    }
+    
+    labelY = adjustedY + labelOptions.offsetY;
+    
     const bgX = labelX;
     const bgY = labelY - bgHeight / 2;
     
     // Create background rectangle if enabled
-    if (this.options.showBackground || this.options.showBorder) {
+    if (labelOptions.showBackground || labelOptions.showBorder) {
       const backgroundAttrs = {
         class: 'visioncharts-ending-label-bg'
       };
       
-      if (this.options.showBackground) {
-        backgroundAttrs.fill = this.options.backgroundColor;
+      if (labelOptions.showBackground) {
+        backgroundAttrs.fill = labelOptions.backgroundColor;
       } else {
         backgroundAttrs.fill = 'none';
       }
       
-      if (this.options.showBorder) {
-        backgroundAttrs.stroke = this.options.borderColor;
-        backgroundAttrs['stroke-width'] = this.options.borderWidth;
+      if (labelOptions.showBorder) {
+        backgroundAttrs.stroke = labelOptions.borderColor;
+        backgroundAttrs['stroke-width'] = labelOptions.borderWidth;
       }
       
-      if (this.options.borderRadius > 0) {
-        backgroundAttrs.rx = this.options.borderRadius;
-        backgroundAttrs.ry = this.options.borderRadius;
+      if (labelOptions.borderRadius > 0) {
+        backgroundAttrs.rx = labelOptions.borderRadius;
+        backgroundAttrs.ry = labelOptions.borderRadius;
+      }
+      
+      // ENHANCED: Semi-transparent background for studies
+      if (isStudy && labelOptions.showBackground) {
+        backgroundAttrs['fill-opacity'] = 0.9;
       }
       
       const background = SvgRenderer.createRect(
@@ -208,15 +254,86 @@ export default class EndingLabels {
     }
     
     // Position and add text
-    textElement.setAttribute('x', bgX + this.options.padding.left);
+    textElement.setAttribute('x', bgX + labelOptions.padding.left);
     textElement.setAttribute('y', labelY);
+    textElement.setAttribute('text-anchor', textAnchor);
     labelGroup.appendChild(textElement);
     
     // Add to container
     container.appendChild(labelGroup);
     this.elements.push(labelGroup);
     
-    console.log('EndingLabels: Label created for dataset', dataset.id, 'at position', labelX, labelY);
+    console.log('EndingLabels: Label created for', isStudy ? 'study' : 'dataset', dataset.id, 'at position', labelX, labelY, 'with offset', verticalOffset);
+  }
+  
+  /**
+   * NEW METHOD: Get study-aware label styling options
+   * @private
+   * @param {boolean} isStudy - Whether this is a study dataset
+   * @returns {Object} Label options with study-specific styling
+   */
+  getStudyAwareLabelOptions(isStudy) {
+    const baseOptions = { ...this.options };
+    
+    if (isStudy) {
+      return {
+        ...baseOptions,
+        fontSize: '10px',           // Smaller font for studies
+        fontWeight: 'normal',       // Normal weight for studies
+        backgroundColor: '#f8f9fa', // Light gray background
+        borderColor: '#6c757d',     // Darker gray border
+        borderWidth: 1,
+        padding: { top: 1, right: 4, bottom: 1, left: 4 }, // Smaller padding
+        offsetX: 6,                 // Closer to the line
+        offsetY: 0
+      };
+    }
+    
+    return baseOptions;
+  }
+  
+  /**
+   * NEW METHOD: Calculate vertical offset to prevent overlapping labels
+   * @private
+   * @param {SVGElement} container - Container element
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate  
+   * @param {boolean} isStudy - Whether this is a study dataset
+   * @returns {number} Vertical offset to apply
+   */
+  calculateVerticalOffset(container, x, y, isStudy) {
+    // Get existing labels in this container
+    const existingLabels = container.querySelectorAll('.visioncharts-ending-label');
+    
+    let verticalOffset = 0;
+    const proximityThreshold = 50; // Labels within 50px horizontally
+    const verticalSpacing = isStudy ? 16 : 20; // Studies get tighter spacing
+    
+    existingLabels.forEach(existingLabel => {
+      const existingText = existingLabel.querySelector('text');
+      if (!existingText) return;
+      
+      const existingX = parseFloat(existingText.getAttribute('x')) || 0;
+      const existingY = parseFloat(existingText.getAttribute('y')) || 0;
+      
+      // Check if this label is close horizontally
+      if (Math.abs(existingX - x) < proximityThreshold) {
+        // Check if it would overlap vertically
+        const potentialY = y + verticalOffset;
+        if (Math.abs(existingY - potentialY) < verticalSpacing) {
+          // Adjust offset to avoid overlap
+          if (isStudy) {
+            // Studies go below regular datasets
+            verticalOffset = Math.max(verticalOffset, existingY + verticalSpacing - y);
+          } else {
+            // Regular datasets go above studies
+            verticalOffset = Math.min(verticalOffset, existingY - verticalSpacing - y);
+          }
+        }
+      }
+    });
+    
+    return verticalOffset;
   }
   
   /**

@@ -690,62 +690,114 @@ renderLegend() {
     this.state.components.legend = null;
   }
   
-  // Prepare legend items from chart data
-  const legendItems = this.config.data.map(dataset => ({
-    id: dataset.id,
-    label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
-    color: dataset.color || '#1468a8',
-    visible: dataset.visible !== false,
-    type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
-  }));
+  // ENHANCED: Create legend items with study info
+  const legendItems = this.config.data.map(dataset => {
+    // Find studies for this dataset
+    const relatedStudies = this.state.datasets.filter(d => 
+      d.type === 'study' && 
+      this.options.studies && 
+      this.options.studies.find(s => s.id === d.id && s.datasetId === dataset.id)
+    );
+    
+    const baseItem = {
+      id: dataset.id,
+      label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
+      color: dataset.color || '#1468a8',
+      visible: dataset.visible !== false,
+      type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
+    };
+    
+    // COMPACT: Add study info without cluttering
+    if (relatedStudies.length > 0) {
+      baseItem.studyCount = relatedStudies.length;
+      baseItem.studyNames = relatedStudies.map(s => s.name).join(', ');
+      baseItem.studies = relatedStudies;
+    }
+    
+    return baseItem;
+  });
   
   // Calculate title height offset
-  const titleHeight = this.options.title ? 35 : 0; // Title takes ~35px including spacing
+  const titleHeight = this.options.title ? 35 : 0;
   
-  // Create legend with appropriate options
+  // Create legend with study-aware options
   const legendOptions = Object.assign({
-    position: 'top', // Changed to 'top' to position under title
-    align: 'center',
+    position: 'top',
+    align: 'center', 
     orientation: 'horizontal',
-    itemMargin: 25, // Increased spacing between items
+    itemMargin: 25,
     symbolSize: 12,
     fontSize: 12,
     fontFamily: 'sans-serif',
     interactive: true,
-    padding: { top: 10, right: 15, bottom: 10, left: 15 }, // Better padding
-    titleOffset: titleHeight // Pass title offset to legend
+    padding: { top: 10, right: 15, bottom: 10, left: 15 },
+    titleOffset: titleHeight,
+    // ENHANCED: Study display options
+    showStudyBadges: true,  // Show [+2] indicators
+    showStudyTooltips: true // Show study details on hover
   }, this.options.legendOptions || {});
   
   // Create and configure legend
   this.state.components.legend = new Legend(legendOptions);
   this.state.components.legend.setItems(legendItems);
   
-  // Render legend with correct dimensions
+  // Render legend
   this.state.components.legend.render(
     this.state.svg, 
-    this.state.dimensions.width,  // Fixed: was totalWidth
-    this.state.dimensions.height  // Fixed: was totalHeight
+    this.state.dimensions.width,
+    this.state.dimensions.height
   );
   
-  // Add event listener for legend interactions
+  // ENHANCED: Add study interaction handlers
+  this.bindStudyLegendInteractions();
+}
+
+/**
+ * NEW: Bind study-specific legend interactions
+ * @private
+ */
+bindStudyLegendInteractions() {
+  if (!this.state.components.legend) return;
+  
+  // Dataset visibility toggle (existing)
   this.state.components.legend.element.addEventListener('legend-item-click', (event) => {
     const { id, visible } = event.detail;
     console.log(`Legend item ${id} clicked, visible: ${visible}`);
     
-    // Find the dataset and update its visibility
     const dataset = this.config.data.find(d => d.id === id);
     if (dataset) {
       dataset.visible = visible;
       
-      // Update the chart
-      this.update();
+      // ENHANCED: Also toggle related studies
+      if (this.state.datasets) {
+        this.state.datasets.forEach(d => {
+          if (d.type === 'study') {
+            const studyConfig = this.options.studies?.find(s => s.id === d.id && s.datasetId === id);
+            if (studyConfig) {
+              d.visible = visible; // Studies follow their parent dataset
+            }
+          }
+        });
+      }
       
-      // Dispatch custom event for external listeners
-      const chartEvent = new CustomEvent('dataset-visibility-changed', {
-        detail: { datasetId: id, visible: visible, dataset: dataset }
-      });
-      this.state.container.dispatchEvent(chartEvent);
+      this.update();
     }
+  });
+  
+  // ENHANCED: Study badge interactions
+  this.state.components.legend.element.addEventListener('legend-study-badge-click', (event) => {
+    const { datasetId, studies } = event.detail;
+    console.log(`Study badge clicked for dataset ${datasetId}`);
+    
+    // Toggle all studies for this dataset
+    studies.forEach(study => {
+      const studyDataset = this.state.datasets.find(d => d.id === study.id);
+      if (studyDataset) {
+        studyDataset.visible = !studyDataset.visible;
+      }
+    });
+    
+    this.update();
   });
 }
 
