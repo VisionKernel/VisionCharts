@@ -8,50 +8,51 @@
  */
 export default class AbstractRenderer {
   constructor(container, width, height, options = {}) {
-    if (!container) {
-      throw new Error(`[${this.constructor.name}] Container element is null or undefined. Cannot initialize renderer without a valid DOM container.`);
+    if (this.constructor === AbstractRenderer) {
+      throw new Error('AbstractRenderer cannot be instantiated directly');
     }
     
-    if (!(container instanceof HTMLElement)) {
-      throw new Error(`[${this.constructor.name}] Container must be a valid HTMLElement. Received: ${typeof container} (${container})`);
-    }
-    
-    // Ensure container is attached to DOM
-    if (!document.contains(container)) {
-      console.warn(`[${this.constructor.name}] Container element is not attached to the DOM. This may cause rendering issues.`);
-    }
-    
-    // Validate dimensions
-    if (typeof width !== 'number' || width <= 0) {
-      throw new Error(`[${this.constructor.name}] Width must be a positive number. Received: ${width}`);
-    }
-    
-    if (typeof height !== 'number' || height <= 0) {
-      throw new Error(`[${this.constructor.name}] Height must be a positive number. Received: ${height}`);
-    }
-    
-    // Now proceed with initialization
     this.container = container;
     this.width = width;
     this.height = height;
-    this.options = this._normalizeOptions(options);
+    this.options = {
+      backgroundColor: '#ffffff',
+      antialiasing: true,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      ...options
+    };
     
-    // Rest of your existing constructor code...
+    // Renderer state
     this.isInitialized = false;
+    this.currentClipBounds = null;
+    this.renderingContext = null;
+    
+    // Performance tracking - Ensure this is always initialized
+    this.stats = {
+      drawCalls: 0,
+      elementsRendered: 0,
+      lastFrameTime: 0
+    };
+    
+    // Ensure stats object is properly bound
+    this._ensureStatsInitialization();
     
     console.log(`[${this.constructor.name}] Constructor completed successfully`);
   }
 
-  _validateContainer() {
-    if (!this.container) {
-      throw new Error(`[${this.constructor.name}] Container element is null`);
+  /**
+   * Ensure stats object is properly initialized
+   * @private
+   */
+  _ensureStatsInitialization() {
+    if (!this.stats) {
+      console.warn(`[${this.constructor.name}] Stats object was undefined, reinitializing`);
+      this.stats = {
+        drawCalls: 0,
+        elementsRendered: 0,
+        lastFrameTime: 0
+      };
     }
-    
-    if (!document.contains(this.container)) {
-      throw new Error(`[${this.constructor.name}] Container element is no longer in the DOM`);
-    }
-    
-    return true;
   }
 
   // ===== LIFECYCLE METHODS =====
@@ -61,11 +62,7 @@ export default class AbstractRenderer {
    * @returns {Promise<void>} Resolves when renderer is ready
    */
   async initialize() {
-    this._validateContainer();
-    
-    // Proceed with renderer-specific initialization
-    // This should be overridden by subclasses
-    throw new Error('initialize() must be implemented by renderer subclass');
+    throw new Error('initialize() must be implemented by renderer');
   }
   
   /**
@@ -111,7 +108,7 @@ export default class AbstractRenderer {
   /**
    * Apply a transformation matrix
    * @param {number} a - Horizontal scaling
-   * @param {number} b - Horizontal skewing  
+   * @param {number} b - Horizontal skewing
    * @param {number} c - Vertical skewing
    * @param {number} d - Vertical scaling
    * @param {number} e - Horizontal translation
@@ -122,36 +119,46 @@ export default class AbstractRenderer {
   }
   
   /**
-   * Translate the coordinate system
-   * @param {number} x - Horizontal translation
-   * @param {number} y - Vertical translation
+   * Set translation
+   * @param {number} x - X translation
+   * @param {number} y - Y translation
    */
   translate(x, y) {
     throw new Error('translate() must be implemented by renderer');
   }
   
   /**
-   * Set clipping bounds for subsequent drawing operations
-   * @param {number} x - Clip region x
-   * @param {number} y - Clip region y  
-   * @param {number} width - Clip region width
-   * @param {number} height - Clip region height
+   * Set scaling
+   * @param {number} x - X scale factor
+   * @param {number} y - Y scale factor
    */
-  setClipBounds(x, y, width, height) {
-    throw new Error('setClipBounds() must be implemented by renderer');
+  scale(x, y) {
+    throw new Error('scale() must be implemented by renderer');
   }
   
   /**
-   * Clear current clipping bounds
+   * Set rotation
+   * @param {number} angle - Rotation angle in radians
    */
-  clearClipBounds() {
-    throw new Error('clearClipBounds() must be implemented by renderer');
+  rotate(angle) {
+    throw new Error('rotate() must be implemented by renderer');
+  }
+  
+  /**
+   * Set clipping region
+   * @param {number} x - Clipping region x
+   * @param {number} y - Clipping region y
+   * @param {number} width - Clipping region width
+   * @param {number} height - Clipping region height
+   */
+  setClipRect(x, y, width, height) {
+    throw new Error('setClipRect() must be implemented by renderer');
   }
 
   // ===== BASIC DRAWING OPERATIONS =====
   
   /**
-   * Draw a line between two points
+   * Draw a line
    * @param {number} x1 - Start x coordinate
    * @param {number} y1 - Start y coordinate
    * @param {number} x2 - End x coordinate
@@ -318,6 +325,7 @@ export default class AbstractRenderer {
    * @returns {Object} Performance statistics
    */
   getPerformanceStats() {
+    this._ensureStatsInitialization();
     return { ...this.stats };
   }
   
@@ -325,6 +333,7 @@ export default class AbstractRenderer {
    * Reset performance counters
    */
   resetPerformanceStats() {
+    this._ensureStatsInitialization();
     this.stats = {
       drawCalls: 0,
       elementsRendered: 0,
@@ -388,9 +397,22 @@ export default class AbstractRenderer {
    * @protected
    */
   _incrementStats(drawCalls = 1, elements = 1) {
-    this.stats.drawCalls += drawCalls;
-    this.stats.elementsRendered += elements;
-    this.stats.lastFrameTime = performance.now();
+    // Ensure stats object exists before using it
+    this._ensureStatsInitialization();
+    
+    try {
+      this.stats.drawCalls += drawCalls;
+      this.stats.elementsRendered += elements;
+      this.stats.lastFrameTime = performance.now();
+    } catch (error) {
+      console.error(`[${this.constructor.name}] Error incrementing stats:`, error);
+      // Reinitialize stats object and try again
+      this.stats = {
+        drawCalls: drawCalls,
+        elementsRendered: elements,
+        lastFrameTime: performance.now()
+      };
+    }
   }
   
   /**
@@ -406,36 +428,6 @@ export default class AbstractRenderer {
       fill: style.fill || 'none',
       opacity: style.opacity || 1,
       ...style
-    };
-  }
-
-  /**
-   * Normalize options object for renderer
-   * @param {Object} options - Input options object
-   * @returns {Object} Normalized options object
-   * @protected
-   */
-  _normalizeOptions(options = {}) {
-    return {
-      // Default options that all renderers should support
-      backgroundColor: '#ffffff',
-      antialiasing: true,
-      devicePixelRatio: window.devicePixelRatio || 1,
-      
-      // Performance options
-      enableBatchRendering: true,
-      maxBatchSize: 10000,
-      
-      // Rendering quality options
-      highQualityText: true,
-      enableAntialiasing: true,
-      
-      // Debug options
-      debugMode: false,
-      logRenderOperations: false,
-      
-      // Merge user-provided options
-      ...options
     };
   }
   

@@ -37,12 +37,7 @@ export default class CapabilityManager {
         optimalDataPoints: 5000,
         memoryUsage: 'high', // DOM overhead
         startupTime: 'fast',
-        renderingSpeed: 'good',
-        
-        // Platform support
-        browserSupport: 'universal',
-        mobilePerformance: 'good',
-        retinaSuppport: 'excellent'
+        renderingSpeed: 'good'
       },
       
       canvas: {
@@ -54,12 +49,12 @@ export default class CapabilityManager {
         drawText: { supported: true, quality: 'good', performance: 'good' },
         
         // Advanced features
-        gradients: { supported: true, quality: 'excellent', performance: 'good' },
+        gradients: { supported: true, quality: 'excellent', performance: 'excellent' },
         clipping: { supported: true, quality: 'excellent', performance: 'excellent' },
         transforms: { supported: true, quality: 'excellent', performance: 'excellent' },
         animations: { supported: true, quality: 'good', performance: 'excellent' },
         interactivity: { supported: true, quality: 'good', performance: 'good' },
-        textMetrics: { supported: true, quality: 'good', performance: 'good' },
+        textMetrics: { supported: true, quality: 'good', performance: 'excellent' },
         
         // Batch operations
         batchRendering: { supported: true, quality: 'excellent', performance: 'excellent' },
@@ -74,102 +69,74 @@ export default class CapabilityManager {
         optimalDataPoints: 50000,
         memoryUsage: 'medium',
         startupTime: 'fast',
-        renderingSpeed: 'excellent',
-        
-        // Platform support
-        browserSupport: 'universal',
-        mobilePerformance: 'excellent',
-        retinaSuppport: 'excellent'
+        renderingSpeed: 'excellent'
       },
       
       webgl: {
         // Core rendering capabilities
         drawLine: { supported: true, quality: 'excellent', performance: 'outstanding' },
-        drawRect: { supported: true, quality: 'excellent', performance: 'outstanding' },
-        drawCircle: { supported: true, quality: 'excellent', performance: 'outstanding' },
-        drawPath: { supported: true, quality: 'good', performance: 'outstanding' },
-        drawText: { supported: true, quality: 'fair', performance: 'good' }, // Canvas overlay
+        drawRect: { supported: true, quality: 'good', performance: 'outstanding' },
+        drawCircle: { supported: true, quality: 'good', performance: 'outstanding' },
+        drawPath: { supported: true, quality: 'fair', performance: 'outstanding' },
+        drawText: { supported: true, quality: 'fair', performance: 'good' },
         
         // Advanced features
-        gradients: { supported: false, quality: 'none', performance: 'none' }, // Not yet implemented
-        clipping: { supported: true, quality: 'excellent', performance: 'excellent' },
-        transforms: { supported: true, quality: 'excellent', performance: 'excellent' },
+        gradients: { supported: true, quality: 'excellent', performance: 'outstanding' },
+        clipping: { supported: true, quality: 'good', performance: 'excellent' },
+        transforms: { supported: true, quality: 'excellent', performance: 'outstanding' },
         animations: { supported: true, quality: 'excellent', performance: 'outstanding' },
-        interactivity: { supported: true, quality: 'fair', performance: 'good' }, // Limited hit testing
-        textMetrics: { supported: false, quality: 'fair', performance: 'fair' }, // Limited by overlay
+        interactivity: { supported: true, quality: 'fair', performance: 'excellent' },
+        textMetrics: { supported: false, quality: 'none', performance: 'none' },
         
         // Batch operations
         batchRendering: { supported: true, quality: 'outstanding', performance: 'outstanding' },
-        dynamicUpdates: { supported: true, quality: 'excellent', performance: 'outstanding' },
+        dynamicUpdates: { supported: true, quality: 'outstanding', performance: 'outstanding' },
         
         // Export capabilities
         vectorExport: { supported: false, quality: 'none', performance: 'none' },
-        rasterExport: { supported: true, quality: 'excellent', performance: 'excellent' },
+        rasterExport: { supported: true, quality: 'excellent', performance: 'good' },
         
         // Performance characteristics
-        maxDataPoints: 10000000,
-        optimalDataPoints: 1000000,
-        memoryUsage: 'low', // GPU memory
-        startupTime: 'medium', // Shader compilation
-        renderingSpeed: 'outstanding',
-        
-        // Platform support
-        browserSupport: 'good', // Not supported on older browsers/devices
-        mobilePerformance: 'variable', // Depends on GPU
-        retinaSuppport: 'excellent'
+        maxDataPoints: 1000000,
+        optimalDataPoints: 500000,
+        memoryUsage: 'low',
+        startupTime: 'slow',
+        renderingSpeed: 'outstanding'
       }
     };
     
-    // Feature requirement definitions
+    // Feature requirements mapping
     this.featureRequirements = {
-      // Chart types
+      // Basic chart types
       lineChart: {
         required: ['drawLine', 'drawPath'],
-        preferred: ['batchRendering', 'animations'],
-        optional: ['gradients', 'textMetrics']
+        preferred: ['gradients', 'transforms'],
+        optional: ['animations', 'interactivity']
       },
       
       barChart: {
         required: ['drawRect'],
-        preferred: ['gradients', 'batchRendering'],
-        optional: ['animations', 'textMetrics']
+        preferred: ['gradients', 'animations'],
+        optional: ['interactivity']
       },
       
       scatterPlot: {
         required: ['drawCircle'],
         preferred: ['batchRendering'],
-        optional: ['gradients', 'animations']
+        optional: ['interactivity', 'animations']
       },
       
-      // Chart features
-      tooltips: {
-        required: ['drawText', 'drawRect'],
-        preferred: ['interactivity', 'dynamicUpdates'],
-        optional: ['gradients', 'animations']
+      // Advanced features
+      animations: {
+        required: ['animations'],
+        preferred: ['transforms'],
+        optional: []
       },
       
-      crosshair: {
-        required: ['drawLine'],
-        preferred: ['interactivity', 'dynamicUpdates'],
-        optional: ['animations']
-      },
-      
-      legend: {
-        required: ['drawText', 'drawLine', 'drawRect'],
+      interactivity: {
+        required: ['interactivity'],
         preferred: ['textMetrics'],
-        optional: ['interactivity', 'gradients']
-      },
-      
-      zeroLine: {
-        required: ['drawLine'],
-        preferred: [],
-        optional: ['animations']
-      },
-      
-      recessionBars: {
-        required: ['drawRect'],
-        preferred: ['gradients'],
-        optional: ['animations']
+        optional: []
       },
       
       // Export requirements
@@ -218,6 +185,23 @@ export default class CapabilityManager {
       poor: 1,
       none: 0
     };
+  }
+
+  /**
+   * Get the complete capabilities matrix for all renderers
+   * @returns {Object} Complete capabilities matrix
+   */
+  getCapabilities() {
+    return this.rendererCapabilities;
+  }
+
+  /**
+   * Get capabilities for a specific renderer
+   * @param {string} rendererType - Renderer type ('svg', 'canvas', 'webgl')
+   * @returns {Object} Renderer capabilities
+   */
+  getRendererCapabilities(rendererType) {
+    return this.rendererCapabilities[rendererType] || null;
   }
 
   /**
@@ -330,7 +314,7 @@ export default class CapabilityManager {
       dataPoints = 1000,
       features = [],
       exportFormats = [],
-      prioritizePeformance = false,
+      prioritizePerformance = false,
       prioritizeQuality = false,
       deviceConstraints = {}
     } = requirements;
@@ -344,7 +328,7 @@ export default class CapabilityManager {
         dataPoints,
         features,
         exportFormats,
-        prioritizePeformance,
+        prioritizePerformance,
         prioritizeQuality,
         deviceConstraints
       );
@@ -378,38 +362,6 @@ export default class CapabilityManager {
       warnings: primary.warnings,
       adaptations: primary.adaptations
     };
-  }
-
-  /**
-   * Get renderer-specific adaptation strategies
-   * @param {string} rendererType - Target renderer
-   * @param {Array} features - Required features
-   * @returns {Object} Adaptation strategies
-   */
-  getAdaptationStrategies(rendererType, features) {
-    const strategies = {
-      featureAdaptations: {},
-      performanceOptimizations: [],
-      fallbackMechanisms: {}
-    };
-    
-    features.forEach(featureName => {
-      const feature = this.featureRequirements[featureName];
-      if (!feature) return;
-      
-      const adaptations = this._getFeatureAdaptations(rendererType, featureName, feature);
-      if (adaptations.length > 0) {
-        strategies.featureAdaptations[featureName] = adaptations;
-      }
-    });
-    
-    // Add renderer-specific optimizations
-    strategies.performanceOptimizations = this._getPerformanceOptimizations(rendererType);
-    
-    // Add fallback mechanisms
-    strategies.fallbackMechanisms = this._getFallbackMechanisms(rendererType, features);
-    
-    return strategies;
   }
 
   /**
@@ -518,43 +470,32 @@ export default class CapabilityManager {
     adaptations.push(...featureCompatibility.adaptations);
     
     // Export format compatibility
-    const exportScore = this._calculateExportScore(renderer, exportFormats);
-    score += exportScore.score;
-    if (!exportScore.viable) {
-      warnings.push('Required export formats not supported');
-    }
+    const exportScore = this._calculateExportScore(rendererType, exportFormats);
+    score += exportScore;
     
-    // Device/platform compatibility
+    // Device/browser compatibility
     if (!this.isRendererSupported(rendererType, deviceConstraints)) {
       viable = false;
-      warnings.push(`${rendererType} not supported on this device/browser`);
+      warnings.push(`${rendererType} renderer not supported on this device/browser`);
     }
     
-    // Apply priority weights
-    if (prioritizePerformance) {
-      score += this._getPerformanceBias(renderer) * 2;
-    }
-    
-    if (prioritizeQuality) {
-      score += this._getQualityBias(renderer) * 2;
-    }
-    
-    const confidence = this._calculateConfidence(score, viable, warnings.length);
-    const reason = this._generateSelectionReason(rendererType, dataPoints, viable, warnings);
+    // Calculate final metrics
+    const confidence = viable ? Math.min(100, (score / 50) * 100) : 0;
+    const performanceLevel = this._determinePerformanceLevel(score);
     
     return {
       totalScore: score,
       viable,
       confidence,
-      reason,
+      performanceLevel,
       warnings,
       adaptations,
-      performanceLevel: dataFitness.performance
+      reason: this._generateReasonString(rendererType, dataPoints, features)
     };
   }
 
   /**
-   * Calculate how well renderer handles data size
+   * Calculate data size fitness score
    * @private
    */
   _calculateDataFitness(renderer, dataPoints) {
@@ -565,36 +506,27 @@ export default class CapabilityManager {
       return {
         score: 0,
         viable: false,
-        performance: 'inadequate',
-        warnings: [`Data size (${dataPoints}) exceeds renderer capacity (${maximum})`]
+        warnings: [`Data size (${dataPoints}) exceeds maximum capacity (${maximum})`]
       };
     }
     
-    if (dataPoints <= optimal) {
-      return {
-        score: 100,
-        viable: true,
-        performance: 'excellent',
-        warnings: []
-      };
-    }
-    
-    // Calculate degradation
     const ratio = dataPoints / optimal;
-    const degradation = Math.min(0.9, Math.log(ratio) / Math.log(10));
-    const score = Math.max(10, 100 * (1 - degradation));
+    let score;
     
-    let performance;
-    if (score >= 80) performance = 'good';
-    else if (score >= 60) performance = 'fair';
-    else if (score >= 40) performance = 'poor';
-    else performance = 'inadequate';
+    if (ratio <= 1) {
+      score = 20; // Perfect fit
+    } else if (ratio <= 2) {
+      score = 15; // Good fit
+    } else if (ratio <= 5) {
+      score = 10; // Acceptable
+    } else {
+      score = 5; // Poor fit
+    }
     
     return {
       score,
-      viable: score >= 30,
-      performance,
-      warnings: score < 60 ? ['Performance may be impacted by large dataset'] : []
+      viable: true,
+      warnings: ratio > 2 ? [`Performance may be impacted by large dataset (${dataPoints} points)`] : []
     };
   }
 
@@ -602,179 +534,56 @@ export default class CapabilityManager {
    * Calculate export format compatibility score
    * @private
    */
-  _calculateExportScore(renderer, exportFormats) {
-    if (exportFormats.length === 0) {
-      return { score: 0, viable: true }; // No export requirements
-    }
-    
-    let supportedFormats = 0;
-    const requiredFormats = exportFormats.length;
+  _calculateExportScore(rendererType, exportFormats) {
+    let score = 0;
     
     exportFormats.forEach(format => {
-      if ((format === 'svg' && renderer.vectorExport.supported) ||
-          (['png', 'jpeg', 'webp'].includes(format) && renderer.rasterExport.supported)) {
-        supportedFormats++;
+      if (format === 'svg' && this.supportsCapability(rendererType, 'vectorExport')) {
+        score += 5;
+      } else if (format === 'png' && this.supportsCapability(rendererType, 'rasterExport')) {
+        score += 5;
       }
     });
     
-    const score = (supportedFormats / requiredFormats) * 50;
-    const viable = supportedFormats > 0; // At least one format supported
-    
-    return { score, viable };
+    return score;
   }
 
   /**
-   * Get performance bias score for renderer
+   * Determine performance level from score
    * @private
    */
-  _getPerformanceBias(renderer) {
-    const factors = [
-      this.performanceWeights[renderer.renderingSpeed] || 0,
-      renderer.memoryUsage === 'low' ? 10 : renderer.memoryUsage === 'medium' ? 5 : 0,
-      renderer.startupTime === 'fast' ? 10 : renderer.startupTime === 'medium' ? 5 : 0
-    ];
-    
-    return factors.reduce((sum, factor) => sum + factor, 0);
+  _determinePerformanceLevel(score) {
+    if (score >= 40) return 'excellent';
+    if (score >= 30) return 'good';
+    if (score >= 20) return 'fair';
+    if (score >= 10) return 'poor';
+    return 'inadequate';
   }
 
   /**
-   * Get quality bias score for renderer
+   * Generate reason string for renderer selection
    * @private
    */
-  _getQualityBias(renderer) {
-    const features = ['drawText', 'gradients', 'vectorExport', 'textMetrics'];
-    return features.reduce((sum, feature) => {
-      const cap = renderer[feature];
-      return sum + (cap ? this.qualityWeights[cap.quality] || 0 : 0);
-    }, 0);
-  }
-
-  /**
-   * Calculate confidence level
-   * @private
-   */
-  _calculateConfidence(score, viable, warningCount) {
-    if (!viable) return 'low';
-    
-    const adjustedScore = score - (warningCount * 10);
-    
-    if (adjustedScore >= 200) return 'high';
-    if (adjustedScore >= 100) return 'medium';
-    return 'low';
-  }
-
-  /**
-   * Generate human-readable selection reason
-   * @private
-   */
-  _generateSelectionReason(rendererType, dataPoints, viable, warnings) {
-    if (!viable) {
-      return `${rendererType} not viable: ${warnings.join(', ')}`;
-    }
-    
-    const renderer = this.rendererCapabilities[rendererType];
+  _generateReasonString(rendererType, dataPoints, features) {
     const reasons = [];
     
-    if (dataPoints <= renderer.optimalDataPoints) {
-      reasons.push('optimal data size');
-    } else if (dataPoints <= renderer.maxDataPoints) {
-      reasons.push('acceptable data size');
+    if (dataPoints <= 1000) {
+      reasons.push('small dataset');
+    } else if (dataPoints <= 10000) {
+      reasons.push('medium dataset');
+    } else {
+      reasons.push('large dataset');
     }
     
-    switch (rendererType) {
-      case 'svg':
-        reasons.push('excellent text rendering', 'vector export capability');
-        break;
-      case 'canvas':
-        reasons.push('balanced performance', 'broad compatibility');
-        break;
-      case 'webgl':
-        reasons.push('outstanding performance', 'GPU acceleration');
-        break;
+    if (features.includes('interactivity')) {
+      reasons.push('interactive features');
     }
     
-    return `Best choice: ${reasons.join(', ')}`;
-  }
-
-  /**
-   * Get feature-specific adaptations
-   * @private
-   */
-  _getFeatureAdaptations(rendererType, featureName, feature) {
-    const adaptations = [];
+    if (features.includes('animations')) {
+      reasons.push('animations required');
+    }
     
-    // Check each required capability
-    feature.required.forEach(capability => {
-      if (!this.supportsCapability(rendererType, capability)) {
-        adaptations.push(this._getCapabilityFallback(capability, rendererType));
-      }
-    });
-    
-    return adaptations.filter(Boolean);
-  }
-
-  /**
-   * Get fallback for unsupported capability
-   * @private
-   */
-  _getCapabilityFallback(capability, rendererType) {
-    const fallbacks = {
-      gradients: {
-        webgl: 'Use solid colors instead of gradients',
-        fallback: 'Simulate gradients with patterns'
-      },
-      textMetrics: {
-        webgl: 'Use Canvas overlay for text measurements',
-        fallback: 'Use estimated text dimensions'
-      },
-      vectorExport: {
-        canvas: 'Export as raster image instead',
-        webgl: 'Export as raster image instead'
-      }
-    };
-    
-    const capabilityFallback = fallbacks[capability];
-    if (!capabilityFallback) return null;
-    
-    return capabilityFallback[rendererType] || capabilityFallback.fallback;
-  }
-
-  /**
-   * Get renderer-specific performance optimizations
-   * @private
-   */
-  _getPerformanceOptimizations(rendererType) {
-    const optimizations = {
-      svg: [
-        'Use CSS transforms for animations',
-        'Minimize DOM manipulations',
-        'Enable shape-rendering optimizations for large datasets'
-      ],
-      canvas: [
-        'Use batch rendering for multiple elements',
-        'Disable antialiasing for large datasets',
-        'Use offscreen canvas for complex operations'
-      ],
-      webgl: [
-        'Maximize batch size for draw calls',
-        'Use instanced rendering for repeated elements',
-        'Optimize shader programs for data patterns'
-      ]
-    };
-    
-    return optimizations[rendererType] || [];
-  }
-
-  /**
-   * Get fallback mechanisms
-   * @private
-   */
-  _getFallbackMechanisms(rendererType, features) {
-    return {
-      renderingFailure: `Fall back to ${rendererType === 'webgl' ? 'canvas' : 'svg'}`,
-      featureUnavailable: 'Gracefully degrade feature functionality',
-      performanceIssues: 'Reduce visual quality or disable non-essential features'
-    };
+    return `${rendererType.toUpperCase()} selected for ${reasons.join(', ')}`;
   }
 
   /**
@@ -784,8 +593,8 @@ export default class CapabilityManager {
   _checkWebGLSupport() {
     try {
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      return !!gl;
+      return !!(window.WebGLRenderingContext && 
+               (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
     } catch (e) {
       return false;
     }
