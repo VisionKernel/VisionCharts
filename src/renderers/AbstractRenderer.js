@@ -8,31 +8,50 @@
  */
 export default class AbstractRenderer {
   constructor(container, width, height, options = {}) {
-    if (this.constructor === AbstractRenderer) {
-      throw new Error('AbstractRenderer cannot be instantiated directly');
+    if (!container) {
+      throw new Error(`[${this.constructor.name}] Container element is null or undefined. Cannot initialize renderer without a valid DOM container.`);
     }
     
+    if (!(container instanceof HTMLElement)) {
+      throw new Error(`[${this.constructor.name}] Container must be a valid HTMLElement. Received: ${typeof container} (${container})`);
+    }
+    
+    // Ensure container is attached to DOM
+    if (!document.contains(container)) {
+      console.warn(`[${this.constructor.name}] Container element is not attached to the DOM. This may cause rendering issues.`);
+    }
+    
+    // Validate dimensions
+    if (typeof width !== 'number' || width <= 0) {
+      throw new Error(`[${this.constructor.name}] Width must be a positive number. Received: ${width}`);
+    }
+    
+    if (typeof height !== 'number' || height <= 0) {
+      throw new Error(`[${this.constructor.name}] Height must be a positive number. Received: ${height}`);
+    }
+    
+    // Now proceed with initialization
     this.container = container;
     this.width = width;
     this.height = height;
-    this.options = {
-      backgroundColor: '#ffffff',
-      antialiasing: true,
-      devicePixelRatio: window.devicePixelRatio || 1,
-      ...options
-    };
+    this.options = this._normalizeOptions(options);
     
-    // Renderer state
+    // Rest of your existing constructor code...
     this.isInitialized = false;
-    this.currentClipBounds = null;
-    this.renderingContext = null;
     
-    // Performance tracking
-    this.stats = {
-      drawCalls: 0,
-      elementsRendered: 0,
-      lastFrameTime: 0
-    };
+    console.log(`[${this.constructor.name}] Constructor completed successfully`);
+  }
+
+  _validateContainer() {
+    if (!this.container) {
+      throw new Error(`[${this.constructor.name}] Container element is null`);
+    }
+    
+    if (!document.contains(this.container)) {
+      throw new Error(`[${this.constructor.name}] Container element is no longer in the DOM`);
+    }
+    
+    return true;
   }
 
   // ===== LIFECYCLE METHODS =====
@@ -42,7 +61,11 @@ export default class AbstractRenderer {
    * @returns {Promise<void>} Resolves when renderer is ready
    */
   async initialize() {
-    throw new Error('initialize() must be implemented by renderer');
+    this._validateContainer();
+    
+    // Proceed with renderer-specific initialization
+    // This should be overridden by subclasses
+    throw new Error('initialize() must be implemented by renderer subclass');
   }
   
   /**
@@ -383,6 +406,36 @@ export default class AbstractRenderer {
       fill: style.fill || 'none',
       opacity: style.opacity || 1,
       ...style
+    };
+  }
+
+  /**
+   * Normalize options object for renderer
+   * @param {Object} options - Input options object
+   * @returns {Object} Normalized options object
+   * @protected
+   */
+  _normalizeOptions(options = {}) {
+    return {
+      // Default options that all renderers should support
+      backgroundColor: '#ffffff',
+      antialiasing: true,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      
+      // Performance options
+      enableBatchRendering: true,
+      maxBatchSize: 10000,
+      
+      // Rendering quality options
+      highQualityText: true,
+      enableAntialiasing: true,
+      
+      // Debug options
+      debugMode: false,
+      logRenderOperations: false,
+      
+      // Merge user-provided options
+      ...options
     };
   }
   

@@ -1,5 +1,6 @@
 import { LinearScale, TimeScale, LogScale } from './Scale.js';
 import Axis from './Axis.js';
+import EventSystem from './EventSystem.js';
 import InteractionManager from './InteractionManager.js';
 import RendererFactory from '../renderers/RendererFactory.js';
 
@@ -34,121 +35,164 @@ import MedianLine from '../components/MedianLine.js';
  * - Full backwards compatibility with existing VisionCharts code
  */
 export default class Chart {
-  constructor(config = {}) {
-    console.log('Chart constructor called with comprehensive multi-renderer support');
+  /**
+ * Chart constructor - Enhanced with multi-renderer support
+ * @param {Object} config - Chart configuration
+ */
+constructor(config = {}) {
+  console.log('Chart constructor called with comprehensive multi-renderer support');
+  
+  // Extract and validate configuration
+  this.config = {
+    container: null,
+    data: [],
+    datasets: [],
+    ...config
+  };
+  
+  // Extract container from config (CRITICAL FIX)
+  const containerElement = this.config.container;
+  
+  // Validate container immediately
+  if (!containerElement) {
+    throw new Error('Chart configuration must include a valid container element');
+  }
+  
+  if (!(containerElement instanceof HTMLElement)) {
+    throw new Error('Container must be a valid HTMLElement. Received: ' + typeof containerElement);
+  }
+  
+  if (!document.contains(containerElement)) {
+    console.warn('Container element is not attached to the DOM');
+  }
+  
+  // Merge options with defaults
+  this.options = {
+    // Default options
+    width: 800,
+    height: 400,
+    backgroundColor: '#ffffff',
+    antialiasing: true,
     
-    // Extract and merge configuration
-    this.config = this._processConfig(config);
-    this.options = this._processOptions(this.config);
+    // Margins
+    margins: {
+      top: 20,
+      right: 20,
+      bottom: 40,
+      left: 50
+    },
     
-    // Multi-renderer system
-    this.rendererFactory = new RendererFactory({
-      enableAutoSwitching: this.options.enableAutoSwitching !== false,
-      enablePerformanceMonitoring: this.options.enablePerformanceMonitoring !== false,
-      performanceOptions: {
-        canvasThreshold: this.options.canvasThreshold || 100000,
-        svgFallbackThreshold: this.options.svgFallbackThreshold || 10000,
-        autoOptimizeFeatures: this.options.autoOptimizeFeatures !== false
-      }
-    });
+    // Multi-renderer options
+    legacyMode: false,
+    coordinatedInteractions: true,
     
-    // Renderer state
-    this.renderer = null;
-    this.rendererMetadata = null;
-    this.chartId = null;
-    
-    // Chart state - preserve all existing state management
-    this.state = {
-      container: null,
-      rendered: false,
-      initializing: false,
-      dimensions: {
-        width: 0,
-        height: 0,
-        innerWidth: 0,
-        innerHeight: 0
-      },
-      scales: {
+    // Merge provided options
+    ...this.config.options
+  };
+  
+  // Initialize core systems
+  this.rendererFactory = new RendererFactory({
+    defaultRenderer: 'canvas',
+    enableAutoSwitching: true,
+    enablePerformanceMonitoring: true
+  });
+  
+  this.eventSystem = new EventSystem();
+  this.interactionManager = new InteractionManager();
+  
+  // Initialize state with CONTAINER SET
+  this.state = {
+    container: containerElement,  // SET FROM CONFIG - THIS IS THE FIX!
+    rendered: false,
+    initializing: false,
+    dimensions: {
+      width: 0,
+      height: 0,
+      innerWidth: 0,
+      innerHeight: 0
+    },
+    scales: {
+      x: null,
+      y: null
+    },
+    components: {
+      // Multi-renderer components
+      axes: {
         x: null,
         y: null
       },
-      components: {
-        // Multi-renderer components
-        axes: {
-          x: null,
-          y: null
-        },
-        legend: null,
-        tooltip: null,
-        crosshair: null,
-        
-        // Traditional components
-        recessionLines: null,
-        endingLabels: null,
-        zeroLine: null,
-        averageLine: null,
-        medianLine: null,
-        grid: null
-      },
+      legend: null,
+      tooltip: null,
+      crosshair: null,
       
-      // Legacy SVG references for backwards compatibility
-      svg: null,
-      chart: null
-    };
+      // Traditional components
+      recessionLines: null,
+      endingLabels: null,
+      zeroLine: null,
+      averageLine: null,
+      medianLine: null,
+      grid: null
+    },
     
-    // Multi-renderer component initialization state
-    this.componentInitializationState = {
-      axis: false,
-      tooltip: false,
-      legend: false,
-      crosshair: false
-    };
-    
-    // Event handling - preserve existing system
-    this.eventHandlers = new Map();
-    this.resizeHandler = null;
-    
-    // Interaction system handlers
-    this.interactionHandlers = [];
-    this.legendInteractionHandlers = [];
-    this.crosshairInteractionHandlers = [];
-    
-    // Performance monitoring
-    this.performanceMetrics = {
-      lastRenderTime: 0,
-      averageRenderTime: 0,
-      renderCount: 0,
-      lastRendererSwitch: 0,
-      componentInitTime: 0
-    };
-    
-    // Component performance tracking
-    this.componentMetrics = {
-      axis: { lastRenderTime: 0, updateCount: 0 },
-      tooltip: { showCount: 0, averageShowTime: 0 },
-      legend: { lastRenderTime: 0, itemCount: 0 },
-      crosshair: { updateCount: 0, averageUpdateTime: 0 }
-    };
-    
-    // Renderer switching state
-    this.rendererSwitching = {
-      inProgress: false,
-      pendingSwitch: null,
-      lastSwitchReason: null
-    };
-    
-    // Backwards compatibility flags
-    this.isLegacyMode = this.options.legacyMode === true;
-    this.legacyComponents = new Set(); // Track which components are using legacy mode
-    
-    // Dataset highlighting state (for legend interactions)
-    this.datasetHighlightState = new Map();
-    
-    // Component coordination flags
-    this.coordinatedInteractions = this.options.coordinatedInteractions !== false;
-    
-    console.log('Chart initialized with comprehensive multi-renderer support');
-  }
+    // Legacy SVG references for backwards compatibility
+    svg: null,
+    chart: null
+  };
+  
+  // Rest of your existing constructor initialization...
+  this.componentInitializationState = {
+    axis: false,
+    tooltip: false,
+    legend: false,
+    crosshair: false
+  };
+  
+  // Event handling - preserve existing system
+  this.eventHandlers = new Map();
+  this.resizeHandler = null;
+  
+  // Interaction system handlers
+  this.interactionHandlers = [];
+  this.legendInteractionHandlers = [];
+  this.crosshairInteractionHandlers = [];
+  
+  // Performance monitoring
+  this.performanceMetrics = {
+    lastRenderTime: 0,
+    averageRenderTime: 0,
+    renderCount: 0,
+    lastRendererSwitch: 0,
+    componentInitTime: 0
+  };
+  
+  // Component performance tracking
+  this.componentMetrics = {
+    axis: { lastRenderTime: 0, updateCount: 0 },
+    tooltip: { showCount: 0, averageShowTime: 0 },
+    legend: { lastRenderTime: 0, itemCount: 0 },
+    crosshair: { updateCount: 0, averageUpdateTime: 0 }
+  };
+  
+  // Renderer switching state
+  this.rendererSwitching = {
+    inProgress: false,
+    pendingSwitch: null,
+    lastSwitchReason: null
+  };
+  
+  // Backwards compatibility flags
+  this.isLegacyMode = this.options.legacyMode === true;
+  this.legacyComponents = new Set();
+  
+  // Dataset highlighting state (for legend interactions)
+  this.datasetHighlightState = new Map();
+  
+  // Component coordination flags
+  this.coordinatedInteractions = this.options.coordinatedInteractions !== false;
+  
+  console.log('Chart initialized with comprehensive multi-renderer support');
+  console.log('Container element:', this.state.container);
+}
 
   // ===== CORE INITIALIZATION METHODS =====
 

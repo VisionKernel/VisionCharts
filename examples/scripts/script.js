@@ -467,6 +467,15 @@ async function initLineChart() {
   log('Initializing Line Chart with Multi-Renderer Support');
   
   try {
+    // Ensure the container element exists
+    const containerElement = document.getElementById('line-chart');
+    
+    if (!containerElement) {
+      throw new Error('Line chart container element with ID "line-chart" not found in DOM. Please ensure the HTML element exists.');
+    }
+    
+    console.log('Container element found:', containerElement);
+
     // Load all datasets
     availableDatasets = await loadAllDatasets();
     
@@ -493,12 +502,12 @@ async function initLineChart() {
     ];
     
     // Get initial values from inputs
-    const xAxisName = document.getElementById('line-x-name').value;
-    const yAxisName = document.getElementById('line-y-name').value;
+    const xAxisName = document.getElementById('line-x-name')?.value || 'Date';
+    const yAxisName = document.getElementById('line-y-name')?.value || 'Value';
     
     // Create the line chart with enhanced multi-renderer configuration
     lineChart = new LineChart({
-      container: document.getElementById('line-chart'),
+      container: containerElement,
       data: data,
       options: {
         title: 'Time Series Data',
@@ -579,6 +588,44 @@ async function initLineChart() {
   } catch (error) {
     log('Error initializing line chart:', error);
     handleError('line-chart', error);
+  }
+}
+
+function waitForDOMReady() {
+  return new Promise((resolve) => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', resolve);
+    } else {
+      resolve();
+    }
+  });
+}
+
+async function initializeCharts() {
+  try {
+    // Ensure DOM is fully ready
+    await waitForDOMReady();
+    
+    // Small delay to ensure all elements are rendered
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Now initialize charts
+    await initLineChart();
+    
+    // Set up other functionality
+    setupStudies();
+    updateStudyDatasetOptions();
+    
+    log('Multi-renderer initialization complete');
+    log('Line chart renderer:', lineChart?.renderer?.constructor.name || 'Not available');
+    
+  } catch (error) {
+    console.error('Failed to initialize charts:', error);
+    // Display error to user
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'position: fixed; top: 10px; left: 10px; background: red; color: white; padding: 10px; z-index: 9999;';
+    errorDiv.textContent = `Chart initialization failed: ${error.message}`;
+    document.body.appendChild(errorDiv);
   }
 }
 
@@ -1348,6 +1395,65 @@ function updateStudyDatasetOptions() {
 }
 
 // =============================================================================
+// DOM ELEMENT DEBUGGING
+// =============================================================================
+
+function debugDOMElements() {
+  console.group('🔍 DOM Element Debug');
+  
+  // Check for required chart containers
+  const requiredElements = [
+    'line-chart',
+    'bar-chart', 
+    'line-x-name',
+    'line-y-name'
+  ];
+  
+  console.log('📋 Checking for required elements:');
+  
+  const missing = [];
+  const found = [];
+  
+  requiredElements.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      found.push(id);
+      console.log(`✅ Found: #${id}`, element);
+    } else {
+      missing.push(id);
+      console.error(`❌ Missing: #${id}`);
+    }
+  });
+  
+  // Summary
+  console.log(`\n📊 Summary:`);
+  console.log(`   Found: ${found.length}/${requiredElements.length} elements`);
+  console.log(`   Missing: ${missing.length} elements`);
+  
+  if (missing.length > 0) {
+    console.error(`\n🚨 Missing elements: ${missing.join(', ')}`);
+    console.error('These elements must exist in your HTML before initializing charts!');
+  }
+  
+  // Check document ready state
+  console.log(`\n📄 Document state: ${document.readyState}`);
+  
+  // Check for any elements with class names that might be chart containers
+  const potentialContainers = document.querySelectorAll('[id*="chart"], .chart, [class*="chart"]');
+  if (potentialContainers.length > 0) {
+    console.log(`\n🎯 Found potential chart containers:`, potentialContainers);
+  }
+  
+  console.groupEnd();
+  
+  return {
+    found,
+    missing,
+    allElementsFound: missing.length === 0
+  };
+}
+
+// =============================================================================
 // TAB AND UI MANAGEMENT
 // =============================================================================
 
@@ -1414,27 +1520,27 @@ function setupAccordions() {
 // INITIALIZATION
 // =============================================================================
 
-// Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
-  log('DOM fully loaded - Initializing VisionCharts Multi-Renderer Demo');
+  console.log('🚀 DOM Content Loaded - Running diagnostics...');
   
-  // Set up tab switching
-  setupTabs();
+  // Run debug check
+  const debugResult = debugDOMElements();
   
-  // Set up accordions
-  setupAccordions();
+  if (!debugResult.allElementsFound) {
+    console.error('❌ Cannot proceed with chart initialization - missing required DOM elements!');
+    return;
+  }
   
-  // Initialize line chart by default (since it's the active tab)
-  initLineChart().then(() => {
-    // Set up studies after line chart is initialized
-    setupStudies();
-    updateStudyDatasetOptions();
-    
-    log('Multi-renderer initialization complete');
-    log('Line chart renderer:', lineChart?.renderer?.constructor.name || 'Not available');
-  }).catch(error => {
-    console.error('Failed to initialize line chart:', error);
-  });
-  
-  log('Setup complete - Ready for multi-renderer charting');
+  // Add a small delay to ensure everything is ready
+  setTimeout(() => {
+    console.log('✅ All elements found - proceeding with chart initialization...');
+    initializeCharts();
+  }, 100);
 });
+
+// Emergency function to manually check DOM state (call from browser console)
+window.debugVisionCharts = function() {
+  console.clear();
+  console.log('🔧 Manual VisionCharts Debug Check');
+  return debugDOMElements();
+};

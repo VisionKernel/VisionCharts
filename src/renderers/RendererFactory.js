@@ -79,6 +79,19 @@ export default class RendererFactory {
    */
   async createRenderer(container, width, height, chartConfig, options = {}) {
     console.log('RendererFactory: Creating renderer for chart');
+
+    if (!container) {
+      throw new Error('Container element is null or undefined. Ensure the DOM element exists before creating the chart.');
+    }
+    
+    if (!(container instanceof HTMLElement)) {
+      throw new Error('Container must be a valid HTMLElement. Received: ' + typeof container);
+    }
+    
+    // Ensure container is in the DOM
+    if (!document.contains(container)) {
+      throw new Error('Container element is not attached to the DOM.');
+    }
     
     try {
       // Analyze requirements and get recommendation
@@ -158,9 +171,7 @@ export default class RendererFactory {
       
     } catch (error) {
       console.error('RendererFactory: Failed to create renderer:', error);
-      
-      // Fallback to default renderer
-      return this._createFallbackRenderer(container, width, height, options);
+      throw error;
     }
   }
 
