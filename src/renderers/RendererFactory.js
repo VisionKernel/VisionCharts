@@ -9,6 +9,8 @@ import PerformanceMonitor from '../core/PerformanceMonitor.js';
  * 
  * Coordinates renderer selection, creation, switching, and lifecycle management.
  * Provides a clean interface for charts to use the multi-renderer system.
+ * 
+ * Emergency fallback systems removed for cleaner error handling.
  */
 export default class RendererFactory {
   constructor(options = {}) {
@@ -42,160 +44,115 @@ export default class RendererFactory {
       ...options
     };
     
-    try {
-      // Core components with error handling
-      this.capabilityManager = new CapabilityManager();
-      
-      // Validate CapabilityManager initialization
-      if (!this.capabilityManager || typeof this.capabilityManager.getCapabilities !== 'function') {
-        console.error('RendererFactory: CapabilityManager failed to initialize properly');
-        throw new Error('CapabilityManager initialization failed');
-      }
-      
-      this.performanceMonitor = new PerformanceMonitor(
-        this.capabilityManager, 
-        this.options.performanceOptions
-      );
-      
-      // Renderer registry
-      this.rendererClasses = new Map([
-        ['svg', SvgRenderer],
-        ['canvas', CanvasRenderer],
-        ['webgl', WebGLRenderer]
-      ]);
-      
-      // Active renderers by chart instance
-      this.activeRenderers = new Map();
-      this.chartConfigurations = new Map();
-      
-      // Event handling
-      this.eventListeners = new Map();
-      this.performanceEventHandlers = new Map(); // Track performance monitor handlers
-      
-      // Switching state
-      this.switchingQueue = new Map(); // Charts pending renderer switch
-      
-      // Initialization state
-      this.isDestroyed = false;
-      
-      // Setup performance monitor event handlers
-      this._setupPerformanceMonitorEvents();
-      
-      console.log('RendererFactory initialized successfully');
-      
-    } catch (error) {
-      console.error('RendererFactory initialization failed:', error);
-      throw error;
+    // Core components initialization
+    this.capabilityManager = new CapabilityManager();
+    
+    // Validate CapabilityManager initialization
+    if (!this.capabilityManager || typeof this.capabilityManager.getCapabilities !== 'function') {
+      throw new Error('CapabilityManager initialization failed');
     }
+    
+    this.performanceMonitor = new PerformanceMonitor(
+      this.capabilityManager, 
+      this.options.performanceOptions
+    );
+    
+    // Renderer registry
+    this.rendererClasses = new Map([
+      ['svg', SvgRenderer],
+      ['canvas', CanvasRenderer],
+      ['webgl', WebGLRenderer]
+    ]);
+    
+    // Active renderers by chart instance
+    this.activeRenderers = new Map();
+    this.chartConfigurations = new Map();
+    
+    // Event handling
+    this.eventListeners = new Map();
+    this.performanceEventHandlers = new Map();
+    
+    // Switching state
+    this.switchingQueue = new Map();
+    
+    // Initialization state
+    this.isDestroyed = false;
+    
+    // Setup performance monitor event handlers
+    this._setupPerformanceMonitorEvents();
+    
+    console.log('RendererFactory initialized successfully');
   }
 
-  // ===== RENDERER CREATION AND MANAGEMENT =====
+  // ===== RENDERER CREATION =====
 
   /**
-   * Enhanced createRenderer method with better error handling
-   * @param {HTMLElement} container - Chart container element
+   * Create optimal renderer for chart configuration
+   * @param {HTMLElement} container - Container element
    * @param {number} width - Chart width
    * @param {number} height - Chart height
    * @param {Object} chartConfig - Chart configuration
    * @param {Object} options - Additional options
-   * @returns {Promise<Object>} Renderer instance with metadata
+   * @returns {Promise<Object>} Renderer creation result
    */
-  async createRenderer(container, width, height, chartConfig, options = {}) {
+  async createRenderer(container, width, height, chartConfig = {}, options = {}) {
     if (this.isDestroyed) {
       throw new Error('RendererFactory has been destroyed');
     }
-    
-    console.log('RendererFactory: Creating renderer for chart');
-    
-    try {
-      // Ensure capability manager is properly initialized
-      if (!this.capabilityManager) {
-        console.error('RendererFactory: CapabilityManager not initialized');
-        throw new Error('CapabilityManager not initialized');
-      }
 
-      // Validate that getCapabilities method exists
-      if (typeof this.capabilityManager.getCapabilities !== 'function') {
-        console.error('RendererFactory: CapabilityManager.getCapabilities method missing');
-        throw new Error('CapabilityManager.getCapabilities method not available');
-      }
+    console.log('RendererFactory: Creating renderer');
 
-      // Analyze requirements and get recommendation
-      const recommendation = this.capabilityManager.selectOptimalRenderer({
-        dataPoints: this._countDataPoints(chartConfig),
-        features: this._extractFeatures(chartConfig),
-        exportFormats: chartConfig.exportFormats || [],
-        prioritizePerformance: options.prioritizePerformance || false,
-        prioritizeQuality: options.prioritizeQuality || false,
-        deviceConstraints: {
-          userAgent: navigator.userAgent,
-          platform: navigator.platform
-        }
-      });
-      
-      // Apply unified VisionCharts policy
-      const selectedRenderer = this._applyVisionChartsPolicy(recommendation, chartConfig);
-      
-      // Create renderer instance with enhanced error handling
-      const rendererInstance = await this._createRendererInstanceSafe(
-        selectedRenderer.primary,
-        container,
-        width,
-        height,
-        {
-          ...this.options.rendererOptions[selectedRenderer.primary],
-          ...options
-        }
-      );
-      
-      // Get capabilities safely
-      const capabilities = this._getCapabilitiesSafe(selectedRenderer.primary);
-      
-      // Create renderer metadata
-      const chartId = this._generateChartId();
-      const rendererMetadata = {
-        type: selectedRenderer.primary,
-        instance: rendererInstance,
-        recommendation: selectedRenderer,
-        capabilities: capabilities,
-        container,
-        width,
-        height,
-        createdAt: Date.now(),
-        switchCount: 0,
-        isFallback: false
-      };
-      
-      // Store renderer metadata
-      this.activeRenderers.set(chartId, rendererMetadata);
-      this.chartConfigurations.set(chartId, chartConfig);
-      
-      console.log(`RendererFactory: Successfully created ${selectedRenderer.primary} renderer`);
-      
-      // Emit creation event
-      this._emit('renderer-created', { 
-        chartId, 
-        rendererType: selectedRenderer.primary,
-        recommendation: selectedRenderer 
-      });
-      
-      return {
-        renderer: rendererInstance,
-        metadata: rendererMetadata,
-        chartId
-      };
-      
-    } catch (error) {
-      console.error('RendererFactory: Primary renderer creation failed:', error);
-      
-      // Try emergency fallback
-      try {
-        return await this._createEmergencyFallback(container, width, height, options);
-      } catch (fallbackError) {
-        console.error('RendererFactory: Emergency fallback also failed:', fallbackError);
-        throw new Error('Complete renderer system failure');
-      }
-    }
+    // Get renderer recommendation
+    const recommendation = this._getRendererRecommendation(chartConfig);
+    const selectedRenderer = this._selectRenderer(recommendation, chartConfig);
+    
+    console.log(`RendererFactory: Selected ${selectedRenderer.primary} renderer`, selectedRenderer);
+
+    // Get capabilities for the selected renderer
+    const capabilities = this.capabilityManager.getCapabilities()[selectedRenderer.primary] || {};
+
+    // Create renderer instance
+    const rendererInstance = await this._createRendererInstanceSafe(
+      selectedRenderer.primary,
+      container,
+      width,
+      height,
+      { ...this.options.rendererOptions[selectedRenderer.primary], ...options }
+    );
+
+    // Generate chart ID and create metadata
+    const chartId = this._generateChartId();
+    const rendererMetadata = {
+      type: selectedRenderer.primary,
+      instance: rendererInstance,
+      recommendation: selectedRenderer,
+      capabilities: capabilities,
+      container,
+      width,
+      height,
+      createdAt: Date.now(),
+      switchCount: 0,
+      isFallback: false
+    };
+    
+    // Store renderer metadata
+    this.activeRenderers.set(chartId, rendererMetadata);
+    this.chartConfigurations.set(chartId, chartConfig);
+    
+    console.log(`RendererFactory: Successfully created ${selectedRenderer.primary} renderer`);
+    
+    // Emit creation event
+    this._emit('renderer-created', { 
+      chartId, 
+      rendererType: selectedRenderer.primary,
+      recommendation: selectedRenderer 
+    });
+    
+    return {
+      renderer: rendererInstance,
+      metadata: rendererMetadata,
+      chartId
+    };
   }
 
   /**
@@ -231,7 +188,7 @@ export default class RendererFactory {
     this.switchingQueue.set(chartId, true);
     
     try {
-      console.log(`RendererFactory: Switching from ${currentMetadata.type} to ${newRendererType} - ${reason}`);
+      console.log(`RendererFactory: Switching chart ${chartId} from ${currentMetadata.type} to ${newRendererType} (${reason})`);
       
       // Create new renderer
       const newRenderer = await this._createRendererInstanceSafe(
@@ -239,7 +196,7 @@ export default class RendererFactory {
         currentMetadata.container,
         currentMetadata.width,
         currentMetadata.height,
-        this.options.rendererOptions[newRendererType]
+        this.options.rendererOptions[newRendererType] || {}
       );
       
       // Transfer state from old to new renderer
@@ -249,43 +206,112 @@ export default class RendererFactory {
       await this._cleanupRenderer(currentMetadata.instance);
       
       // Update metadata
+      const newCapabilities = this.capabilityManager.getCapabilities()[newRendererType] || {};
       currentMetadata.instance = newRenderer;
       currentMetadata.type = newRendererType;
+      currentMetadata.capabilities = newCapabilities;
       currentMetadata.switchCount += 1;
       currentMetadata.lastSwitchTime = Date.now();
       currentMetadata.lastSwitchReason = reason;
-      currentMetadata.capabilities = this._getCapabilitiesSafe(newRendererType);
       
-      console.log(`RendererFactory: Successfully switched to ${newRendererType} renderer`);
+      console.log(`RendererFactory: Successfully switched to ${newRendererType}`);
       
       // Emit switch event
       this._emit('renderer-switched', {
         chartId,
-        from: currentMetadata.type,
-        to: newRendererType,
-        reason,
-        switchCount: currentMetadata.switchCount
+        oldType: currentMetadata.type,
+        newType: newRendererType,
+        reason
       });
       
       return true;
       
     } catch (error) {
-      console.error(`RendererFactory: Renderer switch failed:`, error);
-      
-      // Emit failure event
-      this._emit('renderer-switch-failed', {
-        chartId,
-        from: currentMetadata.type,
-        to: newRendererType,
-        reason,
-        error: error.message
-      });
-      
+      console.error(`RendererFactory: Failed to switch renderer for chart ${chartId}:`, error);
       return false;
       
     } finally {
       this.switchingQueue.delete(chartId);
     }
+  }
+
+  // ===== RECOMMENDATION ENGINE =====
+
+  /**
+   * Get renderer recommendation based on chart configuration
+   * @private
+   */
+  _getRendererRecommendation(chartConfig) {
+    const dataPoints = this._calculateDataPoints(chartConfig);
+    
+    // WebGL for very large datasets
+    if (dataPoints > this.options.performanceOptions.canvasThreshold) {
+      return {
+        primary: 'webgl',
+        fallbacks: ['canvas', 'svg'],
+        reason: `Large dataset (${dataPoints} points) - using WebGL for optimal performance`,
+        dataPoints
+      };
+    }
+    
+    // SVG for small datasets with high quality requirements
+    if (dataPoints < this.options.performanceOptions.svgFallbackThreshold) {
+      return {
+        primary: 'svg',
+        fallbacks: ['canvas'],
+        reason: `Small dataset (${dataPoints} points) - using SVG for crisp rendering`,
+        dataPoints
+      };
+    }
+    
+    // Use Canvas as balanced default
+    return {
+      primary: 'canvas',
+      fallbacks: ['svg'],
+      reason: `Medium dataset (${dataPoints} points) - using Canvas for balanced performance`,
+      dataPoints
+    };
+  }
+
+  /**
+   * Select final renderer from recommendation
+   * @private
+   */
+  _selectRenderer(recommendation, chartConfig) {
+    const supportedRenderers = this.getSupportedRenderers();
+    
+    // Try primary recommendation
+    if (supportedRenderers.includes(recommendation.primary)) {
+      return recommendation;
+    }
+    
+    // Try fallbacks
+    for (const fallbackType of recommendation.fallbacks) {
+      if (supportedRenderers.includes(fallbackType)) {
+        return {
+          ...recommendation,
+          primary: fallbackType,
+          reason: `${recommendation.reason} (fallback to ${fallbackType})`
+        };
+      }
+    }
+    
+    // If no renderers are supported, throw error
+    throw new Error(`No supported renderers available. Supported: ${supportedRenderers.join(', ')}`);
+  }
+
+  /**
+   * Calculate total data points from chart configuration
+   * @private
+   */
+  _calculateDataPoints(chartConfig) {
+    if (!chartConfig.datasets || !Array.isArray(chartConfig.datasets)) {
+      return 0;
+    }
+    
+    return chartConfig.datasets.reduce((total, dataset) => {
+      return total + (dataset.data ? dataset.data.length : 0);
+    }, 0);
   }
 
   // ===== PERFORMANCE MONITORING =====
@@ -296,7 +322,7 @@ export default class RendererFactory {
    * @param {Object} chart - Chart instance
    */
   startMonitoring(chartId, chart) {
-    if (!this.options.enablePerformanceMonitoring || this.isDestroyed) return;
+    if (this.isDestroyed) return;
     
     const metadata = this.activeRenderers.get(chartId);
     if (!metadata) {
@@ -306,10 +332,9 @@ export default class RendererFactory {
     
     console.log(`RendererFactory: Starting performance monitoring for chart ${chartId}`);
     
-    // Start performance monitoring
-    this.performanceMonitor.startMonitoring(chart);
+    this.performanceMonitor.startMonitoring();
     
-    // Store chart reference
+    // Store chart reference for monitoring
     metadata.chart = chart;
     metadata.monitoringStarted = Date.now();
     
@@ -440,6 +465,35 @@ export default class RendererFactory {
     console.log('RendererFactory destroyed');
   }
 
+  // ===== EVENT HANDLING =====
+
+  /**
+   * Add event listener
+   * @param {string} event - Event name
+   * @param {Function} callback - Event callback
+   */
+  addEventListener(event, callback) {
+    if (this.isDestroyed) return;
+    
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, new Set());
+    }
+    this.eventListeners.get(event).add(callback);
+  }
+
+  /**
+   * Remove event listener
+   * @param {string} event - Event name
+   * @param {Function} callback - Event callback
+   */
+  removeEventListener(event, callback) {
+    if (this.isDestroyed) return;
+    
+    if (this.eventListeners.has(event)) {
+      this.eventListeners.get(event).delete(callback);
+    }
+  }
+
   // ===== INFORMATION AND UTILITIES =====
 
   /**
@@ -487,35 +541,6 @@ export default class RendererFactory {
     };
   }
 
-  // ===== EVENT HANDLING =====
-
-  /**
-   * Add event listener
-   * @param {string} event - Event name
-   * @param {Function} callback - Event callback
-   */
-  addEventListener(event, callback) {
-    if (this.isDestroyed) return;
-    
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, new Set());
-    }
-    this.eventListeners.get(event).add(callback);
-  }
-
-  /**
-   * Remove event listener
-   * @param {string} event - Event name
-   * @param {Function} callback - Event callback
-   */
-  removeEventListener(event, callback) {
-    if (this.isDestroyed) return;
-    
-    if (this.eventListeners.has(event)) {
-      this.eventListeners.get(event).delete(callback);
-    }
-  }
-
   // ===== PRIVATE HELPER METHODS =====
 
   /**
@@ -529,18 +554,13 @@ export default class RendererFactory {
       throw new Error(`Renderer class for ${rendererType} not found`);
     }
     
-    try {
-      const renderer = new RendererClass(container, width, height, options);
-      await renderer.initialize();
-      
-      // Validate renderer has required methods
-      this._validateRendererInterface(renderer);
-      
-      return renderer;
-    } catch (error) {
-      console.error(`Failed to create ${rendererType} renderer:`, error);
-      throw error;
-    }
+    const renderer = new RendererClass(container, width, height, options);
+    await renderer.initialize();
+    
+    // Validate renderer has required methods
+    this._validateRendererInterface(renderer);
+    
+    return renderer;
   }
 
   /**
@@ -564,140 +584,7 @@ export default class RendererFactory {
     
     // Ensure stats object exists and is properly initialized
     if (!renderer.stats || typeof renderer.stats !== 'object') {
-      console.warn('Renderer missing stats object, initializing');
-      renderer.stats = {
-        drawCalls: 0,
-        elementsRendered: 0,
-        lastFrameTime: 0
-      };
-    }
-    
-    // Ensure required properties exist
-    const requiredProperties = ['width', 'height', 'container', 'isInitialized'];
-    const missingProperties = requiredProperties.filter(prop => 
-      renderer[prop] === undefined
-    );
-    
-    if (missingProperties.length > 0) {
-      throw new Error(`Renderer missing required properties: ${missingProperties.join(', ')}`);
-    }
-    
-    // Validate that the renderer is properly initialized
-    if (!renderer.isInitialized) {
-      throw new Error('Renderer claims to be initialized but isInitialized flag is false');
-    }
-  }
-
-  /**
-   * Apply unified VisionCharts-specific renderer selection policy
-   * @private
-   */
-  _applyVisionChartsPolicy(recommendation, chartConfig) {
-    const dataPoints = this._countDataPoints(chartConfig);
-    const threshold = this.options.performanceOptions.canvasThreshold;
-    const svgThreshold = this.options.performanceOptions.svgFallbackThreshold;
-    
-    // Unified VisionCharts policy: Canvas default, WebGL at 100K+, SVG fallback below 10K
-    if (dataPoints >= threshold) {
-      // Large dataset: prefer WebGL if available
-      if (this.capabilityManager.isRendererSupported('webgl')) {
-        return {
-          ...recommendation,
-          primary: 'webgl',
-          fallbacks: ['canvas', 'svg'],
-          reason: `Large dataset (${dataPoints} points) - using WebGL for optimal performance`,
-          dataPoints
-        };
-      } else {
-        return {
-          ...recommendation,
-          primary: 'canvas',
-          fallbacks: ['svg'],
-          reason: `Large dataset (${dataPoints} points) - WebGL not available, using Canvas`,
-          dataPoints
-        };
-      }
-    } else if (dataPoints < svgThreshold) {
-      // Small dataset: use SVG for crisp rendering
-      return {
-        ...recommendation,
-        primary: 'svg',
-        fallbacks: ['canvas'],
-        reason: `Small dataset (${dataPoints} points) - using SVG for optimal quality`,
-        dataPoints
-      };
-    } else {
-      // Medium dataset: use Canvas as balanced default
-      return {
-        ...recommendation,
-        primary: 'canvas',
-        fallbacks: ['svg'],
-        reason: `Medium dataset (${dataPoints} points) - using Canvas for balanced performance`,
-        dataPoints
-      };
-    }
-  }
-
-  /**
-   * Safely get capabilities with fallback
-   * @private
-   */
-  _getCapabilitiesSafe(rendererType) {
-    try {
-      const allCapabilities = this.capabilityManager.getCapabilities();
-      return allCapabilities[rendererType] || {};
-    } catch (error) {
-      console.warn('Failed to get capabilities, using empty object:', error);
-      return {};
-    }
-  }
-
-  /**
-   * Enhanced emergency fallback with better error handling
-   * @private
-   */
-  async _createEmergencyFallback(container, width, height, options) {
-    console.log('RendererFactory: Creating emergency fallback renderer (SVG)');
-    
-    try {
-      // Import SvgRenderer if not already available
-      if (!this.rendererClasses.has('svg')) {
-        const { default: SvgRenderer } = await import('./SvgRenderer.js');
-        this.rendererClasses.set('svg', SvgRenderer);
-      }
-      
-      const SvgRenderer = this.rendererClasses.get('svg');
-      const renderer = new SvgRenderer(container, width, height, options);
-      await renderer.initialize();
-      
-      // Validate the fallback renderer
-      this._validateRendererInterface(renderer);
-      
-      const chartId = this._generateChartId();
-      const metadata = {
-        type: 'svg',
-        instance: renderer,
-        recommendation: { primary: 'svg', reason: 'Emergency fallback' },
-        capabilities: this._getCapabilitiesSafe('svg'),
-        container,
-        width,
-        height,
-        createdAt: Date.now(),
-        switchCount: 0,
-        isFallback: true
-      };
-      
-      this.activeRenderers.set(chartId, metadata);
-      
-      return {
-        renderer,
-        metadata,
-        chartId
-      };
-      
-    } catch (error) {
-      console.error('RendererFactory: Even SVG fallback failed:', error);
-      throw new Error('Complete renderer system failure');
+      throw new Error('Renderer stats object not properly initialized');
     }
   }
 
@@ -707,8 +594,6 @@ export default class RendererFactory {
    */
   async _transferRendererState(oldRenderer, newRenderer) {
     try {
-      // Basic state transfer - could be enhanced with more sophisticated state management
-      
       // Transfer dimensions
       if (oldRenderer.width && oldRenderer.height) {
         newRenderer.resize(oldRenderer.width, oldRenderer.height);
@@ -722,12 +607,6 @@ export default class RendererFactory {
         const bounds = oldRenderer.currentClipBounds;
         newRenderer.setClipBounds(bounds.x, bounds.y, bounds.width, bounds.height);
       }
-      
-      // Note: In a real implementation, this would transfer:
-      // - Current zoom/pan state
-      // - Active selections
-      // - Animation states
-      // - Cached data
       
       console.log('RendererFactory: State transferred between renderers');
       
@@ -781,17 +660,9 @@ export default class RendererFactory {
    * @private
    */
   _cleanupPerformanceMonitorEvents() {
-    if (!this.performanceMonitor || !this.performanceEventHandlers) return;
-    
-    // Remove all tracked event handlers
-    this.performanceEventHandlers.forEach((handler, event) => {
-      try {
-        this.performanceMonitor.removeEventListener(event, handler);
-      } catch (error) {
-        console.warn(`Failed to remove performance monitor event handler for ${event}:`, error);
-      }
+    this.performanceEventHandlers.forEach((handler, eventType) => {
+      this.performanceMonitor.removeEventListener(eventType, handler);
     });
-    
     this.performanceEventHandlers.clear();
   }
 
@@ -800,92 +671,26 @@ export default class RendererFactory {
    * @private
    */
   _handlePerformanceCritical(data) {
-    if (!this.options.enableAutoSwitching || this.isDestroyed) return;
-    
-    // Find charts experiencing performance issues and trigger renderer switches
+    // Find charts that might benefit from renderer switching
     this.activeRenderers.forEach((metadata, chartId) => {
-      if (metadata.chart && metadata.type !== 'webgl') {
-        // Consider switching to WebGL for better performance
-        const config = this.chartConfigurations.get(chartId);
-        if (config && this._countDataPoints(config) >= this.options.performanceOptions.canvasThreshold) {
-          this.switchRenderer(chartId, 'webgl', 'Performance critical - automatic optimization');
-        }
+      if (metadata.chart && metadata.monitoringStarted) {
+        console.log(`RendererFactory: Considering renderer switch for chart ${chartId} due to performance`);
+        // Could implement automatic switching logic here
       }
     });
   }
 
   /**
-   * Handle renderer recommendation changes
+   * Handle renderer recommendations from performance monitor
    * @private
    */
   _handleRendererRecommendation(data) {
-    if (!this.options.enableAutoSwitching || this.isDestroyed) return;
-    
-    // This would trigger automatic renderer switching based on performance analysis
-    console.log('RendererFactory: Processing renderer recommendation', data);
-    
-    if (data.recommendedRenderer && data.chartId) {
-      const metadata = this.activeRenderers.get(data.chartId);
-      if (metadata && metadata.type !== data.recommendedRenderer) {
-        this.switchRenderer(data.chartId, data.recommendedRenderer, 'Performance monitor recommendation');
-      }
-    }
+    console.log('RendererFactory: Processing renderer recommendation:', data);
+    // Could implement automatic switching based on recommendations
   }
 
   /**
-   * Count total data points in chart configuration
-   * @private
-   */
-  _countDataPoints(chartConfig) {
-    let totalPoints = 0;
-    
-    if (chartConfig.datasets && Array.isArray(chartConfig.datasets)) {
-      chartConfig.datasets.forEach(dataset => {
-        if (dataset.data && Array.isArray(dataset.data)) {
-          totalPoints += dataset.data.length;
-        }
-      });
-    } else if (chartConfig.data && Array.isArray(chartConfig.data)) {
-      totalPoints = chartConfig.data.length;
-    }
-    
-    return totalPoints;
-  }
-
-  /**
-   * Extract required features from chart configuration
-   * @private
-   */
-  _extractFeatures(chartConfig) {
-    const features = [];
-    
-    // Chart type
-    if (chartConfig.chartType) {
-      features.push(chartConfig.chartType);
-    } else {
-      features.push('lineChart'); // Default
-    }
-    
-    // Feature flags
-    if (chartConfig.showTooltips !== false) features.push('tooltips');
-    if (chartConfig.showCrosshair) features.push('crosshair');
-    if (chartConfig.showLegend !== false) features.push('legend');
-    if (chartConfig.showZeroLine) features.push('zeroLine');
-    if (chartConfig.showRecessionLines) features.push('recessionBars');
-    if (chartConfig.exportFormats?.includes('svg')) features.push('svgExport');
-    if (chartConfig.exportFormats?.some(f => ['png', 'jpeg', 'webp'].includes(f))) features.push('pngExport');
-    
-    // Performance features
-    const dataPoints = this._countDataPoints(chartConfig);
-    if (dataPoints > 10000) features.push('largeDataset');
-    if (chartConfig.realTimeUpdates) features.push('realTimeUpdates');
-    if (chartConfig.enableAnimations !== false) features.push('animations');
-    
-    return features;
-  }
-
-  /**
-   * Generate unique chart identifier
+   * Generate unique chart ID
    * @private
    */
   _generateChartId() {
@@ -893,24 +698,18 @@ export default class RendererFactory {
   }
 
   /**
-   * Emit events safely with error handling
+   * Emit event to listeners
    * @private
    */
   _emit(event, data) {
-    if (this.isDestroyed) return;
-    
-    try {
-      if (this.eventListeners && this.eventListeners.has(event)) {
-        this.eventListeners.get(event).forEach(listener => {
-          try {
-            listener(data);
-          } catch (error) {
-            console.error(`Error in event listener for ${event}:`, error);
-          }
-        });
-      }
-    } catch (error) {
-      console.error(`Error emitting event ${event}:`, error);
+    if (this.eventListeners.has(event)) {
+      this.eventListeners.get(event).forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error(`RendererFactory: Error in event listener for ${event}:`, error);
+        }
+      });
     }
   }
 }

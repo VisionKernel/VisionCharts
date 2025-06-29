@@ -80,17 +80,7 @@ function createChart(type, config = {}) {
       
     case 'bar':
       return new BarChart(enhancedConfig);
-      
-    case 'area':
-      console.warn('Area chart type is deprecated. Use LineChart with dataset.area = true instead.');
-      return new LineChart({
-        ...enhancedConfig,
-        datasets: enhancedConfig.datasets?.map(dataset => ({
-          ...dataset,
-          area: true
-        })) || []
-      });
-      
+
     default:
       throw new Error(`Unsupported chart type: ${type}`);
   }

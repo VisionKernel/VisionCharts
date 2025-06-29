@@ -4,9 +4,6 @@ import EventSystem from './EventSystem.js';
 import InteractionManager from './InteractionManager.js';
 import RendererFactory from '../renderers/RendererFactory.js';
 
-// Legacy import for backwards compatibility
-import SvgRenderer from '../renderers/SvgRenderer.js';
-
 // Multi-renderer components
 import Tooltip from '../components/Tooltip.js';
 import Legend from '../components/Legend.js';
@@ -264,12 +261,6 @@ constructor(config = {}) {
     } catch (error) {
       this.state.initializing = false;
       console.error('Chart render failed:', error);
-      
-      // Attempt fallback rendering
-      if (!this.isLegacyMode) {
-        console.log('Attempting fallback to legacy SVG rendering');
-        return this._renderLegacyFallback();
-      }
       
       throw error;
     }
@@ -1573,63 +1564,6 @@ constructor(config = {}) {
     }
     
     // Additional features can be added here
-  }
-
-  /**
-   * Legacy fallback rendering
-   * @private
-   */
-  async _renderLegacyFallback() {
-    console.log('Attempting legacy SVG fallback rendering');
-    
-    try {
-      // Create basic SVG renderer
-      const svgRenderer = new SvgRenderer(
-        this.state.container,
-        this.state.dimensions.width,
-        this.state.dimensions.height
-      );
-      
-      await svgRenderer.initialize();
-      
-      this.renderer = svgRenderer;
-      this.rendererMetadata = { type: 'svg', fallback: true };
-      this.isLegacyMode = true;
-      
-      // Render with legacy components
-      return this._renderLegacyMode();
-      
-    } catch (error) {
-      console.error('Legacy fallback rendering failed:', error);
-      throw new Error('Complete rendering system failure');
-    }
-  }
-
-  /**
-   * Legacy mode rendering
-   * @private
-   */
-  async _renderLegacyMode() {
-    console.log('Rendering in legacy SVG mode');
-    
-    // Create basic rendering surface
-    await this._createRenderingSurface();
-    
-    // Create scales
-    this.createScales();
-    
-    // Render basic elements
-    this.renderTitle();
-    this.renderAxes();
-    
-    // Render data (if implemented by subclass)
-    if (this.renderData) {
-      this.renderData();
-    }
-    
-    this.state.rendered = true;
-    
-    return this;
   }
 
   // ===== PUBLIC API METHODS =====

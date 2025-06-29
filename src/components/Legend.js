@@ -1172,24 +1172,4 @@ export default class Legend {
   getPerformanceMetrics() {
     return { ...this.renderMetrics };
   }
-  
-  // ===== LEGACY COMPATIBILITY METHODS =====
-  
-  /**
-   * Legacy SVG render method for backwards compatibility
-   * @param {SVGElement} container - SVG container
-   * @param {number} width - Width
-   * @param {number} height - Height
-   * @returns {SVGElement} Legend element
-   * @deprecated Use render() with renderer instance instead
-   */
-  renderLegacy(container, width, height) {
-    console.warn('Legend.render() is deprecated. Use initialize() and render() with renderer instance instead.');
-    
-    // Try to maintain basic compatibility
-    this.renderMode = 'svg';
-    this.isInitialized = true;
-    
-    return container;
-  }
 }

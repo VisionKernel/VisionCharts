@@ -175,8 +175,6 @@ export default class PanelDataRenderer {
     
     if (xType === 'time') {
       this.renderTimeBarsForPanel(chart, dataGroup, dataset, xScale, yScale, clampedZeroY, color, timeBarPixelWidth, showZeroValueBars, panelHeight);
-    } else if (xType === 'category') {
-      this.renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, clampedZeroY, color, showZeroValueBars, panelHeight);
     } else {
       this.renderNumericBarsForPanel(chart, dataGroup, dataset, xScale, yScale, clampedZeroY, color, showZeroValueBars, panelHeight);
     }
@@ -263,55 +261,6 @@ export default class PanelDataRenderer {
       const barCenter = xScale.scale(xValue);
       const actualBarWidth = (typeof timeBarPixelWidth === 'number' && timeBarPixelWidth > 0) ? timeBarPixelWidth : 10;
       const barX = barCenter - actualBarWidth / 2;
-      
-      // FIXED: Calculate bar position and height with proper bounds checking
-      const { barY, barHeight } = this.calculateBarDimensionsWithBounds(yValue, yScale.scale(yValue), zeroY, panelHeight);
-      
-      // Create bar only if it has valid dimensions and is within bounds
-      if (barHeight > 0 && barY >= -10 && barY < panelHeight + 10) {
-        const bar = SvgRenderer.createRect(
-          barX,
-          barY,
-          actualBarWidth,
-          barHeight,
-          {
-            fill: color,
-            class: 'visioncharts-panel-bar',
-            'data-x': xValue,
-            'data-y': yValue
-          }
-        );
-        
-        dataGroup.appendChild(bar);
-      }
-    });
-  }
-  
-  /**
-   * Render category-based bars for panel - FIXED VERSION
-   */
-  static renderCategoryBarsForPanel(chart, dataGroup, dataset, xScale, yScale, zeroY, color, showZeroValueBars, panelHeight) {
-    const { xField, yField } = chart.options;
-    
-    // Get unique X values from scale or calculate them
-    const uniqueXValues = xScale._uniqueXValues || Array.from(new Set(dataset.data.map(d => d[xField])));
-    if (uniqueXValues.length === 0) return;
-    
-    // FIXED: Better bar width calculation for category scales
-    const rangeWidth = xScale.range[1] - xScale.range[0];
-    const barWidth = rangeWidth / uniqueXValues.length;
-    const actualBarWidth = barWidth * 0.8; // 80% of available space
-    
-    dataset.data.forEach(dataPoint => {
-      const xValue = dataPoint[xField];
-      const yValue = dataPoint[yField] || 0;
-      if (yValue === 0 && !showZeroValueBars) return;
-      
-      // FIXED: Find category index and position
-      const categoryIndex = uniqueXValues.indexOf(xValue);
-      if (categoryIndex === -1) return;
-      
-      const barX = categoryIndex * barWidth + (barWidth - actualBarWidth) / 2;
       
       // FIXED: Calculate bar position and height with proper bounds checking
       const { barY, barHeight } = this.calculateBarDimensionsWithBounds(yValue, yScale.scale(yValue), zeroY, panelHeight);

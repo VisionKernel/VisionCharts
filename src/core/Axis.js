@@ -539,28 +539,6 @@ export default class Axis {
   // ===== LEGACY COMPATIBILITY METHODS =====
   
   /**
-   * Legacy SVG render method for backwards compatibility
-   * @param {SVGElement} container - SVG container
-   * @param {number} width - Width
-   * @param {number} height - Height
-   * @returns {SVGElement} Rendered axis element
-   * @deprecated Use render() with renderer instance instead
-   */
-  renderLegacy(container, width, height) {
-    console.warn('Axis.renderLegacy() is deprecated. Use render() with renderer instance instead.');
-    
-    // Import SvgRenderer for legacy support
-    import('../renderers/SvgRenderer.js').then(({ default: SvgRenderer }) => {
-      const legacyRenderer = new SvgRenderer(container.parentElement, width, height);
-      legacyRenderer.initialize().then(() => {
-        this.render(legacyRenderer, width, height);
-      });
-    });
-    
-    return container;
-  }
-  
-  /**
    * Static method to render axes for a panel (legacy compatibility)
    * @param {Object} renderer - Renderer instance or SVG container
    * @param {Object} xScale - X scale
@@ -596,7 +574,7 @@ export default class Axis {
         if (renderer.isInitialized) {
           xAxis.render(renderer, width, height);
         } else {
-          xAxis.renderLegacy(renderer, width, height);
+          console.warn('Legacy SVG rendering not supported for X axis');
         }
       } catch (error) {
         console.error('Error creating X axis for panel:', error);
@@ -633,7 +611,7 @@ export default class Axis {
         if (renderer.isInitialized) {
           yAxis.render(renderer, width, height);
         } else {
-          yAxis.renderLegacy(renderer, width, height);
+          console.warn('Legacy SVG rendering not supported for Y axis');
         }
       } catch (error) {
         console.error('Error creating Y axis for panel:', error);
