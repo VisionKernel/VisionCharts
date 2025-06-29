@@ -623,11 +623,11 @@ export default class PathGenerator {
     if (!linePath) return '';
     
     // Complete the area path
-    const [firstPoint] = points;
-    const [lastPoint] = points[points.length - 1];
-    const [firstX] = firstPoint;
-    const [lastX] = lastPoint;
-    
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const firstX = firstPoint[0];
+    const lastX = lastPoint[0];
+
     // Create closed area path: line path + bottom edge + close
     return `${linePath} L ${lastX},${baselineY} L ${firstX},${baselineY} Z`;
   }
@@ -765,11 +765,11 @@ export default class PathGenerator {
     const areaPoints = [...points];
     
     // Add baseline points to close the area
-    const [firstPoint] = points;
-    const [lastPoint] = points[points.length - 1];
-    const [firstX] = firstPoint;
-    const [lastX] = lastPoint;
-    
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const firstX = firstPoint[0];
+    const lastX = lastPoint[0];
+
     areaPoints.push([lastX, baselineY]);
     areaPoints.push([firstX, baselineY]);
     

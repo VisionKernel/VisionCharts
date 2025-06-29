@@ -161,27 +161,32 @@ export default class LineChart extends Chart {
    * @override
    */
   renderData() {
-    console.log('LineChart.renderData called with multi-renderer support');
+  console.log('LineChart.renderData called with multi-renderer support');
+  
+  if (!this.renderer || !this.state.chart) {
+    console.error('Cannot render data: renderer or chart element not available');
+    return;
+  }
+  
+  const startTime = performance.now();
+  
+  try {
+    const {
+      xField,
+      yField,
+      showPoints,
+      pointRadius,
+      areaOpacity,
+      gradient
+    } = this.options;
     
-    if (!this.renderer || !this.state.chart) {
-      console.error('Cannot render data: renderer or chart element not available');
-      return;
+    // Create data group using current renderer - will be positioned by parent chart group
+    const dataGroup = this.renderer.createGroup({ class: 'visioncharts-data' });
+    
+    // Ensure data group is added to the main chart element
+    if (this.state.chart && this.state.chart.appendChild) {
+      this.state.chart.appendChild(dataGroup);
     }
-    
-    const startTime = performance.now();
-    
-    try {
-      const {
-        xField,
-        yField,
-        showPoints,
-        pointRadius,
-        areaOpacity,
-        gradient
-      } = this.options;
-      
-      // Create data group using current renderer
-      const dataGroup = this.renderer.createGroup({ class: 'visioncharts-data' });
       
       // No data to render
       if (!this.config.datasets || !this.config.datasets.length) {
@@ -212,6 +217,9 @@ export default class LineChart extends Chart {
       
       // Render regular datasets
       this._renderRegularDatasets(regularDatasets, dataGroup);
+
+      // Validate scale ranges after rendering regular datasets
+      this._validateScaleRanges();
       
       // Render study datasets using enhanced StudiesRenderer
       if (studyDatasets.length > 0) {
@@ -242,6 +250,26 @@ export default class LineChart extends Chart {
       this._renderDataFallback();
     }
   }
+
+  /**
+   * Validate and set scale ranges based on current dimensions
+   * @private
+  */
+  _validateScaleRanges() {
+  const { innerWidth, innerHeight } = this.state.dimensions;
+  
+  // Ensure X scale uses full inner width
+  if (this.state.scales.x) {
+    this.state.scales.x.setRange([0, innerWidth]);
+    console.log('X scale range set to:', [0, innerWidth]);
+  }
+  
+  // Ensure Y scale uses full inner height (inverted for SVG coordinates)
+  if (this.state.scales.y) {
+    this.state.scales.y.setRange([innerHeight, 0]);
+    console.log('Y scale range set to:', [innerHeight, 0]);
+  }
+}
 
   /**
    * Create and configure axes for LineChart - enhanced

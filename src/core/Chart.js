@@ -234,7 +234,7 @@ constructor(config = {}) {
     
     try {
     // 1. Setup rendering infrastructure
-    this._calculateDimensions();
+    this.updateDimensions();
     this._createRenderingSurface();
     
     // 2. Create scales FIRST (required for axes)
@@ -754,41 +754,39 @@ constructor(config = {}) {
    * Render axes - enhanced for multi-renderer
    */
   renderAxes() {
-    console.log('renderAxes called');
-    
-    if (!this.renderer || !this.renderer.isInitialized) {
-      console.error('Cannot render axes: renderer not available');
-      return;
-    }
-    
-    this.createAxes();
-    
-    const { innerWidth, innerHeight } = this.state.dimensions;
-    const { left, top } = this.options.margins;
-    
-    // Render X axis
-    if (this.state.components.axes.x) {
-      const xAxisId = this.state.components.axes.x.render(
-        this.renderer, 
-        innerWidth, 
-        innerHeight, 
-        { translateX: left, translateY: top }
-      );
-      console.log(`X axis rendered with ID: ${xAxisId}`);
-    }
-    
-    // Render Y axis
-    if (this.state.components.axes.y) {
-      const yAxisId = this.state.components.axes.y.render(
-        this.renderer, 
-        innerWidth, 
-        innerHeight, 
-        { translateX: left, translateY: top }
-      );
-      console.log(`Y axis rendered with ID: ${yAxisId}`);
-    }
+  console.log('renderAxes called');
+  
+  if (!this.renderer || !this.renderer.isInitialized) {
+    console.error('Cannot render axes: renderer not available');
+    return;
   }
-
+  
+  this.createAxes();
+  
+  const { innerWidth, innerHeight } = this.state.dimensions;
+  
+  // Render X axis (bottom of chart)
+  if (this.state.components.axes.x) {
+    const xAxisId = this.state.components.axes.x.render(
+      this.renderer, 
+      innerWidth, 
+      innerHeight, 
+      { translateX: 0, translateY: innerHeight }  // Position at bottom
+    );
+    console.log(`X axis rendered with ID: ${xAxisId}`);
+  }
+  
+  // Render Y axis (left side of chart)
+  if (this.state.components.axes.y) {
+    const yAxisId = this.state.components.axes.y.render(
+      this.renderer, 
+      innerWidth, 
+      innerHeight, 
+      { translateX: 0, translateY: 0 }  // Position at left
+    );
+    console.log(`Y axis rendered with ID: ${yAxisId}`);
+  }
+}
   /**
    * Update axes - enhanced for multi-renderer
    */
@@ -888,6 +886,7 @@ constructor(config = {}) {
     
     // Update state references
     this.state.chart = chartGroup;
+    this.state.chartGroup = chartGroup;
     
     // For backwards compatibility, create legacy SVG references
     if (this.rendererMetadata.type === 'svg') {
