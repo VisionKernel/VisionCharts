@@ -1,5 +1,7 @@
+import EventSystem from '../core/EventSystem.js';
 import Crosshair from '../components/Crosshair.js';
 import Tooltip from '../components/Tooltip.js';
+import Legend from '../components/Legend.js';
 import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
 
 /**
@@ -303,6 +305,731 @@ export default class InteractionManager {
       }
     }
   }
+
+  /**
+   * Initialize complete interaction system with EventSystem
+   * @param {Chart} chart - Chart instance
+   */
+  static async initCompleteInteractionSystem(chart) {
+    console.log('InteractionManager.initCompleteInteractionSystem called with EventSystem');
+    
+    try {
+      // Initialize EventSystem first
+      await InteractionManager._initializeEventSystem(chart);
+      
+      // Initialize individual components
+      await InteractionManager._initializeInteractionComponents(chart);
+      
+      // Setup coordinated event handling
+      await InteractionManager._setupCoordinatedEventHandling(chart);
+      
+      // Render interactive components
+      await InteractionManager._renderInteractiveComponents(chart);
+      
+      console.log('Complete interaction system initialized successfully');
+      
+    } catch (error) {
+      console.error('Failed to initialize complete interaction system:', error);
+      
+      // Fallback to legacy mode
+      await InteractionManager._fallbackToLegacyMode(chart);
+    }
+  }
+  
+  /**
+   * Initialize EventSystem
+   * @private
+   */
+  static async _initializeEventSystem(chart) {
+    console.log('Initializing EventSystem');
+    
+    // Create EventSystem instance
+    chart.eventSystem = new EventSystem(chart, {
+      throttleDelay: chart.options.eventThrottleDelay || 16,
+      enableTouchEvents: chart.options.enableTouchEvents !== false,
+      enablePointerEvents: chart.options.enablePointerEvents !== false,
+      enableCoordinateNormalization: true,
+      enableDataCoordinates: true,
+      enablePerformanceTracking: chart.options.enablePerformanceMonitoring !== false,
+      debugMode: chart.options.debugEvents || false,
+      logEvents: chart.options.logEvents || false
+    });
+    
+    // Initialize EventSystem
+    const success = await chart.eventSystem.initialize();
+    
+    if (!success) {
+      throw new Error('EventSystem initialization failed');
+    }
+    
+    console.log('EventSystem initialized successfully');
+  }
+  
+  /**
+   * Initialize interaction components
+   * @private
+   */
+  static async _initializeInteractionComponents(chart) {
+    const initPromises = [];
+    
+    // Initialize Tooltip
+    if (chart.options.showTooltips !== false) {
+      initPromises.push(InteractionManager._initializeTooltipWithEventSystem(chart));
+    }
+    
+    // Initialize Legend
+    if (chart.options.showLegend !== false && chart.config.datasets) {
+      initPromises.push(InteractionManager._initializeLegendWithEventSystem(chart));
+    }
+    
+    // Initialize Crosshair
+    if (chart.options.showCrosshair !== false) {
+      initPromises.push(InteractionManager._initializeCrosshairWithEventSystem(chart));
+    }
+    
+    // Wait for all components
+    await Promise.all(initPromises);
+    
+    console.log('All interaction components initialized');
+  }
+  
+  /**
+   * Initialize Tooltip with EventSystem integration
+   * @private
+   */
+  static async _initializeTooltipWithEventSystem(chart) {
+    // Component creation happens in Chart.js
+    if (chart.state.components.tooltip) {
+      // Register tooltip with EventSystem
+      chart.eventSystem.registerComponent('tooltip');
+      
+      // Setup tooltip-specific event listeners
+      chart.eventSystem.on('chart-hover', (eventData) => {
+        InteractionManager._handleTooltipHover(chart, eventData);
+      });
+      
+      chart.eventSystem.on('chart-leave', (eventData) => {
+        chart.state.components.tooltip.hide();
+      });
+      
+      console.log('Tooltip integrated with EventSystem');
+    }
+  }
+  
+  /**
+   * Initialize Legend with EventSystem integration
+   * @private
+   */
+  static async _initializeLegendWithEventSystem(chart) {
+    // Component creation happens in Chart.js
+    if (chart.state.components.legend) {
+      // Register legend with EventSystem
+      chart.eventSystem.registerComponent('legend');
+      
+      // Setup legend-specific event listeners
+      InteractionManager._setupLegendEventSystemListeners(chart);
+      
+      console.log('Legend integrated with EventSystem');
+    }
+  }
+  
+  /**
+   * Initialize Crosshair with EventSystem integration
+   * @private
+   */
+  static async _initializeCrosshairWithEventSystem(chart) {
+    // Component creation happens in Chart.js
+    if (chart.state.components.crosshair) {
+      // Register crosshair with EventSystem
+      chart.eventSystem.registerComponent('crosshair');
+      
+      // Crosshair events are handled automatically by EventSystem
+      // based on component type in _processCrosshairEvent
+      
+      console.log('Crosshair integrated with EventSystem');
+    }
+  }
+  
+  /**
+   * Setup coordinated event handling
+   * @private
+   */
+  static async _setupCoordinatedEventHandling(chart) {
+    console.log('Setting up coordinated event handling');
+    
+    // Setup high-level interaction patterns
+    InteractionManager._setupDataPointInteraction(chart);
+    InteractionManager._setupDatasetInteraction(chart);
+    InteractionManager._setupChartNavigation(chart);
+    
+    // Setup performance monitoring integration
+    if (chart.options.enablePerformanceMonitoring) {
+      InteractionManager._setupPerformanceMonitoring(chart);
+    }
+  }
+  
+  /**
+   * Setup data point interaction (hover, click on data points)
+   * @private
+   */
+  static _setupDataPointInteraction(chart) {
+    // Chart-hover event (processed by EventSystem)
+    chart.eventSystem.on('chart-hover', (eventData) => {
+      InteractionManager._handleDataPointHover(chart, eventData);
+    });
+    
+    // Chart-click event for data point selection
+    chart.eventSystem.on('chart-click', (eventData) => {
+      InteractionManager._handleDataPointClick(chart, eventData);
+    });
+  }
+  
+  /**
+   * Setup dataset interaction (legend clicks, dataset highlighting)
+   * @private
+   */
+  static _setupDatasetInteraction(chart) {
+    // Listen for dataset visibility changes
+    chart.state.container?.addEventListener('dataset-visibility-changed', (event) => {
+      InteractionManager._handleDatasetVisibilityChange(chart, event.detail);
+    });
+    
+    // Listen for dataset highlighting
+    chart.state.container?.addEventListener('legend-item-hover', (event) => {
+      InteractionManager._handleDatasetHighlight(chart, event.detail);
+    });
+  }
+  
+  /**
+   * Setup chart navigation (zoom, pan, etc.)
+   * @private
+   */
+  static _setupChartNavigation(chart) {
+    // Placeholder for future navigation features
+    // Wheel events for zooming
+    // Drag events for panning
+    // Keyboard events for navigation
+  }
+
+  /**
+   * Handle tooltip hover events
+   * @private
+   */
+  static _handleTooltipHover(chart, eventData) {
+    const { coordinates } = eventData;
+    
+    if (!coordinates.inChartArea) {
+      chart.state.components.tooltip?.hide();
+      return;
+    }
+    
+    // Find closest data point using EventSystem helper
+    const closestData = chart.eventSystem._findClosestDataPoint(coordinates.chartX, coordinates.chartY);
+    
+    if (closestData && closestData.distance <= 30) {
+      const tooltipData = InteractionManager._formatTooltipData(closestData, chart);
+      chart.state.components.tooltip?.show(
+        tooltipData, 
+        coordinates.chartX, 
+        coordinates.chartY, 
+        {
+          width: chart.state.dimensions.width,
+          height: chart.state.dimensions.height
+        }
+      );
+    } else {
+      chart.state.components.tooltip?.hide();
+    }
+  }
+  
+  /**
+   * Handle data point hover events
+   * @private
+   */
+  static _handleDataPointHover(chart, eventData) {
+    // This could trigger additional effects beyond tooltip
+    // e.g., highlighting data points, showing additional info, etc.
+    
+    // Emit custom event for other systems to hook into
+    chart.eventSystem.emit('data-point-hover', {
+      coordinates: eventData.coordinates,
+      chart: chart
+    });
+  }
+  
+  /**
+   * Handle data point click events
+   * @private
+   */
+  static _handleDataPointClick(chart, eventData) {
+    const { coordinates } = eventData;
+    
+    if (!coordinates.inChartArea) return;
+    
+    // Find clicked data point
+    const closestData = chart.eventSystem._findClosestDataPoint(coordinates.chartX, coordinates.chartY);
+    
+    if (closestData && closestData.distance <= 15) { // Smaller threshold for clicks
+      // Emit custom event
+      chart.eventSystem.emit('data-point-click', {
+        data: closestData,
+        coordinates: coordinates,
+        chart: chart
+      });
+      
+      console.log('Data point clicked:', closestData);
+    }
+  }
+  
+  /**
+   * Handle dataset visibility changes
+   * @private
+   */
+  static _handleDatasetVisibilityChange(chart, detail) {
+    const { dataset, visible } = detail;
+    
+    // Update dataset visibility
+    dataset.visible = visible;
+    
+    // Update crosshair data points
+    if (chart.state.components.crosshair) {
+      chart.eventSystem._updateCrosshairDataPoints(chart.state.components.crosshair);
+    }
+    
+    // Trigger chart re-render
+    if (chart.renderData && typeof chart.renderData === 'function') {
+      chart.renderData();
+    }
+    
+    // Emit custom event
+    chart.eventSystem.emit('dataset-visibility-changed', detail);
+  }
+  
+  /**
+   * Handle dataset highlighting
+   * @private
+   */
+  static _handleDatasetHighlight(chart, detail) {
+    const { item, hovering } = detail;
+    
+    if (item.dataset) {
+      // Store highlight state
+      if (!chart.datasetHighlightState) {
+        chart.datasetHighlightState = new Map();
+      }
+      
+      chart.datasetHighlightState.set(item.dataset.id, hovering);
+      
+      // Apply visual highlighting based on renderer
+      InteractionManager._applyDatasetHighlighting(chart, item.dataset, hovering);
+    }
+    
+    // Emit custom event
+    chart.eventSystem.emit('dataset-highlight', detail);
+  }
+  
+  // ===== LEGEND EVENT INTEGRATION =====
+  
+  /**
+   * Setup legend EventSystem listeners
+   * @private
+   */
+  static _setupLegendEventSystemListeners(chart) {
+    const target = chart.state.container || document;
+    
+    // Legend item click handler
+    const legendClickHandler = (event) => {
+      const detail = event.detail;
+      console.log('Legend item clicked via EventSystem:', detail);
+      
+      // Process through EventSystem for consistency
+      chart.eventSystem.emit('legend-item-click', detail);
+      
+      // Handle visibility toggle
+      if (detail.item && detail.item.dataset) {
+        InteractionManager._toggleDatasetVisibility(chart, detail.item.dataset, detail.visible);
+      }
+      
+      // Update chart
+      chart.update();
+    };
+    
+    // Legend item hover handler
+    const legendHoverHandler = (event) => {
+      const detail = event.detail;
+      
+      // Process through EventSystem
+      chart.eventSystem.emit('legend-item-hover', detail);
+      
+      // Handle highlighting
+      if (detail.item && detail.item.dataset) {
+        InteractionManager._highlightDataset(chart, detail.item.dataset, detail.hovering);
+      }
+    };
+    
+    // Add event listeners
+    target.addEventListener('legend-item-click', legendClickHandler);
+    target.addEventListener('legend-item-hover', legendHoverHandler);
+    
+    // Store for cleanup
+    chart.legendInteractionHandlers = chart.legendInteractionHandlers || [];
+    chart.legendInteractionHandlers.push({
+      target: target,
+      type: 'legend-item-click',
+      handler: legendClickHandler
+    }, {
+      target: target,
+      type: 'legend-item-hover',
+      handler: legendHoverHandler
+    });
+  }
+  
+  // ===== HELPER METHODS =====
+  
+  /**
+   * Format tooltip data
+   * @private
+   */
+  static _formatTooltipData(closestData, chart) {
+    return [{
+      dataset: closestData.dataset,
+      point: closestData.point
+    }];
+  }
+  
+  /**
+   * Toggle dataset visibility
+   * @private
+   */
+  static _toggleDatasetVisibility(chart, dataset, visible) {
+    if (!dataset) return;
+    
+    // Update dataset visibility
+    dataset.visible = visible;
+    
+    // Update rendering based on renderer type
+    InteractionManager._updateDatasetRendering(chart, dataset);
+    
+    // Dispatch custom event
+    const event = new CustomEvent('dataset-visibility-changed', {
+      detail: {
+        dataset: dataset,
+        visible: visible
+      }
+    });
+    chart.state.container?.dispatchEvent(event);
+  }
+  
+  /**
+   * Highlight/unhighlight dataset
+   * @private
+   */
+  static _highlightDataset(chart, dataset, highlight) {
+    if (!dataset || !chart.renderer) return;
+    
+    // Apply highlighting based on renderer type
+    InteractionManager._applyDatasetHighlighting(chart, dataset, highlight);
+  }
+  
+  /**
+   * Apply dataset highlighting based on renderer
+   * @private
+   */
+  static _applyDatasetHighlighting(chart, dataset, highlight) {
+    // For SVG renderer, manipulate DOM elements directly
+    if (chart.renderer.type === 'svg') {
+      InteractionManager._highlightSVGDataset(chart, dataset, highlight);
+    } 
+    // For Canvas/WebGL, store highlight state and trigger re-render
+    else {
+      InteractionManager._highlightCanvasDataset(chart, dataset, highlight);
+    }
+  }
+  
+  /**
+   * Highlight SVG dataset elements
+   * @private
+   */
+  static _highlightSVGDataset(chart, dataset, highlight) {
+    const datasetClass = `visioncharts-dataset-${dataset.id}`;
+    const elements = chart.state.svg?.querySelectorAll(`.${datasetClass}`);
+    
+    if (elements) {
+      elements.forEach(element => {
+        if (highlight) {
+          element.style.opacity = '1';
+          element.style.strokeWidth = element.style.strokeWidth ? 
+            (parseFloat(element.style.strokeWidth) * 1.5) + 'px' : '2px';
+        } else {
+          element.style.opacity = '';
+          element.style.strokeWidth = '';
+        }
+      });
+    }
+  }
+  
+  /**
+   * Highlight Canvas/WebGL dataset
+   * @private
+   */
+  static _highlightCanvasDataset(chart, dataset, highlight) {
+    // Store highlight state
+    if (!chart.datasetHighlightState) {
+      chart.datasetHighlightState = new Map();
+    }
+    
+    chart.datasetHighlightState.set(dataset.id, highlight);
+    
+    // Trigger re-render if chart supports it
+    if (chart.renderData && typeof chart.renderData === 'function') {
+      chart.renderData();
+    }
+  }
+  
+  /**
+   * Update dataset rendering after visibility change
+   * @private
+   */
+  static _updateDatasetRendering(chart, dataset) {
+    // For SVG renderer, show/hide elements directly
+    if (chart.renderer.type === 'svg') {
+      const datasetClass = `visioncharts-dataset-${dataset.id}`;
+      const elements = chart.state.svg?.querySelectorAll(`.${datasetClass}`);
+      
+      if (elements) {
+        elements.forEach(element => {
+          element.style.display = dataset.visible ? '' : 'none';
+        });
+      }
+    }
+    // For Canvas/WebGL, trigger re-render
+    else {
+      if (chart.renderData && typeof chart.renderData === 'function') {
+        chart.renderData();
+      }
+    }
+  }
+
+  /**
+   * Setup performance monitoring integration
+   * @private
+   */
+  static _setupPerformanceMonitoring(chart) {
+    // Monitor EventSystem performance
+    setInterval(() => {
+      const eventMetrics = chart.eventSystem.getMetrics();
+      
+      // Check for performance issues
+      if (eventMetrics.eventsPerSecond > 100) {
+        console.warn('High event rate detected:', eventMetrics.eventsPerSecond, 'eps');
+      }
+      
+      if (eventMetrics.averageProcessingTime > 5) {
+        console.warn('High event processing time:', eventMetrics.averageProcessingTime, 'ms');
+      }
+      
+      // Store metrics for reporting
+      chart.eventSystemMetrics = eventMetrics;
+      
+    }, 5000);
+  }
+
+  /**
+   * Handle renderer switch for interaction system
+   * @param {Chart} chart - Chart instance
+   * @param {AbstractRenderer} newRenderer - New renderer instance
+   * @param {AbstractRenderer} oldRenderer - Old renderer instance
+   */
+  static async handleAllInteractionRendererSwitch(chart, newRenderer, oldRenderer) {
+    console.log('InteractionManager: Handling complete interaction system renderer switch with EventSystem');
+    
+    try {
+      // Update EventSystem for new renderer
+      if (chart.eventSystem) {
+        await chart.eventSystem.updateRenderer(newRenderer);
+      }
+      
+      // Update individual components
+      await InteractionManager._updateComponentsForRendererSwitch(chart, newRenderer, oldRenderer);
+      
+      console.log('All interaction components updated for new renderer');
+      
+    } catch (error) {
+      console.error('Error updating interaction system for renderer switch:', error);
+    }
+  }
+  
+  /**
+   * Update components for renderer switch
+   * @private
+   */
+  static async _updateComponentsForRendererSwitch(chart, newRenderer, oldRenderer) {
+    const updatePromises = [];
+    
+    // Update tooltip
+    if (chart.state.components.tooltip) {
+      updatePromises.push(
+        chart.state.components.tooltip.initialize(newRenderer, chart.state.container)
+      );
+    }
+    
+    // Update legend
+    if (chart.state.components.legend) {
+      updatePromises.push(
+        chart.state.components.legend.initialize(newRenderer, chart.state.container)
+      );
+    }
+    
+    // Update crosshair
+    if (chart.state.components.crosshair) {
+      updatePromises.push(
+        chart.state.components.crosshair.updateRenderer(newRenderer)
+      );
+    }
+    
+    await Promise.all(updatePromises);
+  }
+
+  /**
+   * Render interactive components
+   * @private
+   */
+  static async _renderInteractiveComponents(chart) {
+    const renderPromises = [];
+    
+    // Render legend
+    if (chart.state.components.legend) {
+      renderPromises.push(InteractionManager._renderLegendComponent(chart));
+    }
+    
+    // Render crosshair
+    if (chart.state.components.crosshair) {
+      renderPromises.push(InteractionManager._renderCrosshairComponent(chart));
+    }
+    
+    await Promise.all(renderPromises);
+  }
+  
+  /**
+   * Render legend component
+   * @private
+   */
+  static async _renderLegendComponent(chart) {
+    const { width, height } = chart.state.dimensions;
+    const margins = chart.options.margins;
+    
+    const legendId = chart.state.components.legend.render(width, height, {
+      translateX: margins.left,
+      translateY: margins.top
+    });
+    
+    console.log(`Legend rendered with ID: ${legendId}`);
+  }
+  
+  /**
+   * Render crosshair component
+   * @private
+   */
+  static async _renderCrosshairComponent(chart) {
+    const { innerWidth, innerHeight } = chart.state.dimensions;
+    const margins = chart.options.margins;
+    
+    if (chart.state.components.crosshair.renderMode === 'svg') {
+      const crosshairId = chart.state.components.crosshair.renderSVG(innerWidth, innerHeight, {
+        translateX: margins.left,
+        translateY: margins.top
+      });
+      
+      console.log(`Crosshair rendered in SVG mode with ID: ${crosshairId}`);
+    } else {
+      console.log(`Crosshair ready in ${chart.state.components.crosshair.renderMode} mode`);
+    }
+  }
+
+  /**
+   * Fallback to legacy interaction mode
+   * @private
+   */
+  static async _fallbackToLegacyMode(chart) {
+    console.log('Falling back to legacy interaction mode');
+    
+    try {
+      // Initialize basic interactions without EventSystem
+      await InteractionManager.initSingleModeWithLegend(chart);
+      
+    } catch (error) {
+      console.error('Legacy interaction mode also failed:', error);
+    }
+  }
+  
+  /**
+   * Clean up all interaction components including EventSystem
+   * @param {Chart} chart - Chart instance
+   */
+  static cleanupAllInteractions(chart) {
+    // Clean up EventSystem
+    if (chart.eventSystem) {
+      chart.eventSystem.destroy();
+      chart.eventSystem = null;
+    }
+    
+    // Clean up individual components
+    InteractionManager.cleanupCrosshairInteractions(chart);
+    InteractionManager.cleanupLegendInteractions(chart);
+    InteractionManager.cleanup(chart);
+    
+    // Clear highlight state
+    if (chart.datasetHighlightState) {
+      chart.datasetHighlightState.clear();
+    }
+    
+    console.log('All interaction components and EventSystem cleaned up');
+  }
+  
+  // ===== METRICS AND DEBUGGING =====
+  
+  /**
+   * Get comprehensive interaction metrics
+   * @param {Chart} chart - Chart instance
+   * @returns {Object} Interaction metrics
+   */
+  static getInteractionMetrics(chart) {
+    const metrics = {
+      eventSystem: chart.eventSystem?.getMetrics() || null,
+      tooltip: chart.state.components.tooltip?.getPerformanceMetrics() || null,
+      legend: chart.state.components.legend?.getPerformanceMetrics() || null,
+      crosshair: chart.state.components.crosshair?.getPerformanceMetrics() || null
+    };
+    
+    return metrics;
+  }
+  
+  /**
+   * Debug interaction system
+   * @param {Chart} chart - Chart instance
+   */
+  static debugInteractionSystem(chart) {
+    console.group('Interaction System Debug');
+    
+    console.log('EventSystem:', chart.eventSystem?.isInitialized ? 'Initialized' : 'Not initialized');
+    console.log('Components:', {
+      tooltip: !!chart.state.components.tooltip,
+      legend: !!chart.state.components.legend,
+      crosshair: !!chart.state.components.crosshair
+    });
+    
+    const metrics = InteractionManager.getInteractionMetrics(chart);
+    console.log('Performance Metrics:', metrics);
+    
+    if (chart.eventSystem) {
+      console.log('Active Components:', Array.from(chart.eventSystem.activeComponents));
+      console.log('Event Listeners:', chart.eventSystem.listeners.size);
+    }
+    
+    console.groupEnd();
+  }
+
+  
 
   /**
    * Initialize crosshair interactions - enhanced for multi-renderer
