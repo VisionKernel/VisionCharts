@@ -53,35 +53,27 @@ import {
   calculateIndicator
 } from './utils/chartUtils.js';
 
+// ===== FUNCTION DEFINITIONS (NOT EXPORTED HERE) =====
+
 /**
  * Create a chart instance with multi-renderer support
  * @param {string} type - Chart type ('line', 'bar')
  * @param {Object} config - Chart configuration
  * @returns {Chart} Chart instance with optimal renderer
  */
-export function createChart(type, config = {}) {
+function createChart(type, config = {}) {
   console.log(`Creating ${type} chart with multi-renderer support`);
   
-  // Enhanced configuration with renderer options
+  // Enhanced configuration with multi-renderer defaults
   const enhancedConfig = {
-    // Renderer selection options
+    chartType: type,
     enableAutoSwitching: true,
     enablePerformanceMonitoring: true,
-    preferredRenderer: 'auto', // 'auto', 'svg', 'canvas', 'webgl'
-    
-    // Performance thresholds
-    canvasThreshold: 100000,     // Switch to Canvas at 100K+ points
-    webglThreshold: 100000,      // Use WebGL for 100K+ points
-    svgFallbackThreshold: 10000, // Fallback to SVG for small datasets
-    
-    // Multi-renderer features
-    enableCoordinateNormalization: true,
-    enableUnifiedEventSystem: true,
-    enableAdaptiveOptimization: true,
-    
+    preferredRenderer: 'auto',
     ...config
   };
   
+  // Chart type routing with multi-renderer support
   switch (type.toLowerCase()) {
     case 'line':
       return new LineChart(enhancedConfig);
@@ -90,8 +82,7 @@ export function createChart(type, config = {}) {
       return new BarChart(enhancedConfig);
       
     case 'area':
-      // For backward compatibility, map area to line with area enabled
-      console.warn('AreaChart is deprecated. Use LineChart with dataset.area = true instead.');
+      console.warn('Area chart type is deprecated. Use LineChart with dataset.area = true instead.');
       return new LineChart({
         ...enhancedConfig,
         datasets: enhancedConfig.datasets?.map(dataset => ({
@@ -112,7 +103,7 @@ export function createChart(type, config = {}) {
  * @param {Object} config - Chart configuration
  * @returns {Chart} Chart instance with specified renderer
  */
-export function createChartWithRenderer(type, renderer, config = {}) {
+function createChartWithRenderer(type, renderer, config = {}) {
   console.log(`Creating ${type} chart with ${renderer} renderer`);
   
   const rendererConfig = {
@@ -129,7 +120,7 @@ export function createChartWithRenderer(type, renderer, config = {}) {
  * @param {Object} config - Chart configuration
  * @returns {Object} Standardized chart configuration
  */
-export function parseChartConfig(config) {
+function parseChartConfig(config) {
   // Enhanced default configuration
   const defaultConfig = {
     chartType: 'line',
@@ -164,77 +155,87 @@ export function parseChartConfig(config) {
       eventThrottleDelay: 16
     },
     
-    // Performance options
+    // Performance configuration
     performanceOptions: {
-      enableAdaptiveOptimization: true,
-      enableDataCaching: true,
+      enableDatasetOptimization: true,
       enableCoordinateCaching: true,
-      enableBatchRendering: true
+      enableRenderingOptimization: true,
+      maxDataPointsPerFrame: 10000
     }
   };
   
-  // Return default if no config
-  if (!config) return defaultConfig;
+  // Merge with defaults
+  const mergedConfig = { ...defaultConfig, ...config };
   
-  // Handle VisionKernel format
-  if (config.configuration) {
-    // This is a saved chart from VisionKernel
-    return {
-      ...defaultConfig,
-      ...config.configuration,
-      title: config.name || config.configuration.title || defaultConfig.title
-    };
+  // Validate configuration
+  if (!mergedConfig.datasets || !Array.isArray(mergedConfig.datasets)) {
+    mergedConfig.datasets = [];
   }
   
-  // Handle simple dataset format
-  if (Array.isArray(config)) {
-    return {
-      ...defaultConfig,
-      datasets: [{
-        id: 'dataset-1',
-        name: 'Dataset',
-        color: '#1468a8',
-        data: config
-      }]
-    };
-  }
-  
-  // Merge with default config and ensure renderer options are present
-  const mergedConfig = {
-    ...defaultConfig,
-    ...config
-  };
-  
-  // Ensure renderer options are properly structured
-  if (!mergedConfig.rendererOptions) {
-    mergedConfig.rendererOptions = defaultConfig.rendererOptions;
-  } else {
-    mergedConfig.rendererOptions = {
-      ...defaultConfig.rendererOptions,
-      ...mergedConfig.rendererOptions
-    };
-  }
-  
+  console.log('Chart configuration parsed with multi-renderer enhancements');
   return mergedConfig;
 }
 
 /**
- * Get renderer capabilities and recommendations
- * @param {Object} chartConfig - Chart configuration
+ * Analyze renderer requirements for given configuration
+ * @param {Object} config - Chart configuration
  * @returns {Object} Renderer analysis and recommendations
  */
-export function analyzeRendererRequirements(chartConfig) {
-  const capabilityManager = new CapabilityManager();
-  const performanceMonitor = new PerformanceMonitor(capabilityManager);
+function analyzeRendererRequirements(config) {
+  console.log('Analyzing renderer requirements');
   
-  return performanceMonitor.analyzeAndRecommend(chartConfig);
+  const analysis = {
+    totalDataPoints: 0,
+    complexity: 'low',
+    recommendedRenderer: 'svg',
+    features: [],
+    limitations: []
+  };
+  
+  // Calculate total data points
+  if (config.datasets && Array.isArray(config.datasets)) {
+    analysis.totalDataPoints = config.datasets.reduce((total, dataset) => {
+      return total + (dataset.data ? dataset.data.length : 0);
+    }, 0);
+  }
+  
+  // Determine complexity and recommended renderer
+  if (analysis.totalDataPoints > 100000) {
+    analysis.complexity = 'high';
+    analysis.recommendedRenderer = 'webgl';
+    analysis.features.push('High performance WebGL rendering');
+  } else if (analysis.totalDataPoints > 10000) {
+    analysis.complexity = 'medium';
+    analysis.recommendedRenderer = 'canvas';
+    analysis.features.push('Canvas rendering for performance');
+  } else {
+    analysis.complexity = 'low';
+    analysis.recommendedRenderer = 'svg';
+    analysis.features.push('SVG rendering for crisp graphics');
+  }
+  
+  // Check for special features
+  if (config.showPoints) {
+    analysis.features.push('Point rendering');
+  }
+  if (config.showRecessionLines) {
+    analysis.features.push('Recession line overlays');
+  }
+  if (config.isLogarithmic) {
+    analysis.features.push('Logarithmic scaling');
+  }
+  
+  console.log('Renderer analysis complete:', analysis);
+  return analysis;
 }
 
 /**
  * Get system capabilities for renderer selection
- * @returns {Object} System capabilities
+ * @returns {Object} System capabilities and recommendations
  */
-export function getSystemCapabilities() {
+function getSystemCapabilities() {
+  console.log('Getting system capabilities');
+  
   const capabilityManager = new CapabilityManager();
   
   return {
@@ -255,7 +256,7 @@ export function getSystemCapabilities() {
  * @param {Object} options - Renderer options
  * @returns {Promise<AbstractRenderer>} Renderer instance
  */
-export async function createRenderer(type, container, width, height, options = {}) {
+async function createRenderer(type, container, width, height, options = {}) {
   console.log(`Creating standalone ${type} renderer`);
   
   const rendererFactory = new RendererFactory();
@@ -271,7 +272,7 @@ export async function createRenderer(type, container, width, height, options = {
  * @param {string} rendererType - Target renderer type
  * @returns {Promise<Object>} Processed data
  */
-export async function processDataForRenderer(datasets, chartConfig, rendererType = 'canvas') {
+async function processDataForRenderer(datasets, chartConfig, rendererType = 'canvas') {
   console.log(`Processing data for ${rendererType} renderer`);
   
   const dataProcessor = new DataProcessor();
@@ -280,7 +281,7 @@ export async function processDataForRenderer(datasets, chartConfig, rendererType
 
 // ===== EXPORTS =====
 
-// Core chart creation functions
+// Core chart creation functions (EXPORTED ONLY ONCE)
 export {
   createChart,
   createChartWithRenderer,
@@ -362,11 +363,11 @@ export const capabilities = {
   adaptiveOptimization: true
 };
 
-// ===== DEFAULT EXPORT WITH ENHANCED API =====
+// ===== DEFAULT EXPORT (CLASSES AND METADATA ONLY) =====
 
 const VisionCharts = {
   // Enhanced version information
-  version: '1.3.0',
+  version: '1.2.1',
   capabilities: {
     renderers: ['svg', 'canvas', 'webgl'],
     autoSwitching: true,
@@ -375,15 +376,6 @@ const VisionCharts = {
     coordinateNormalization: true,
     adaptiveOptimization: true
   },
-  
-  // Chart creation functions
-  createChart,
-  createChartWithRenderer,
-  parseChartConfig,
-  analyzeRendererRequirements,
-  getSystemCapabilities,
-  createRenderer,
-  processDataForRenderer,
   
   // Core classes
   Chart,
