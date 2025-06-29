@@ -130,8 +130,15 @@ export default class LineChart extends Chart {
       totalDataPoints: 0
     };
     
-    console.log('LineChart constructor finished with multi-renderer support');
+    if (config.data && !config.datasets) {
+    // Convert old format to new format
+    this.config.datasets = config.data;
+  } else if (config.datasets) {
+    this.config.datasets = config.datasets;
   }
+  
+  console.log('LineChart datasets:', this.config.datasets?.length || 0);
+}
 
   /**
    * Enhanced render method for LineChart
@@ -263,6 +270,74 @@ export default class LineChart extends Chart {
       });
     }
   }
+
+  /**
+ * Create scales for line chart - REQUIRED IMPLEMENTATION
+ */
+createScales() {
+  console.log('LineChart.createScales called');
+  
+  if (!this.config.datasets || !this.config.datasets.length) {
+    console.warn('No datasets available for scale creation');
+    return;
+  }
+  
+  // Get data extent for X axis
+  const allXValues = [];
+  const allYValues = [];
+  
+  this.config.datasets.forEach(dataset => {
+    if (dataset.data && dataset.data.length > 0) {
+      dataset.data.forEach(point => {
+        const xVal = point[this.options.xField] || point.x || point.date;
+        const yVal = point[this.options.yField] || point.y || point.value || point.price;
+        
+        if (xVal !== undefined) allXValues.push(xVal);
+        if (yVal !== undefined) allYValues.push(yVal);
+      });
+    }
+  });
+  
+  if (allXValues.length === 0 || allYValues.length === 0) {
+    console.warn('No valid data found for scale creation');
+    return;
+  }
+  
+  // Create X scale
+  if (this.options.xType === 'time') {
+    const xExtent = [Math.min(...allXValues), Math.max(...allXValues)];
+    this.state.scales.x = new TimeScale({
+      domain: xExtent,
+      range: [0, this.state.dimensions.innerWidth]
+    });
+  } else {
+    const xExtent = [Math.min(...allXValues), Math.max(...allXValues)];
+    this.state.scales.x = new LinearScale({
+      domain: xExtent,
+      range: [0, this.state.dimensions.innerWidth]
+    });
+  }
+  
+  // Create Y scale
+  const yExtent = [Math.min(...allYValues), Math.max(...allYValues)];
+  const yPadding = (yExtent[1] - yExtent[0]) * 0.1; // 10% padding
+  
+  if (this.options.yType === 'log') {
+    this.state.scales.y = new LogScale({
+      domain: [Math.max(yExtent[0] - yPadding, 0.01), yExtent[1] + yPadding],
+      range: [this.state.dimensions.innerHeight, 0]
+    });
+  } else {
+    this.state.scales.y = new LinearScale({
+      domain: [yExtent[0] - yPadding, yExtent[1] + yPadding],
+      range: [this.state.dimensions.innerHeight, 0]
+    });
+  }
+  
+  console.log('Scales created successfully');
+  console.log('X scale domain:', this.state.scales.x.domain);
+  console.log('Y scale domain:', this.state.scales.y.domain);
+}
 
   /**
    * Update axes - enhanced for multi-renderer

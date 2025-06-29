@@ -1029,7 +1029,68 @@ export default class InteractionManager {
     console.groupEnd();
   }
 
+  /**
+ * Initialize tooltip component
+ * @param {Chart} chart - Chart instance
+ */
+static async initTooltip(chart) {
+  console.log('InteractionManager.initTooltip called');
   
+  if (!chart.renderer || !chart.renderer.isInitialized) {
+    console.warn('Cannot initialize tooltip: renderer not available');
+    return;
+  }
+  
+  // Create tooltip component if it doesn't exist
+  if (!chart.state.components.tooltip) {
+    chart.state.components.tooltip = new Tooltip({
+      followCursor: true,
+      offset: { x: 15, y: 10 },
+      background: '#ffffff',
+      border: '#cccccc',
+      borderRadius: 4,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      preferHTMLOverlay: chart.renderer.type !== 'svg'
+    });
+  }
+  
+  // Initialize with current renderer
+  await chart.state.components.tooltip.initialize(chart.renderer, chart.state.container);
+  chart.componentInitializationState.tooltip = true;
+  
+  console.log('Tooltip component initialized successfully');
+}
+
+/**
+ * Initialize legend component
+ * @param {Chart} chart - Chart instance
+ */
+static async initLegend(chart) {
+  console.log('InteractionManager.initLegend called');
+  
+  if (!chart.renderer || !chart.renderer.isInitialized) {
+    console.warn('Cannot initialize legend: renderer not available');
+    return;
+  }
+  
+  // Create legend component if it doesn't exist
+  if (!chart.state.components.legend) {
+    const legendItems = InteractionManager.createLegendItems(chart);
+    
+    chart.state.components.legend = new Legend({
+      position: chart.options.legend?.position || 'bottom',
+      align: chart.options.legend?.align || 'center',
+      orientation: chart.options.legend?.orientation || 'horizontal',
+      items: legendItems
+    });
+  }
+  
+  // Initialize with current renderer
+  await chart.state.components.legend.initialize(chart.renderer, chart.state.container);
+  chart.componentInitializationState.legend = true;
+  
+  console.log('Legend component initialized successfully');
+}
 
   /**
    * Initialize crosshair interactions - enhanced for multi-renderer

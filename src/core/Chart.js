@@ -233,22 +233,21 @@ constructor(config = {}) {
     const startTime = performance.now();
     
     try {
-      this.state.initializing = true;
-      
-      // Phase 1: Core Setup
-      await this._setupCoreRendering();
-      
-      // Phase 2: Component Initialization
-      await this._initializeMultiRendererComponents();
-      
-      // Phase 3: Render Chart Content
-      await this._renderChartContent();
-      
-      // Phase 4: Setup Interactions
-      await this._setupCoordinatedInteractions();
-      
-      // Phase 5: Final Optimizations
-      await this._finalizeRendering();
+    // 1. Setup rendering infrastructure
+    this._calculateDimensions();
+    this._createRenderingSurface();
+    
+    // 2. Create scales FIRST (required for axes)
+    this.createScales();
+    
+    // 3. Initialize multi-renderer components (after scales exist)
+    await this._initializeMultiRendererComponents();
+    
+    // 4. Render chart content
+    await this._renderChartContent();
+    
+    // 5. Setup interactions (after everything is rendered)
+    await this._setupCoordinatedInteractions();
       
       // Update state
       this.state.rendered = true;
