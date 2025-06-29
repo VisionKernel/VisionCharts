@@ -271,8 +271,8 @@ export default class LineChart extends Chart {
     }
   }
 
-  /**
- * Create scales for line chart - REQUIRED IMPLEMENTATION
+ /**
+ * Create scales for line chart - FIXED IMPLEMENTATION
  */
 createScales() {
   console.log('LineChart.createScales called');
@@ -303,35 +303,35 @@ createScales() {
     return;
   }
   
-  // Create X scale
+  // Create X scale - FIXED: Pass domain and range as separate parameters
   if (this.options.xType === 'time') {
     const xExtent = [Math.min(...allXValues), Math.max(...allXValues)];
-    this.state.scales.x = new TimeScale({
-      domain: xExtent,
-      range: [0, this.state.dimensions.innerWidth]
-    });
+    this.state.scales.x = new TimeScale(
+      xExtent,
+      [0, this.state.dimensions.innerWidth]
+    );
   } else {
     const xExtent = [Math.min(...allXValues), Math.max(...allXValues)];
-    this.state.scales.x = new LinearScale({
-      domain: xExtent,
-      range: [0, this.state.dimensions.innerWidth]
-    });
+    this.state.scales.x = new LinearScale(
+      xExtent,
+      [0, this.state.dimensions.innerWidth]
+    );
   }
   
-  // Create Y scale
+  // Create Y scale - FIXED: Pass domain and range as separate parameters
   const yExtent = [Math.min(...allYValues), Math.max(...allYValues)];
   const yPadding = (yExtent[1] - yExtent[0]) * 0.1; // 10% padding
   
   if (this.options.yType === 'log') {
-    this.state.scales.y = new LogScale({
-      domain: [Math.max(yExtent[0] - yPadding, 0.01), yExtent[1] + yPadding],
-      range: [this.state.dimensions.innerHeight, 0]
-    });
+    this.state.scales.y = new LogScale(
+      [Math.max(yExtent[0] - yPadding, 0.01), yExtent[1] + yPadding],
+      [this.state.dimensions.innerHeight, 0]
+    );
   } else {
-    this.state.scales.y = new LinearScale({
-      domain: [yExtent[0] - yPadding, yExtent[1] + yPadding],
-      range: [this.state.dimensions.innerHeight, 0]
-    });
+    this.state.scales.y = new LinearScale(
+      [yExtent[0] - yPadding, yExtent[1] + yPadding],
+      [this.state.dimensions.innerHeight, 0]
+    );
   }
   
   console.log('Scales created successfully');

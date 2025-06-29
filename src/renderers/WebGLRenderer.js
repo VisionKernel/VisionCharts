@@ -15,6 +15,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.programs = new Map(); // Shader programs
     this.buffers = new Map(); // Vertex buffers
     this.textures = new Map(); // Texture atlas for text
+    this.createdBuffers = new Set(); // Track created buffers for cleanup
     
     // WebGL state
     this.currentProgram = null;
@@ -23,13 +24,14 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.elements = new Map(); // Element tracking for hit testing
     this.elementIdCounter = 0;
     
-    // Batch rendering
+    // Batch rendering with overflow protection
     this.batchBuffers = {
       lines: { vertices: [], colors: [], indices: [] },
       points: { vertices: [], colors: [], sizes: [] },
       triangles: { vertices: [], colors: [], indices: [] }
     };
     this.maxBatchSize = 65536; // Max vertices per batch
+    this.batchOverflowCount = 0; // Track overflow events
     
     // Event handling
     this.eventListeners = new Map();
@@ -40,9 +42,12 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.scaledWidth = width * this.pixelRatio;
     this.scaledHeight = height * this.pixelRatio;
     
-    // Text rendering fallback (Canvas overlay)
+    // Text rendering fallback with z-index management
     this.textCanvas = null;
     this.textContext = null;
+    this.textElements = []; // Track text elements for z-order
+    this.baseZIndex = 1000; // Base z-index for overlays
+    this.maxZIndex = this.baseZIndex;
   }
 
   // ===== LIFECYCLE METHODS =====
@@ -84,7 +89,7 @@ export default class WebGLRenderer extends AbstractRenderer {
       // Initialize WebGL state
       this._initializeWebGL();
       
-      // Create shader programs
+      // Create shader programs with proper attribute bindings
       await this._createShaderPrograms();
       
       // Create text rendering overlay
@@ -114,6 +119,13 @@ export default class WebGLRenderer extends AbstractRenderer {
     });
     
     this.buffers.forEach(buffer => {
+      if (this.gl && buffer) {
+        this.gl.deleteBuffer(buffer);
+      }
+    });
+    
+    // Clean up tracked buffers
+    this.createdBuffers.forEach(buffer => {
       if (this.gl && buffer) {
         this.gl.deleteBuffer(buffer);
       }
@@ -149,6 +161,8 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.elements.clear();
     this.eventListeners.clear();
     this.boundEventHandlers.clear();
+    this.createdBuffers.clear();
+    this.textElements = [];
     
     this.canvas = null;
     this.gl = null;
@@ -213,6 +227,8 @@ export default class WebGLRenderer extends AbstractRenderer {
     // Clear element tracking
     this.elements.clear();
     this.elementIdCounter = 0;
+    this.textElements = [];
+    this.maxZIndex = this.baseZIndex;
     
     // Reset batch buffers
     this._resetBatchBuffers();
@@ -225,7 +241,6 @@ export default class WebGLRenderer extends AbstractRenderer {
   save() {
     this._ensureInitialized();
     // WebGL doesn't have built-in save/restore, so we manage state manually
-    // For now, we'll implement basic matrix stack
     this._matrixStack = this._matrixStack || [];
     this._matrixStack.push({
       view: new Float32Array(this.viewMatrix),
@@ -291,13 +306,13 @@ export default class WebGLRenderer extends AbstractRenderer {
     const vertices = [x1, y1, x2, y2];
     const colors = [color.r, color.g, color.b, color.a, color.r, color.g, color.b, color.a];
     
-    this.batchBuffers.lines.vertices.push(...vertices);
-    this.batchBuffers.lines.colors.push(...colors);
-    
-    // Check if we need to flush batch
-    if (this.batchBuffers.lines.vertices.length >= this.maxBatchSize * 2) {
+    // Check for batch overflow before adding
+    if (this._checkBatchOverflow('lines', 4, colors.length)) {
       this._flushLineBatch();
     }
+    
+    this.batchBuffers.lines.vertices.push(...vertices);
+    this.batchBuffers.lines.colors.push(...colors);
     
     // Store element for hit testing
     this.elements.set(elementId, {
@@ -308,7 +323,7 @@ export default class WebGLRenderer extends AbstractRenderer {
       style: normalizedStyle
     });
     
-    this._incrementStats(0, 1); // Will count draw call when batch is flushed
+    this._incrementStats(0, 1);
     return elementId;
   }
   
@@ -328,12 +343,17 @@ export default class WebGLRenderer extends AbstractRenderer {
     
     const indices = [0, 1, 2, 1, 2, 3]; // Two triangles
     const color = this._parseColor(normalizedStyle.fill || normalizedStyle.stroke);
-    const colors = new Array(8).fill(0);
-    for (let i = 0; i < 8; i += 4) {
+    const colors = new Array(16).fill(0);
+    for (let i = 0; i < 16; i += 4) {
       colors[i] = color.r;
       colors[i + 1] = color.g;
       colors[i + 2] = color.b;
       colors[i + 3] = color.a;
+    }
+    
+    // Check for batch overflow before adding
+    if (this._checkBatchOverflow('triangles', vertices.length, colors.length, indices.length)) {
+      this._flushTriangleBatch();
     }
     
     // Add to batch buffer
@@ -341,11 +361,6 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.batchBuffers.triangles.vertices.push(...vertices);
     this.batchBuffers.triangles.colors.push(...colors);
     this.batchBuffers.triangles.indices.push(...indices.map(i => i + baseIndex));
-    
-    // Check if we need to flush batch
-    if (this.batchBuffers.triangles.vertices.length >= this.maxBatchSize * 2) {
-      this._flushTriangleBatch();
-    }
     
     // Store element for hit testing
     this.elements.set(elementId, {
@@ -367,14 +382,14 @@ export default class WebGLRenderer extends AbstractRenderer {
     // Add to point batch buffer (will be rendered as circles in shader)
     const color = this._parseColor(normalizedStyle.fill || normalizedStyle.stroke);
     
+    // Check for batch overflow before adding
+    if (this._checkBatchOverflow('points', 2, 4, 0, 1)) {
+      this._flushPointBatch();
+    }
+    
     this.batchBuffers.points.vertices.push(cx, cy);
     this.batchBuffers.points.colors.push(color.r, color.g, color.b, color.a);
     this.batchBuffers.points.sizes.push(radius * 2); // Diameter
-    
-    // Check if we need to flush batch
-    if (this.batchBuffers.points.vertices.length >= this.maxBatchSize * 2) {
-      this._flushPointBatch();
-    }
     
     // Store element for hit testing
     this.elements.set(elementId, {
@@ -407,6 +422,13 @@ export default class WebGLRenderer extends AbstractRenderer {
     if (points.length > 1) {
       const color = this._parseColor(normalizedStyle.stroke);
       
+      // Check for batch overflow before adding
+      const vertexCount = (points.length - 1) * 4;
+      const colorCount = (points.length - 1) * 8;
+      if (this._checkBatchOverflow('lines', vertexCount, colorCount)) {
+        this._flushLineBatch();
+      }
+      
       for (let i = 0; i < points.length - 1; i++) {
         const [x1, y1] = points[i];
         const [x2, y2] = points[i + 1];
@@ -427,8 +449,8 @@ export default class WebGLRenderer extends AbstractRenderer {
     // Store element for hit testing
     this.elements.set(elementId, {
       type: 'path',
-      bounds: this._calculatePathBounds(pathData),
-      pathData,
+      bounds: this._calculatePathBounds(points),
+      pathData: points,
       style: normalizedStyle
     });
     
@@ -450,10 +472,15 @@ export default class WebGLRenderer extends AbstractRenderer {
       fontFamily: 'Arial, sans-serif',
       textAlign: 'left',
       textBaseline: 'alphabetic',
+      zIndex: this.baseZIndex,
       ...style
     });
     
     const elementId = this._generateElementId();
+    
+    // Handle z-index for text elements
+    const zIndex = normalizedStyle.zIndex || this.maxZIndex + 1;
+    this.maxZIndex = Math.max(this.maxZIndex, zIndex);
     
     // Scale coordinates for high DPI
     const scaledX = x * this.pixelRatio;
@@ -465,8 +492,19 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.textContext.textBaseline = normalizedStyle.textBaseline || 'alphabetic';
     this.textContext.fillStyle = normalizedStyle.fill || normalizedStyle.stroke || '#000000';
     
-    // Draw text
-    this.textContext.fillText(text, scaledX, scaledY);
+    // Store text element for z-order rendering
+    const textElement = {
+      text,
+      x: scaledX,
+      y: scaledY,
+      zIndex,
+      style: normalizedStyle
+    };
+    
+    this.textElements.push(textElement);
+    
+    // Re-render text overlay with proper z-ordering
+    this._renderTextOverlay();
     
     // Store element for hit testing
     const metrics = this.textContext.measureText(text);
@@ -479,7 +517,8 @@ export default class WebGLRenderer extends AbstractRenderer {
         height: parseInt(normalizedStyle.fontSize) || 12
       },
       text,
-      style: normalizedStyle
+      style: normalizedStyle,
+      zIndex
     });
     
     this._incrementStats(1, 1);
@@ -556,12 +595,12 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.currentProgram = program;
     
     // Create and bind vertex buffer
-    const vertexBuffer = this.gl.createBuffer();
+    const vertexBuffer = this._createManagedBuffer();
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(this.batchBuffers.lines.vertices), this.gl.STATIC_DRAW);
     
     // Create and bind color buffer
-    const colorBuffer = this.gl.createBuffer();
+    const colorBuffer = this._createManagedBuffer();
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, colorBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(this.batchBuffers.lines.colors), this.gl.STATIC_DRAW);
     
@@ -572,9 +611,9 @@ export default class WebGLRenderer extends AbstractRenderer {
     const vertexCount = this.batchBuffers.lines.vertices.length / 2;
     this.gl.drawArrays(this.gl.LINES, 0, vertexCount);
     
-    // Clean up
-    this.gl.deleteBuffer(vertexBuffer);
-    this.gl.deleteBuffer(colorBuffer);
+    // Clean up managed buffers
+    this._deleteManagedBuffer(vertexBuffer);
+    this._deleteManagedBuffer(colorBuffer);
     
     // Reset batch
     this.batchBuffers.lines.vertices = [];
@@ -591,9 +630,9 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.currentProgram = program;
     
     // Create and bind buffers
-    const vertexBuffer = this.gl.createBuffer();
-    const colorBuffer = this.gl.createBuffer();
-    const sizeBuffer = this.gl.createBuffer();
+    const vertexBuffer = this._createManagedBuffer();
+    const colorBuffer = this._createManagedBuffer();
+    const sizeBuffer = this._createManagedBuffer();
     
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(this.batchBuffers.points.vertices), this.gl.STATIC_DRAW);
@@ -611,10 +650,10 @@ export default class WebGLRenderer extends AbstractRenderer {
     const pointCount = this.batchBuffers.points.vertices.length / 2;
     this.gl.drawArrays(this.gl.POINTS, 0, pointCount);
     
-    // Clean up
-    this.gl.deleteBuffer(vertexBuffer);
-    this.gl.deleteBuffer(colorBuffer);
-    this.gl.deleteBuffer(sizeBuffer);
+    // Clean up managed buffers
+    this._deleteManagedBuffer(vertexBuffer);
+    this._deleteManagedBuffer(colorBuffer);
+    this._deleteManagedBuffer(sizeBuffer);
     
     // Reset batch
     this.batchBuffers.points.vertices = [];
@@ -632,9 +671,9 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.currentProgram = program;
     
     // Create and bind buffers
-    const vertexBuffer = this.gl.createBuffer();
-    const colorBuffer = this.gl.createBuffer();
-    const indexBuffer = this.gl.createBuffer();
+    const vertexBuffer = this._createManagedBuffer();
+    const colorBuffer = this._createManagedBuffer();
+    const indexBuffer = this._createManagedBuffer();
     
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(this.batchBuffers.triangles.vertices), this.gl.STATIC_DRAW);
@@ -649,166 +688,32 @@ export default class WebGLRenderer extends AbstractRenderer {
     this._setupTriangleAttributes(program, vertexBuffer, colorBuffer);
     
     // Draw
-    this.gl.drawElements(this.gl.TRIANGLES, this.batchBuffers.triangles.indices.length, this.gl.UNSIGNED_SHORT, 0);
+    const indexCount = this.batchBuffers.triangles.indices.length;
+    this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_SHORT, 0);
     
-    // Clean up
-    this.gl.deleteBuffer(vertexBuffer);
-    this.gl.deleteBuffer(colorBuffer);
-    this.gl.deleteBuffer(indexBuffer);
+    // Clean up managed buffers
+    this._deleteManagedBuffer(vertexBuffer);
+    this._deleteManagedBuffer(colorBuffer);
+    this._deleteManagedBuffer(indexBuffer);
     
     // Reset batch
     this.batchBuffers.triangles.vertices = [];
     this.batchBuffers.triangles.colors = [];
     this.batchBuffers.triangles.indices = [];
     
-    this._incrementStats(1, this.batchBuffers.triangles.indices.length / 3);
+    this._incrementStats(1, indexCount / 3);
   }
 
-  // ===== EVENT AND INTERACTION SUPPORT =====
-  
-  screenToChart(screenX, screenY) {
-    const rect = this.canvas.getBoundingClientRect();
-    return {
-      x: (screenX - rect.left) * (this.width / rect.width),
-      y: (screenY - rect.top) * (this.height / rect.height)
-    };
-  }
-  
-  chartToScreen(chartX, chartY) {
-    const rect = this.canvas.getBoundingClientRect();
-    return {
-      x: (chartX * rect.width / this.width) + rect.left,
-      y: (chartY * rect.height / this.height) + rect.top
-    };
-  }
-  
-  hitTest(x, y) {
-    // Simplified hit testing - could be improved with GPU-based picking
-    const hitElements = [];
-    
-    this.elements.forEach((element, id) => {
-      if (this._isPointInElement(x, y, element)) {
-        hitElements.push({ id, element });
-      }
-    });
-    
-    return hitElements;
-  }
-  
-  addEventListener(event, handler) {
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, new Set());
-    }
-    
-    this.eventListeners.get(event).add(handler);
-    
-    const boundHandler = (e) => {
-      const chartCoords = this.screenToChart(e.clientX, e.clientY);
-      handler({
-        ...e,
-        chartX: chartCoords.x,
-        chartY: chartCoords.y
-      });
-    };
-    
-    this.boundEventHandlers.set(handler, boundHandler);
-    this.canvas.addEventListener(event, boundHandler);
-  }
-  
-  removeEventListener(event, handler) {
-    if (this.eventListeners.has(event)) {
-      this.eventListeners.get(event).delete(handler);
-    }
-    
-    if (this.boundEventHandlers.has(handler)) {
-      const boundHandler = this.boundEventHandlers.get(handler);
-      this.canvas.removeEventListener(event, boundHandler);
-      this.boundEventHandlers.delete(handler);
-    }
-  }
-
-  // ===== CAPABILITY AND PERFORMANCE =====
-  
-  getCapabilities() {
-    return {
-      type: 'webgl',
-      supportsGradients: false, // Not yet implemented
-      supportsClipping: true,
-      supportsTransforms: true,
-      supportsTextMetrics: false, // Limited by Canvas overlay
-      supportsBatchOperations: true,
-      supportsAntialiasing: true,
-      maxDataPoints: 10000000, // 10M points
-      optimalDataPoints: 1000000 // 1M points
-    };
-  }
-  
-  optimizeForDataSize(dataSize) {
-    if (dataSize > 1000000) {
-      // Increase batch size for very large datasets
-      this.maxBatchSize = 131072;
-      console.log('WebGLRenderer: Increased batch size for very large dataset');
-    } else {
-      this.maxBatchSize = 65536;
-    }
-  }
-
-  // ===== UTILITY METHODS =====
-  
-  measureText(text, style = {}) {
-    if (!this.textContext) return { width: 0, height: 12 };
-    
-    const fontSize = style.fontSize || '12px';
-    const fontFamily = style.fontFamily || 'Arial, sans-serif';
-    
-    const prevFont = this.textContext.font;
-    this.textContext.font = `${fontSize} ${fontFamily}`;
-    
-    const metrics = this.textContext.measureText(text);
-    
-    this.textContext.font = prevFont;
-    
-    return {
-      width: metrics.width / this.pixelRatio,
-      height: parseInt(fontSize) || 12
-    };
-  }
-  
-  generatePath(points, curveType = 'linear') {
-    // Return points array - WebGL handles path generation differently
-    return points;
-  }
-  
-  applyStyles(element, styles) {
-    console.warn('WebGL elements cannot have styles applied after creation');
-  }
-  
-  async export(format = 'png') {
-    this._ensureInitialized();
-    
-    // Flush all pending operations
-    this.flush();
-    
-    switch (format.toLowerCase()) {
-      case 'png':
-      case 'jpeg':
-      case 'webp':
-        return this.canvas.toDataURL(`image/${format}`, 0.9);
-      case 'blob':
-        return new Promise(resolve => {
-          this.canvas.toBlob(resolve, 'image/png', 0.9);
-        });
-      default:
-        throw new Error(`Unsupported export format: ${format}`);
-    }
-  }
-
-  // ===== INTERNAL HELPER METHODS =====
+  // ===== WEBGL INITIALIZATION AND HELPERS =====
   
   _initializeWebGL() {
     // Enable blending for transparency
     this.gl.enable(this.gl.BLEND);
     this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    
+    // Enable depth testing
+    this.gl.enable(this.gl.DEPTH_TEST);
+    this.gl.depthFunc(this.gl.LEQUAL);
     
     // Set viewport
     this.gl.viewport(0, 0, this.scaledWidth, this.scaledHeight);
@@ -820,22 +725,32 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
   
   async _createShaderPrograms() {
-    // Create line shader program
+    // Create line shader program with proper attribute bindings
     const lineVertexShader = this._createShader(this.gl.VERTEX_SHADER, this._getLineVertexShader());
     const lineFragmentShader = this._createShader(this.gl.FRAGMENT_SHADER, this._getLineFragmentShader());
-    const lineProgram = this._createProgram(lineVertexShader, lineFragmentShader);
+    const lineProgram = this._createProgramWithAttributeBindings(lineVertexShader, lineFragmentShader, [
+      { name: 'a_position', location: 0 },
+      { name: 'a_color', location: 1 }
+    ]);
     this.programs.set('line', lineProgram);
     
-    // Create point shader program
+    // Create point shader program with proper attribute bindings
     const pointVertexShader = this._createShader(this.gl.VERTEX_SHADER, this._getPointVertexShader());
     const pointFragmentShader = this._createShader(this.gl.FRAGMENT_SHADER, this._getPointFragmentShader());
-    const pointProgram = this._createProgram(pointVertexShader, pointFragmentShader);
+    const pointProgram = this._createProgramWithAttributeBindings(pointVertexShader, pointFragmentShader, [
+      { name: 'a_position', location: 0 },
+      { name: 'a_color', location: 1 },
+      { name: 'a_size', location: 2 }
+    ]);
     this.programs.set('point', pointProgram);
     
-    // Create triangle shader program
+    // Create triangle shader program with proper attribute bindings
     const triangleVertexShader = this._createShader(this.gl.VERTEX_SHADER, this._getTriangleVertexShader());
     const triangleFragmentShader = this._createShader(this.gl.FRAGMENT_SHADER, this._getTriangleFragmentShader());
-    const triangleProgram = this._createProgram(triangleVertexShader, triangleFragmentShader);
+    const triangleProgram = this._createProgramWithAttributeBindings(triangleVertexShader, triangleFragmentShader, [
+      { name: 'a_position', location: 0 },
+      { name: 'a_color', location: 1 }
+    ]);
     this.programs.set('triangle', triangleProgram);
   }
   
@@ -849,7 +764,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.textCanvas.style.top = '0';
     this.textCanvas.style.left = '0';
     this.textCanvas.style.pointerEvents = 'none';
-    this.textCanvas.style.zIndex = '1';
+    this.textCanvas.style.zIndex = this.baseZIndex.toString();
     
     this.textContext = this.textCanvas.getContext('2d');
     if (this.textContext) {
@@ -901,14 +816,38 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
   
   _parseColor(colorString) {
-    // Simple color parser - could be enhanced
+    // Enhanced color parser
+    if (!colorString) return { r: 0, g: 0, b: 0, a: 1.0 };
+    
     if (colorString.startsWith('#')) {
       const hex = colorString.slice(1);
-      const r = parseInt(hex.slice(0, 2), 16) / 255;
-      const g = parseInt(hex.slice(2, 4), 16) / 255;
-      const b = parseInt(hex.slice(4, 6), 16) / 255;
-      return { r, g, b, a: 1.0 };
+      if (hex.length === 3) {
+        // Short hex format (#RGB)
+        const r = parseInt(hex[0] + hex[0], 16) / 255;
+        const g = parseInt(hex[1] + hex[1], 16) / 255;
+        const b = parseInt(hex[2] + hex[2], 16) / 255;
+        return { r, g, b, a: 1.0 };
+      } else if (hex.length === 6) {
+        // Full hex format (#RRGGBB)
+        const r = parseInt(hex.slice(0, 2), 16) / 255;
+        const g = parseInt(hex.slice(2, 4), 16) / 255;
+        const b = parseInt(hex.slice(4, 6), 16) / 255;
+        return { r, g, b, a: 1.0 };
+      }
+    } else if (colorString.startsWith('rgb')) {
+      // RGB/RGBA format
+      const match = colorString.match(/rgba?\(([^)]+)\)/);
+      if (match) {
+        const values = match[1].split(',').map(v => parseFloat(v.trim()));
+        return {
+          r: values[0] / 255,
+          g: values[1] / 255,
+          b: values[2] / 255,
+          a: values.length > 3 ? values[3] : 1.0
+        };
+      }
     }
+    
     // Default fallback
     return { r: 0, g: 0, b: 0, a: 1.0 };
   }
@@ -927,10 +866,16 @@ export default class WebGLRenderer extends AbstractRenderer {
     return shader;
   }
   
-  _createProgram(vertexShader, fragmentShader) {
+  _createProgramWithAttributeBindings(vertexShader, fragmentShader, attributeBindings = []) {
     const program = this.gl.createProgram();
     this.gl.attachShader(program, vertexShader);
     this.gl.attachShader(program, fragmentShader);
+    
+    // Bind attribute locations before linking
+    attributeBindings.forEach(binding => {
+      this.gl.bindAttribLocation(program, binding.location, binding.name);
+    });
+    
     this.gl.linkProgram(program);
     
     if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
@@ -941,7 +886,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     
     return program;
   }
-  
+
   // Shader source code
   _getLineVertexShader() {
     return `
@@ -1018,8 +963,9 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
   
   _setupLineAttributes(program, vertexBuffer, colorBuffer) {
-    const positionLocation = this.gl.getAttribLocation(program, 'a_position');
-    const colorLocation = this.gl.getAttribLocation(program, 'a_color');
+    // Use pre-bound attribute locations
+    const positionLocation = 0;
+    const colorLocation = 1;
     
     // Position attribute
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
@@ -1035,9 +981,10 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
   
   _setupPointAttributes(program, vertexBuffer, colorBuffer, sizeBuffer) {
-    const positionLocation = this.gl.getAttribLocation(program, 'a_position');
-    const colorLocation = this.gl.getAttribLocation(program, 'a_color');
-    const sizeLocation = this.gl.getAttribLocation(program, 'a_size');
+    // Use pre-bound attribute locations
+    const positionLocation = 0;
+    const colorLocation = 1;
+    const sizeLocation = 2;
     
     // Position attribute
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertexBuffer);
@@ -1060,7 +1007,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   _setupTriangleAttributes(program, vertexBuffer, colorBuffer) {
     this._setupLineAttributes(program, vertexBuffer, colorBuffer);
   }
-  
+
   // Matrix utility functions
   _identity(matrix) {
     matrix.fill(0);
@@ -1103,38 +1050,222 @@ export default class WebGLRenderer extends AbstractRenderer {
     }
     a.set(result);
   }
+
+  // ===== ENHANCED SVG PATH PARSING AND TRIANGULATION =====
   
-  // Additional helper methods would go here...
   _parseSVGPath(pathString) {
-    // Simplified SVG path parser - could be enhanced
+    // Enhanced SVG path parser with proper triangulation support
     const commands = pathString.match(/[MmLlHhVvCcSsQqTtAaZz][^MmLlHhVvCcSsQqTtAaZz]*/g) || [];
     const points = [];
     let currentX = 0, currentY = 0;
+    let startX = 0, startY = 0;
+    let lastControlX = 0, lastControlY = 0;
     
     commands.forEach(command => {
       const type = command[0];
-      const args = command.slice(1).trim().split(/[\s,]+/).map(Number);
+      const isRelative = type.toLowerCase() === type;
+      const args = command.slice(1).trim().split(/[\s,]+/).filter(v => v).map(Number);
       
-      switch (type) {
-        case 'M':
-          currentX = args[0];
-          currentY = args[1];
-          points.push([currentX, currentY]);
+      switch (type.toLowerCase()) {
+        case 'm': // Move to
+          if (args.length >= 2) {
+            const x = isRelative ? currentX + args[0] : args[0];
+            const y = isRelative ? currentY + args[1] : args[1];
+            currentX = x;
+            currentY = y;
+            startX = x;
+            startY = y;
+            points.push([x, y]);
+            
+            // Additional coordinate pairs are treated as line commands
+            for (let i = 2; i < args.length; i += 2) {
+              const lx = isRelative ? currentX + args[i] : args[i];
+              const ly = isRelative ? currentY + args[i + 1] : args[i + 1];
+              currentX = lx;
+              currentY = ly;
+              points.push([lx, ly]);
+            }
+          }
           break;
-        case 'L':
-          currentX = args[0];
-          currentY = args[1];
-          points.push([currentX, currentY]);
+          
+        case 'l': // Line to
+          for (let i = 0; i < args.length; i += 2) {
+            const x = isRelative ? currentX + args[i] : args[i];
+            const y = isRelative ? currentY + args[i + 1] : args[i + 1];
+            currentX = x;
+            currentY = y;
+            points.push([x, y]);
+          }
           break;
-        // Add more path commands as needed
+          
+        case 'h': // Horizontal line
+          args.forEach(x => {
+            currentX = isRelative ? currentX + x : x;
+            points.push([currentX, currentY]);
+          });
+          break;
+          
+        case 'v': // Vertical line
+          args.forEach(y => {
+            currentY = isRelative ? currentY + y : y;
+            points.push([currentX, currentY]);
+          });
+          break;
+          
+        case 'c': // Cubic Bezier curve
+          for (let i = 0; i < args.length; i += 6) {
+            const cp1x = isRelative ? currentX + args[i] : args[i];
+            const cp1y = isRelative ? currentY + args[i + 1] : args[i + 1];
+            const cp2x = isRelative ? currentX + args[i + 2] : args[i + 2];
+            const cp2y = isRelative ? currentY + args[i + 3] : args[i + 3];
+            const x = isRelative ? currentX + args[i + 4] : args[i + 4];
+            const y = isRelative ? currentY + args[i + 5] : args[i + 5];
+            
+            // Approximate curve with line segments
+            const curvePoints = this._approximateCubicBezier(currentX, currentY, cp1x, cp1y, cp2x, cp2y, x, y);
+            points.push(...curvePoints.slice(1)); // Skip first point (already in path)
+            
+            currentX = x;
+            currentY = y;
+            lastControlX = cp2x;
+            lastControlY = cp2y;
+          }
+          break;
+          
+        case 's': // Smooth cubic Bezier curve
+          for (let i = 0; i < args.length; i += 4) {
+            const cp1x = 2 * currentX - lastControlX;
+            const cp1y = 2 * currentY - lastControlY;
+            const cp2x = isRelative ? currentX + args[i] : args[i];
+            const cp2y = isRelative ? currentY + args[i + 1] : args[i + 1];
+            const x = isRelative ? currentX + args[i + 2] : args[i + 2];
+            const y = isRelative ? currentY + args[i + 3] : args[i + 3];
+            
+            const curvePoints = this._approximateCubicBezier(currentX, currentY, cp1x, cp1y, cp2x, cp2y, x, y);
+            points.push(...curvePoints.slice(1));
+            
+            currentX = x;
+            currentY = y;
+            lastControlX = cp2x;
+            lastControlY = cp2y;
+          }
+          break;
+          
+        case 'q': // Quadratic Bezier curve
+          for (let i = 0; i < args.length; i += 4) {
+            const cpx = isRelative ? currentX + args[i] : args[i];
+            const cpy = isRelative ? currentY + args[i + 1] : args[i + 1];
+            const x = isRelative ? currentX + args[i + 2] : args[i + 2];
+            const y = isRelative ? currentY + args[i + 3] : args[i + 3];
+            
+            const curvePoints = this._approximateQuadraticBezier(currentX, currentY, cpx, cpy, x, y);
+            points.push(...curvePoints.slice(1));
+            
+            currentX = x;
+            currentY = y;
+            lastControlX = cpx;
+            lastControlY = cpy;
+          }
+          break;
+          
+        case 't': // Smooth quadratic Bezier curve
+          for (let i = 0; i < args.length; i += 2) {
+            const cpx = 2 * currentX - lastControlX;
+            const cpy = 2 * currentY - lastControlY;
+            const x = isRelative ? currentX + args[i] : args[i];
+            const y = isRelative ? currentY + args[i + 1] : args[i + 1];
+            
+            const curvePoints = this._approximateQuadraticBezier(currentX, currentY, cpx, cpy, x, y);
+            points.push(...curvePoints.slice(1));
+            
+            currentX = x;
+            currentY = y;
+            lastControlX = cpx;
+            lastControlY = cpy;
+          }
+          break;
+          
+        case 'a': // Elliptical arc
+          for (let i = 0; i < args.length; i += 7) {
+            const rx = args[i];
+            const ry = args[i + 1];
+            const xAxisRotation = args[i + 2];
+            const largeArcFlag = args[i + 3];
+            const sweepFlag = args[i + 4];
+            const x = isRelative ? currentX + args[i + 5] : args[i + 5];
+            const y = isRelative ? currentY + args[i + 6] : args[i + 6];
+            
+            const arcPoints = this._approximateEllipticalArc(currentX, currentY, rx, ry, xAxisRotation, largeArcFlag, sweepFlag, x, y);
+            points.push(...arcPoints.slice(1));
+            
+            currentX = x;
+            currentY = y;
+          }
+          break;
+          
+        case 'z': // Close path
+          if (startX !== currentX || startY !== currentY) {
+            points.push([startX, startY]);
+            currentX = startX;
+            currentY = startY;
+          }
+          break;
       }
     });
     
     return points;
   }
   
+  _approximateCubicBezier(x0, y0, x1, y1, x2, y2, x3, y3, segments = 20) {
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const mt3 = mt2 * mt;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      
+      const x = mt3 * x0 + 3 * mt2 * t * x1 + 3 * mt * t2 * x2 + t3 * x3;
+      const y = mt3 * y0 + 3 * mt2 * t * y1 + 3 * mt * t2 * y2 + t3 * y3;
+      points.push([x, y]);
+    }
+    return points;
+  }
+  
+  _approximateQuadraticBezier(x0, y0, x1, y1, x2, y2, segments = 15) {
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const t2 = t * t;
+      
+      const x = mt2 * x0 + 2 * mt * t * x1 + t2 * x2;
+      const y = mt2 * y0 + 2 * mt * t * y1 + t2 * y2;
+      points.push([x, y]);
+    }
+    return points;
+  }
+  
+  _approximateEllipticalArc(x1, y1, rx, ry, phi, fA, fS, x2, y2, segments = 20) {
+    // Simplified arc approximation - can be enhanced for full SVG compliance
+    const points = [];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    
+    // For now, approximate with straight line segments
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const x = x1 + t * dx;
+      const y = y1 + t * dy;
+      points.push([x, y]);
+    }
+    return points;
+  }
+  
   _calculatePathBounds(pathData) {
-    if (Array.isArray(pathData)) {
+    if (Array.isArray(pathData) && pathData.length > 0) {
       const xs = pathData.map(p => p[0]);
       const ys = pathData.map(p => p[1]);
       return {
@@ -1148,20 +1279,31 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
   
   _addPathFillToBatch(points, fillColor) {
-    // Convert path to triangles for filling
-    // This is a simplified triangulation - could be enhanced
+    // Enhanced triangulation for path filling
     if (points.length < 3) return;
     
     const color = this._parseColor(fillColor);
+    
+    // Check for batch overflow before adding
+    const vertexCount = points.length * 2;
+    const colorCount = points.length * 4;
+    const maxTriangles = Math.max(0, points.length - 2);
+    const indexCount = maxTriangles * 3;
+    
+    if (this._checkBatchOverflow('triangles', vertexCount, colorCount, indexCount)) {
+      this._flushTriangleBatch();
+    }
+    
     const baseIndex = this.batchBuffers.triangles.vertices.length / 2;
     
-    // Add vertices
+    // Add vertices and colors
     points.forEach(([x, y]) => {
       this.batchBuffers.triangles.vertices.push(x, y);
       this.batchBuffers.triangles.colors.push(color.r, color.g, color.b, color.a);
     });
     
-    // Create triangle fan from first vertex
+    // Create triangle fan from first vertex (works for convex polygons)
+    // For complex shapes, would need proper triangulation algorithm
     for (let i = 1; i < points.length - 1; i++) {
       this.batchBuffers.triangles.indices.push(
         baseIndex,
@@ -1170,6 +1312,70 @@ export default class WebGLRenderer extends AbstractRenderer {
       );
     }
   }
+
+  // ===== BATCH OVERFLOW PROTECTION =====
+  
+  _checkBatchOverflow(type, vertexCount = 0, colorCount = 0, indexCount = 0, sizeCount = 0) {
+    const buffer = this.batchBuffers[type];
+    
+    switch (type) {
+      case 'lines':
+        return (buffer.vertices.length + vertexCount) >= this.maxBatchSize * 2 ||
+               (buffer.colors.length + colorCount) >= this.maxBatchSize * 4;
+      case 'points':
+        return (buffer.vertices.length + vertexCount) >= this.maxBatchSize * 2 ||
+               (buffer.colors.length + colorCount) >= this.maxBatchSize * 4 ||
+               (buffer.sizes.length + sizeCount) >= this.maxBatchSize;
+      case 'triangles':
+        return (buffer.vertices.length + vertexCount) >= this.maxBatchSize * 2 ||
+               (buffer.colors.length + colorCount) >= this.maxBatchSize * 4 ||
+               (buffer.indices.length + indexCount) >= this.maxBatchSize * 3;
+      default:
+        return false;
+    }
+  }
+
+  // ===== MEMORY MANAGEMENT =====
+  
+  _createManagedBuffer() {
+    const buffer = this.gl.createBuffer();
+    this.createdBuffers.add(buffer);
+    return buffer;
+  }
+  
+  _deleteManagedBuffer(buffer) {
+    if (buffer) {
+      this.gl.deleteBuffer(buffer);
+      this.createdBuffers.delete(buffer);
+    }
+  }
+
+  // ===== TEXT OVERLAY Z-INDEX MANAGEMENT =====
+  
+  _renderTextOverlay() {
+    if (!this.textContext) return;
+    
+    // Clear previous text
+    this.textContext.clearRect(0, 0, this.width, this.height);
+    
+    // Sort text elements by z-index
+    const sortedTextElements = [...this.textElements].sort((a, b) => a.zIndex - b.zIndex);
+    
+    // Render text elements in z-order
+    sortedTextElements.forEach(element => {
+      this.textContext.font = `${parseInt(element.style.fontSize) * this.pixelRatio}px ${element.style.fontFamily}`;
+      this.textContext.textAlign = element.style.textAlign || 'left';
+      this.textContext.textBaseline = element.style.textBaseline || 'alphabetic';
+      this.textContext.fillStyle = element.style.fill || element.style.stroke || '#000000';
+      
+      this.textContext.fillText(element.text, element.x, element.y);
+    });
+    
+    // Update text canvas z-index to highest
+    this.textCanvas.style.zIndex = this.maxZIndex.toString();
+  }
+
+  // ===== UTILITY METHODS =====
   
   _isPointInElement(x, y, element) {
     const bounds = element.bounds;
@@ -1183,6 +1389,21 @@ export default class WebGLRenderer extends AbstractRenderer {
       const match = transformString.match(/translate\(([^,]+),([^)]+)\)/);
       if (match) {
         this.translate(parseFloat(match[1]), parseFloat(match[2]));
+      }
+    }
+    if (transformString.includes('rotate')) {
+      const match = transformString.match(/rotate\(([^)]+)\)/);
+      if (match) {
+        const angle = parseFloat(match[1]) * Math.PI / 180; // Convert to radians
+        this.transform(Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), 0, 0);
+      }
+    }
+    if (transformString.includes('scale')) {
+      const match = transformString.match(/scale\(([^,)]+),?([^)]*)\)/);
+      if (match) {
+        const sx = parseFloat(match[1]);
+        const sy = match[2] ? parseFloat(match[2]) : sx;
+        this.transform(sx, 0, 0, sy, 0, 0);
       }
     }
   }
