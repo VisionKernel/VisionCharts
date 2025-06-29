@@ -624,6 +624,19 @@ export default class Chart {
   }
 
   /**
+   * Clean up axes when switching renderers
+   */
+  _cleanupAxes() {
+    if (this.state.components.axes?.x && this.renderer) {
+      this.state.components.axes.x.clear(this.renderer);
+    }
+    
+    if (this.state.components.axes?.y && this.renderer) {
+      this.state.components.axes.y.clear(this.renderer);
+    }
+  }
+
+  /**
    * Create and configure axes - enhanced for multi-renderer
    */
   createAxes() {
@@ -648,7 +661,21 @@ export default class Chart {
         isLogarithmic: false,
         showTickLabels: this.options.showXLabels !== false,
         tickRotation: this.options.xTickRotation || 0,
-        showAxisLabel: false
+        showAxisLabel: false, // Chart.js handles axis names separately
+        
+        // Grid options - enable if chart grid is enabled
+        grid: this.options.grid?.show || false,
+        gridStyle: {
+          stroke: this.options.grid?.color || '#e0e0e0',
+          strokeWidth: this.options.grid?.width || 1,
+          strokeDasharray: this.options.grid?.dashArray || '4,4'
+        },
+        
+        // Styling
+        axisColor: this.options.axisColor || '#000000',
+        tickColor: this.options.tickColor || '#000000',
+        labelColor: this.options.textColor || '#000000',
+        labelFontFamily: this.options.fontFamily || 'sans-serif'
       };
       
       this.state.components.axes.x = new Axis(xAxisOptions);
@@ -667,10 +694,49 @@ export default class Chart {
         isLogarithmic: this.options.isLogarithmic || false,
         showTickLabels: this.options.showYLabels !== false,
         tickRotation: this.options.yTickRotation || 0,
-        showAxisLabel: false
+        showAxisLabel: false, // Chart.js handles axis names separately
+        
+        // Grid options - enable if chart grid is enabled
+        grid: this.options.grid?.show || false,
+        gridStyle: {
+          stroke: this.options.grid?.color || '#e0e0e0',
+          strokeWidth: this.options.grid?.width || 1,
+          strokeDasharray: this.options.grid?.dashArray || '4,4'
+        },
+        
+        // Styling
+        axisColor: this.options.axisColor || '#000000',
+        tickColor: this.options.tickColor || '#000000',
+        labelColor: this.options.textColor || '#000000',
+        labelFontFamily: this.options.fontFamily || 'sans-serif'
       };
       
       this.state.components.axes.y = new Axis(yAxisOptions);
+    }
+  }
+
+  /**
+   * Handle renderer switching - update axes
+   */
+  async _onRendererSwitch(newRenderer, oldRenderer) {
+    console.log('Chart._onRendererSwitch: Updating axes for new renderer');
+    
+    // Clean up axes from old renderer
+    if (oldRenderer && this.state.components.axes) {
+      if (this.state.components.axes.x) {
+        this.state.components.axes.x.clear(oldRenderer);
+      }
+      if (this.state.components.axes.y) {
+        this.state.components.axes.y.clear(oldRenderer);
+      }
+    }
+    
+    // Update renderer reference
+    this.renderer = newRenderer;
+    
+    // Re-render axes with new renderer
+    if (this.state.rendered) {
+      this.renderAxes();
     }
   }
 
@@ -680,41 +746,96 @@ export default class Chart {
   renderAxes() {
     console.log('renderAxes called');
     
-    if (!this.state.chart) {
-      console.error('Cannot render axes: chart element not available');
+    if (!this.renderer || !this.renderer.isInitialized) {
+      console.error('Cannot render axes: renderer not available');
       return;
     }
     
     this.createAxes();
     
     const { innerWidth, innerHeight } = this.state.dimensions;
+    const { left, top } = this.options.margins;
     
     // Render X axis
     if (this.state.components.axes.x) {
-      this.state.components.axes.x.render(this.state.chart, innerWidth, innerHeight);
+      const xAxisId = this.state.components.axes.x.render(
+        this.renderer, 
+        innerWidth, 
+        innerHeight, 
+        { translateX: left, translateY: top }
+      );
+      console.log(`X axis rendered with ID: ${xAxisId}`);
     }
     
     // Render Y axis
     if (this.state.components.axes.y) {
-      this.state.components.axes.y.render(this.state.chart, innerWidth, innerHeight);
+      const yAxisId = this.state.components.axes.y.render(
+        this.renderer, 
+        innerWidth, 
+        innerHeight, 
+        { translateX: left, translateY: top }
+      );
+      console.log(`Y axis rendered with ID: ${yAxisId}`);
     }
     
-    // Render grid if enabled
-    if (this.options.grid?.show) {
-      if (!this.state.components.grid) {
-        this.state.components.grid = new Grid(this.options.grid);
-      }
-      
-      this.state.components.grid.render(
-        this.state.chart,
-        this.state.scales.x,
-        this.state.scales.y,
-        innerWidth,
-        innerHeight,
-        this.options
-      );
+    // Render grid if enabled (now handled by axis grid option)
+    if (this.options.grid?.show && !this.state.components.axes.x?.options.grid) {
+      // Only render separate grid if axes don't have grid enabled
+      this._renderSeparateGrid();
     }
   }
+
+  /**
+   * Update axes - enhanced for multi-renderer
+   */
+  updateAxes() {
+    console.log('updateAxes called');
+    
+    if (!this.state.rendered || !this.renderer) {
+      console.warn('Cannot update axes: chart not rendered or renderer not available');
+      return;
+    }
+    
+    const { innerWidth, innerHeight } = this.state.dimensions;
+    const { left, top } = this.options.margins;
+    
+    // Update X axis
+    if (this.state.components.axes?.x) {
+      this.state.components.axes.x.setScale(this.state.scales.x);
+      this.state.components.axes.x.setOptions({
+        formatType: this.options.xType === 'time' ? 'time' : 'number',
+        formatOptions: this.options.xFormatOptions || {}
+      });
+      
+      const xAxisId = this.state.components.axes.x.update(
+        this.renderer, 
+        innerWidth, 
+        innerHeight, 
+        { translateX: left, translateY: top }
+      );
+      console.log(`X axis updated with ID: ${xAxisId}`);
+    }
+    
+    // Update Y axis
+    if (this.state.components.axes?.y) {
+      this.state.components.axes.y.setScale(this.state.scales.y);
+      this.state.components.axes.y.setOptions({
+        isLogarithmic: this.options.isLogarithmic || false,
+        formatType: this.options.yType === 'time' ? 'time' : 'number',
+        formatOptions: this.options.yFormatOptions || {}
+      });
+      
+      const yAxisId = this.state.components.axes.y.update(
+        this.renderer, 
+        innerWidth, 
+        innerHeight, 
+        { translateX: left, translateY: top }
+      );
+      console.log(`Y axis updated with ID: ${yAxisId}`);
+    }
+  }
+
+
 
   /**
    * Render legend - enhanced for multi-renderer
