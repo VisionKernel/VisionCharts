@@ -230,41 +230,36 @@ constructor(config = {}) {
     const startTime = performance.now();
     
     try {
-    // 1. Setup rendering infrastructure
-    this.updateDimensions();
-    this._createRenderingSurface();
-    
-    // 2. Create scales FIRST (required for axes)
-    this.createScales();
-    
-    // 3. Initialize multi-renderer components (after scales exist)
-    await this._initializeMultiRendererComponents();
-    
-    // 4. Render chart content
-    await this._renderChartContent();
-    
-    // 5. Setup interactions (after everything is rendered)
-    await this._setupCoordinatedInteractions();
-      
-      // Update state
-      this.state.rendered = true;
-      this.state.initializing = false;
-      
-      // Update metrics
-      const renderTime = performance.now() - startTime;
-      this._updatePerformanceMetrics(renderTime);
-      
-      console.log(`Chart rendered successfully in ${renderTime.toFixed(2)}ms`);
-      
-      return this;
-      
+        // 1. Setup core rendering infrastructure (CORRECT ORDER)
+        await this._setupCoreRendering(); // ✅ This method has the correct order
+        
+        // 2. Initialize multi-renderer components (after renderer and scales exist)
+        await this._initializeMultiRendererComponents();
+        
+        // 3. Render chart content
+        await this._renderChartContent();
+        
+        // 4. Setup interactions (after everything is rendered)
+        await this._setupCoordinatedInteractions();
+        
+        // Update state
+        this.state.rendered = true;
+        this.state.initializing = false;
+        
+        // Update metrics
+        const renderTime = performance.now() - startTime;
+        this._updatePerformanceMetrics(renderTime);
+        
+        console.log(`Chart rendered successfully in ${renderTime.toFixed(2)}ms`);
+        
+        return this;
+        
     } catch (error) {
-      this.state.initializing = false;
-      console.error('Chart render failed:', error);
-      
-      throw error;
+        this.state.initializing = false;
+        console.error('Chart render failed:', error);
+        throw error;
     }
-  }
+}
 
   /**
    * Setup core rendering infrastructure
@@ -1295,10 +1290,19 @@ constructor(config = {}) {
    */
   _setupRendererSwitchHandlers() {
     // Listen for automatic renderer switches
-    if (this.rendererFactory.eventListeners) {
-      this.rendererFactory.on('renderer-switched', (event) => {
+    if (this.rendererFactory && typeof this.rendererFactory.addEventListener === 'function') {
+      this.rendererFactory.addEventListener('renderer-switched', (event) => {  // ✅ FIXED
         if (event.chartId === this.chartId) {
           console.log(`Chart renderer automatically switched: ${event.reason}`);
+          // Optional: Re-render chart with new renderer
+          // this.render();
+        }
+      });
+      
+      // Also listen for renderer creation events
+      this.rendererFactory.addEventListener('renderer-created', (event) => {
+        if (event.chartId === this.chartId) {
+          console.log(`Chart renderer created: ${event.rendererType}`);
         }
       });
     }
