@@ -215,3 +215,23 @@ MIT License - see the [LICENSE](LICENSE) file for details.
 ## About
 
 VisionCharts is developed as a core component of the VisionKernel platform, a comprehensive solution for financial and economic data analysis.
+
+## FOR DEV
+
+Containers:
+line-chart
+bar-chart
+
+Components:
+Chart Datapoints/Line: Render with Canvas up until 50K datapoints, WebGL (if available) after
+Chart Axis: Canvas/WebGL
+Grid: Canvas/WebGL
+Study Lines: Canvas/WebGL
+Axis Labels: SVG
+Title: SVG
+Legend: SVG
+Crosshair: SVG
+Tooltip: SVG
+Ending Labels: SVG
+Zero/Avg/Median Lines: Canvas/WebGL
+Panel View: Canvas/WebGL

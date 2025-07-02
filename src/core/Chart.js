@@ -1,1739 +1,530 @@
-import { LinearScale, TimeScale, LogScale } from './Scale.js';
-import Axis from './Axis.js';
-import EventSystem from './EventSystem.js';
-import InteractionManager from './InteractionManager.js';
-import RendererFactory from '../renderers/RendererFactory.js';
-
-// Multi-renderer components
-import Tooltip from '../components/Tooltip.js';
-import Legend from '../components/Legend.js';
-import Crosshair from '../components/Crosshair.js';
-
-// Other components - keep all existing component imports
-import ZeroLine from '../components/ZeroLine.js';
-import RecessionLines from '../components/RecessionLines.js';
-import EndingLabels from '../components/EndingLabels.js';
-import Grid from '../components/Grid.js';
-import Panel from '../components/Panel.js';
-import AverageLine from '../components/AverageLine.js';
-import MedianLine from '../components/MedianLine.js';
-
 /**
- * Chart - Enhanced multi-renderer base chart class
+ * Chart.js - Base Chart Class
  * 
- * Maintains full backwards compatibility while adding multi-renderer support,
- * automatic performance optimization, and intelligent renderer switching.
- * 
- * Key Features:
- * - Automatic renderer selection (Canvas default, WebGL at 100K+ points)
- * - Multi-renderer component system (Axis, Tooltip, Legend, Crosshair)
- * - Intelligent renderer switching based on data size
- * - Performance monitoring and optimization
- * - Full backwards compatibility with existing VisionCharts code
+ * Foundation class for all chart types in VisionCharts.
+ * Handles hybrid rendering coordination, basic lifecycle, and common functionality.
  */
-export default class Chart {
-  /**
- * Chart constructor - Enhanced with multi-renderer support
- * @param {Object} config - Chart configuration
- */
-constructor(config = {}) {
-  console.log('Chart constructor called with comprehensive multi-renderer support');
-  
-  // Extract and validate configuration
-  this.config = {
-    container: null,
-    data: [],
-    datasets: [],
-    ...config
-  };
-  
-  // Extract container from config (CRITICAL FIX)
-  const containerElement = this.config.container;
-  
-  // Validate container immediately
-  if (!containerElement) {
-    throw new Error('Chart configuration must include a valid container element');
-  }
-  
-  if (!(containerElement instanceof HTMLElement)) {
-    throw new Error('Container must be a valid HTMLElement. Received: ' + typeof containerElement);
-  }
-  
-  if (!document.contains(containerElement)) {
-    console.warn('Container element is not attached to the DOM');
-  }
-  
-  // Merge options with defaults
-  this.options = {
-    // Default options
-    width: null,
-    height: null,
-    backgroundColor: '#ffffff',
-    antialiasing: true,
-    
-    // Margins
-    margins: {
-      top: 20,
-      right: 20,
-      bottom: 40,
-      left: 50
-    },
-    
-    // Multi-renderer options
-    legacyMode: false,
-    coordinatedInteractions: true,
-    
-    // Merge provided options
-    ...this.config.options
-  };
-  
-  // Initialize core systems
-  this.rendererFactory = new RendererFactory({
-    defaultRenderer: 'canvas',
-    enableAutoSwitching: true,
-    enablePerformanceMonitoring: true
-  });
-  
-  this.eventSystem = new EventSystem();
-  this.interactionManager = new InteractionManager();
-  
-  // Initialize state with CONTAINER SET
-  this.state = {
-    container: containerElement,  // SET FROM CONFIG - THIS IS THE FIX!
-    rendered: false,
-    initializing: false,
-    dimensions: {
-      width: 0,
-      height: 0,
-      innerWidth: 0,
-      innerHeight: 0
-    },
-    scales: {
-      x: null,
-      y: null
-    },
-    components: {
-      // Multi-renderer components
-      axes: {
-        x: null,
-        y: null
-      },
-      legend: null,
-      tooltip: null,
-      crosshair: null,
-      
-      // Traditional components
-      recessionLines: null,
-      endingLabels: null,
-      zeroLine: null,
-      averageLine: null,
-      medianLine: null,
-      grid: null
-    },
-    
-    // Legacy SVG references for backwards compatibility
-    svg: null,
-    chart: null
-  };
-  
-  // Rest of your existing constructor initialization...
-  this.componentInitializationState = {
-    axis: false,
-    tooltip: false,
-    legend: false,
-    crosshair: false
-  };
-  
-  // Event handling - preserve existing system
-  this.eventHandlers = new Map();
-  this.resizeHandler = null;
-  
-  // Interaction system handlers
-  this.interactionHandlers = [];
-  this.legendInteractionHandlers = [];
-  this.crosshairInteractionHandlers = [];
-  
-  // Performance monitoring
-  this.performanceMetrics = {
-    lastRenderTime: 0,
-    averageRenderTime: 0,
-    renderCount: 0,
-    lastRendererSwitch: 0,
-    componentInitTime: 0
-  };
-  
-  // Component performance tracking
-  this.componentMetrics = {
-    axis: { lastRenderTime: 0, updateCount: 0 },
-    tooltip: { showCount: 0, averageShowTime: 0 },
-    legend: { lastRenderTime: 0, itemCount: 0 },
-    crosshair: { updateCount: 0, averageUpdateTime: 0 }
-  };
-  
-  // Renderer switching state
-  this.rendererSwitching = {
-    inProgress: false,
-    pendingSwitch: null,
-    lastSwitchReason: null
-  };
-  
-  // Backwards compatibility flags
-  this.isLegacyMode = this.options.legacyMode === true;
-  this.legacyComponents = new Set();
-  
-  // Dataset highlighting state (for legend interactions)
-  this.datasetHighlightState = new Map();
-  
-  // Component coordination flags
-  this.coordinatedInteractions = this.options.coordinatedInteractions !== false;
-  
-  console.log('Chart initialized with comprehensive multi-renderer support');
-  console.log('Container element:', this.state.container);
-}
 
-  // ===== CORE INITIALIZATION METHODS =====
+import { Axis } from './Axis.js';
+import { Scale, ScaleManager } from './Scale.js';
+import { Grid } from '../components/Grid.js';
 
+export class Chart {
+  constructor(config = {}) {
+    this.container = this._resolveContainer(config.container);
+    this.config = {
+      data: config.data || [],
+      options: {
+        // Default options
+        width: 800,
+        height: 400,
+        xAxisName: 'X Axis',
+        yAxisName: 'Y Axis',
+        xField: 'x',
+        yField: 'y',
+        xType: 'time', // 'time', 'number', 'category'
+        yType: 'number',
+        margin: { top: 40, right: 60, bottom: 60, left: 80 },
+        
+        // Grid options
+        showGrid: true,
+        showXGrid: true,
+        showYGrid: true,
+        gridColor: '#e0e0e0',
+        gridOpacity: 0.7,
+        gridDash: [], // [] for solid, [5, 5] for dashed
+        
+        ...config.options
+      }
+    };
+    
+    // Rendering infrastructure
+    this.renderers = new Map(); // Will hold Canvas, WebGL, SVG renderers
+    this.activeRenderer = null;
+    this.svgOverlay = null;
+    
+    // Performance monitoring
+    this.dataPointCount = 0;
+    this.performanceThresholds = {
+      canvas: 50000, // Switch to WebGL after 50K points
+      webgl: 100000  // WebGL upper limit
+    };
+    
+    // Component state
+    this.axes = { x: null, y: null };
+    this.chartArea = { x: 0, y: 0, width: 0, height: 0 };
+    this.dataDomains = { x: [0, 1], y: [0, 1] };
+    
+    // Scale management
+    this.scaleManager = new ScaleManager();
+    this.scales = { x: null, y: null };
+    
+    // Grid component
+    this.grid = null;
+    
+    // Initialize
+    this._initialize();
+  }
+  
   /**
-   * Initialize chart with container - enhanced with renderer creation
-   * @param {HTMLElement|string} container - Chart container
-   * @returns {Chart} This chart instance
+   * Resolve container from selector or element
    */
-  init(container) {
-    console.log('Chart.init called');
-    
-    // Resolve container
-    this.state.container = typeof container === 'string' 
-      ? document.getElementById(container) 
-      : container;
-    
-    if (!this.state.container) {
-      throw new Error('Chart container not found');
+  _resolveContainer(container) {
+    if (typeof container === 'string') {
+      const element = document.querySelector(container) || document.getElementById(container.replace('#', ''));
+      if (!element) {
+        throw new Error(`Container not found: ${container}`);
+      }
+      return element;
     }
     
-    // Update dimensions
-    this.updateDimensions();
-    
-    // Set up resize handling
-    this._setupResizeHandling();
-    
-    console.log('Chart initialized with container');
-    return this;
-  }
-
-  /**
-   * Main render method - enhanced with multi-renderer support
-   * @returns {Promise<Chart>} This chart instance
-   */
-  async render() {
-    console.log('Chart.render called with comprehensive multi-renderer support');
-    
-    const startTime = performance.now();
-    
-    try {
-        // 1. Setup core rendering infrastructure (CORRECT ORDER)
-        await this._setupCoreRendering(); // ✅ This method has the correct order
-        
-        // 2. Initialize multi-renderer components (after renderer and scales exist)
-        await this._initializeMultiRendererComponents();
-        
-        // 3. Render chart content
-        await this._renderChartContent();
-        
-        // 4. Setup interactions (after everything is rendered)
-        await this._setupCoordinatedInteractions();
-        
-        // Update state
-        this.state.rendered = true;
-        this.state.initializing = false;
-        
-        // Update metrics
-        const renderTime = performance.now() - startTime;
-        this._updatePerformanceMetrics(renderTime);
-        
-        console.log(`Chart rendered successfully in ${renderTime.toFixed(2)}ms`);
-        
-        return this;
-        
-    } catch (error) {
-        this.state.initializing = false;
-        console.error('Chart render failed:', error);
-        throw error;
+    if (container && container.nodeType === Node.ELEMENT_NODE) {
+      return container;
     }
-}
-
+    
+    throw new Error('Invalid container provided');
+  }
+  
   /**
-   * Setup core rendering infrastructure
-   * @private
+   * Initialize the chart infrastructure
    */
-  async _setupCoreRendering() {
-    console.log('Setting up core rendering infrastructure');
+  _initialize() {
+    // Clear container
+    this.container.innerHTML = '';
     
-    // Update dimensions
-    this.updateDimensions();
+    // Set up container styling
+    this.container.style.position = 'relative';
+    this.container.style.width = '100%';
+    this.container.style.height = '100%';
     
-    // Create optimal renderer
-    await this._createOptimalRenderer();
+    // Calculate dimensions
+    this._calculateDimensions();
     
-    // Create rendering surface
-    await this._createRenderingSurface();
+    // Set up rendering layers
+    this._setupRenderingLayers();
+    
+    // Process data
+    this._processData();
+    
+    // Calculate data domains
+    this._calculateDataDomains();
     
     // Create scales
-    this.createScales();
+    this._createScales();
+    
+    // Create grid
+    this._createGrid();
+    
+    // Create axes
+    this._createAxes();
+    
+    // Choose optimal renderer
+    this._selectRenderer();
   }
-
+  
   /**
-   * Initialize all multi-renderer components
-   * @private
+   * Calculate chart dimensions based on container
    */
-  async _initializeMultiRendererComponents() {
-    console.log('Initializing multi-renderer components');
+  _calculateDimensions() {
+    const containerRect = this.container.getBoundingClientRect();
     
-    const componentStartTime = performance.now();
+    this.config.options.width = containerRect.width || this.config.options.width;
+    this.config.options.height = containerRect.height || this.config.options.height;
     
-    // Initialize components in dependency order
-    const initPromises = [];
-    
-    // 1. Initialize Tooltip (no dependencies)
-    if (this.options.showTooltips !== false) {
-      initPromises.push(this._initializeTooltip());
-    }
-    
-    // 2. Initialize Legend (no dependencies)
-    if (this.options.showLegend !== false && this.config.datasets) {
-      initPromises.push(this._initializeLegend());
-    }
-    
-    // 3. Initialize Crosshair (may depend on data for snapping)
-    if (this.options.showCrosshair !== false) {
-      initPromises.push(this._initializeCrosshair());
-    }
-    
-    // Wait for all component initializations
-    await Promise.all(initPromises);
-    
-    // Update metrics
-    this.performanceMetrics.componentInitTime = performance.now() - componentStartTime;
-    
-    console.log(`Multi-renderer components initialized in ${this.performanceMetrics.componentInitTime.toFixed(2)}ms`);
-  }
-
-  /**
-   * Render chart content
-   * @private
-   */
-  async _renderChartContent() {
-    console.log('Rendering chart content');
-    
-    // Render in optimal order for performance
-    
-    // 1. Render title
-    this.renderTitle();
-    
-    // 2. Render axes (creates coordinate system)
-    this.renderAxes();
-    
-    // 3. Render data (implemented by subclasses)
-    if (this.renderData) {
-      this.renderData();
-    }
-    
-    // 4. Render chart features (zero line, recession lines, etc.)
-    this._renderChartFeatures();
-    
-    // 5. Render multi-renderer components
-    await this._renderMultiRendererComponents();
-  }
-
-  /**
-   * Render all multi-renderer components
-   * @private
-   */
-  async _renderMultiRendererComponents() {
-    console.log('Rendering multi-renderer components');
-    
-    const { innerWidth, innerHeight } = this.state.dimensions;
-    const { left, top } = this.options.margins;
-    
-    // Render Legend (affects layout, so render first)
-    if (this.state.components.legend) {
-      await this._renderLegendComponent();
-    }
-    
-    // Render Crosshair (overlay, render before tooltip)
-    if (this.state.components.crosshair) {
-      await this._renderCrosshairComponent();
-    }
-    
-    // Note: Tooltip is rendered on-demand during interactions
-  }
-
-  /**
-   * Setup coordinated interaction system
-   * @private
-   */
-  async _setupCoordinatedInteractions() {
-    console.log('Setting up coordinated interaction system');
-    
-    if (!this.coordinatedInteractions) {
-      console.log('Coordinated interactions disabled');
-      return;
-    }
-    
-    // Initialize complete interaction system
-    await InteractionManager.initCompleteInteractionSystem(this);
-    
-    // Setup renderer switch event handlers
-    this._setupRendererSwitchHandlers();
-    
-    console.log('Coordinated interaction system initialized');
-  }
-
-  /**
-   * Finalize rendering with optimizations
-   * @private
-   */
-  async _finalizeRendering() {
-    console.log('Finalizing rendering');
-    
-    // Apply final optimizations
-    if (this.options.autoOptimizeFeatures) {
-      this._applyRenderingOptimizations();
-    }
-    
-    // Check renderer optimality
-    await this._checkRendererOptimality();
-    
-    // Setup performance monitoring
-    if (this.options.enablePerformanceMonitoring) {
-      this._setupPerformanceMonitoring();
-    }
-  }
-
-  // ===== MULTI-RENDERER COMPONENT INITIALIZATION =====
-
-  /**
-   * Initialize Tooltip component
-   * @private
-   */
-  async _initializeTooltip() {
-    console.log('Initializing Tooltip component');
-    
-    try {
-      // Create tooltip with enhanced options
-      this.state.components.tooltip = new Tooltip({
-        followCursor: this.options.tooltip?.followCursor !== false,
-        offset: this.options.tooltip?.offset || { x: 15, y: 10 },
-        
-        // Styling
-        background: this.options.tooltip?.background || '#ffffff',
-        border: this.options.tooltip?.border || '#cccccc',
-        borderWidth: this.options.tooltip?.borderWidth || 1,
-        borderRadius: this.options.tooltip?.borderRadius || 4,
-        fontSize: this.options.tooltip?.fontSize || 12,
-        fontFamily: this.options.fontFamily || 'sans-serif',
-        textColor: this.options.tooltip?.textColor || '#333333',
-        boxShadow: this.options.tooltip?.boxShadow || '0 2px 8px rgba(0,0,0,0.15)',
-        
-        // Content
-        maxWidth: this.options.tooltip?.maxWidth || 300,
-        multiline: this.options.tooltip?.multiline !== false,
-        formatter: this.options.tooltip?.formatter || this._createTooltipFormatter(),
-        
-        // Performance
-        showDelay: this.options.tooltip?.showDelay || 0,
-        hideDelay: this.options.tooltip?.hideDelay || 100,
-        throttleMove: this.options.tooltip?.throttleMove || 16,
-        
-        // Renderer optimization
-        preferHTMLOverlay: this.options.tooltip?.preferHTMLOverlay
-      });
-      
-      // Initialize with current renderer
-      const success = await this.state.components.tooltip.initialize(
-        this.renderer, 
-        this.state.container
-      );
-      
-      if (success) {
-        this.componentInitializationState.tooltip = true;
-        console.log('Tooltip component initialized successfully');
-      } else {
-        console.error('Failed to initialize Tooltip component');
-      }
-      
-    } catch (error) {
-      console.error('Error initializing Tooltip component:', error);
-    }
-  }
-
-  /**
-   * Initialize Legend component
-   * @private
-   */
-  async _initializeLegend() {
-    console.log('Initializing Legend component');
-    
-    try {
-      // Create legend component
-      this.state.components.legend = new Legend({
-        position: this.options.legend?.position || 'bottom',
-        align: this.options.legend?.align || 'center',
-        orientation: this.options.legend?.orientation || 'horizontal',
-        
-        // Styling from chart options
-        fontSize: this.options.legend?.fontSize || 12,
-        fontFamily: this.options.fontFamily || 'sans-serif',
-        textColor: this.options.textColor || '#333333',
-        
-        // Background
-        showBackground: this.options.legend?.showBackground !== false,
-        backgroundColor: this.options.legend?.backgroundColor || '#ffffff',
-        borderColor: this.options.legend?.borderColor || '#e0e0e0',
-        
-        // Interactivity
-        interactive: this.options.legend?.interactive !== false,
-        clickToToggle: this.options.legend?.clickToToggle !== false,
-        
-        // Studies
-        showStudyBadges: this.options.legend?.showStudyBadges !== false,
-        showStudyTooltips: this.options.legend?.showStudyTooltips !== false,
-        
-        // Layout
-        wrapText: this.options.legend?.wrapText !== false,
-        maxWidth: this.options.legend?.maxWidth,
-        
-        // Renderer preference
-        preferHTMLOverlay: this.options.legend?.preferHTMLOverlay
-      });
-      
-      // Initialize with current renderer
-      const success = await this.state.components.legend.initialize(
-        this.renderer, 
-        this.state.container
-      );
-      
-      if (success) {
-        // Create legend items from datasets
-        const legendItems = this._createLegendItems();
-        this.state.components.legend.setItems(legendItems);
-        
-        this.componentInitializationState.legend = true;
-        console.log(`Legend component initialized with ${legendItems.length} items`);
-      } else {
-        console.error('Failed to initialize Legend component');
-      }
-      
-    } catch (error) {
-      console.error('Error initializing Legend component:', error);
-    }
-  }
-
-  /**
-   * Initialize Crosshair component
-   * @private
-   */
-  async _initializeCrosshair() {
-    console.log('Initializing Crosshair component');
-    
-    try {
-      // Create crosshair component
-      this.state.components.crosshair = new Crosshair({
-        showX: this.options.crosshair?.showX !== false,
-        showY: this.options.crosshair?.showY || false,
-        
-        // Styling
-        stroke: this.options.crosshair?.color || '#666666',
-        strokeWidth: this.options.crosshair?.width || 1,
-        strokeDasharray: this.options.crosshair?.dashArray || '4,4',
-        opacity: this.options.crosshair?.opacity || 0.8,
-        
-        // Behavior
-        snapToData: this.options.crosshair?.snapToData !== false,
-        snapDistance: this.options.crosshair?.snapDistance || 20,
-        followCursor: this.options.crosshair?.followCursor !== false,
-        
-        // Animation
-        animationDuration: this.options.crosshair?.animationDuration || 150,
-        smoothMovement: this.options.crosshair?.smoothMovement !== false,
-        
-        // Renderer preferences
-        preferHTMLOverlay: this.options.crosshair?.preferHTMLOverlay,
-        useCanvasOverlay: this.options.crosshair?.useCanvasOverlay,
-        
-        // Performance
-        throttleUpdates: this.options.crosshair?.throttleUpdates || 16,
-        
-        // Advanced features
-        glowEffect: this.options.crosshair?.glowEffect || false,
-        glowColor: this.options.crosshair?.glowColor || '#ffffff',
-        glowBlur: this.options.crosshair?.glowBlur || 3
-      });
-      
-      // Initialize with current renderer
-      const success = await this.state.components.crosshair.initialize(
-        this.renderer,
-        this.state.container,
-        this.state.dimensions.innerWidth,
-        this.state.dimensions.innerHeight
-      );
-      
-      if (success) {
-        // Set up data points for snapping if chart has data
-        this._updateCrosshairDataPoints();
-        
-        this.componentInitializationState.crosshair = true;
-        console.log('Crosshair component initialized successfully');
-      } else {
-        console.error('Failed to initialize Crosshair component');
-      }
-      
-    } catch (error) {
-      console.error('Error initializing Crosshair component:', error);
-    }
-  }
-
-  // ===== MULTI-RENDERER COMPONENT RENDERING =====
-
-  /**
-   * Render Legend component
-   * @private
-   */
-  async _renderLegendComponent() {
-    if (!this.state.components.legend || !this.state.components.legend.isInitialized) {
-      return;
-    }
-    
-    const { width, height } = this.state.dimensions;
-    const margins = this.options.margins;
-    
-    // Render legend
-    const legendId = this.state.components.legend.render(width, height, {
-      translateX: margins.left,
-      translateY: margins.top
-    });
-    
-    // Update metrics
-    const metrics = this.state.components.legend.getPerformanceMetrics();
-    this.componentMetrics.legend = {
-      lastRenderTime: metrics.lastRenderTime,
-      itemCount: metrics.itemCount
-    };
-    
-    console.log(`Legend rendered with ID: ${legendId}`);
-  }
-
-  /**
-   * Render Crosshair component
-   * @private
-   */
-  async _renderCrosshairComponent() {
-    if (!this.state.components.crosshair || !this.state.components.crosshair.isInitialized) {
-      return;
-    }
-    
-    const { innerWidth, innerHeight } = this.state.dimensions;
-    const margins = this.options.margins;
-    
-    // For SVG mode, we need to call renderSVG
-    if (this.state.components.crosshair.renderMode === 'svg') {
-      const crosshairId = this.state.components.crosshair.renderSVG(innerWidth, innerHeight, {
-        translateX: margins.left,
-        translateY: margins.top
-      });
-      
-      console.log(`Crosshair rendered in SVG mode with ID: ${crosshairId}`);
-    } else {
-      // For Canvas/HTML overlay modes, crosshair is already rendered during initialization
-      console.log(`Crosshair ready in ${this.state.components.crosshair.renderMode} mode`);
-    }
-    
-    // Update metrics
-    const metrics = this.state.components.crosshair.getPerformanceMetrics();
-    this.componentMetrics.crosshair = {
-      updateCount: metrics.updateCount,
-      averageUpdateTime: metrics.averageUpdateTime
+    const margin = this.config.options.margin;
+    this.chartArea = {
+      x: margin.left,
+      y: margin.top,
+      width: this.config.options.width - margin.left - margin.right,
+      height: this.config.options.height - margin.top - margin.bottom
     };
   }
-
-  // ===== ENHANCED AXIS RENDERING =====
-
+  
   /**
-   * Create and configure axes - enhanced for multi-renderer
+   * Set up the hybrid rendering layers
    */
-  createAxes() {
-    console.log('createAxes called');
+  _setupRenderingLayers() {
+    // Create canvas for data rendering
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = this.config.options.width;
+    this.canvas.height = this.config.options.height;
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.zIndex = '1';
     
-    // Initialize axes storage
-    this.state.components.axes = {
-      x: null,
-      y: null
-    };
+    // Create SVG overlay for UI elements (axes, labels, etc.)
+    this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svgOverlay.setAttribute('width', this.config.options.width);
+    this.svgOverlay.setAttribute('height', this.config.options.height);
+    this.svgOverlay.style.position = 'absolute';
+    this.svgOverlay.style.top = '0';
+    this.svgOverlay.style.left = '0';
+    this.svgOverlay.style.zIndex = '2';
+    this.svgOverlay.style.pointerEvents = 'none'; // Allow interaction to pass through to canvas
     
-    // Create X axis
-    if (this.state.scales.x) {
-      const xAxisOptions = {
-        orientation: 'bottom',
-        scale: this.state.scales.x,
-        tickCount: this.options.xTickCount || 5,
-        tickFormat: this.options.xTickFormat,
-        formatType: this.options.xType === 'time' ? 'time' : 'number',
-        formatOptions: this.options.xFormatOptions || {},
-        label: this.options.xAxisName || '',
-        isLogarithmic: false,
-        showTickLabels: this.options.showXLabels !== false,
-        tickRotation: this.options.xTickRotation || 0,
-        showAxisLabel: false, // Chart.js handles axis names separately
-        
-        // Grid options - enable if chart grid is enabled
-        grid: this.options.grid?.show || false,
-        gridStyle: {
-          stroke: this.options.grid?.color || '#e0e0e0',
-          strokeWidth: this.options.grid?.width || 1,
-          strokeDasharray: this.options.grid?.dashArray || '4,4'
-        },
-        
-        // Styling
-        axisColor: this.options.axisColor || '#000000',
-        tickColor: this.options.tickColor || '#000000',
-        labelColor: this.options.textColor || '#000000',
-        labelFontFamily: this.options.fontFamily || 'sans-serif'
-      };
-      
-      this.state.components.axes.x = new Axis(xAxisOptions);
-    }
-    
-    // Create Y axis
-    if (this.state.scales.y) {
-      const yAxisOptions = {
-        orientation: 'left',
-        scale: this.state.scales.y,
-        tickCount: this.options.yTickCount || 5,
-        tickFormat: this.options.yTickFormat,
-        formatType: this.options.yType === 'time' ? 'time' : 'number',
-        formatOptions: this.options.yFormatOptions || {},
-        label: this.options.yAxisName || '',
-        isLogarithmic: this.options.isLogarithmic || false,
-        showTickLabels: this.options.showYLabels !== false,
-        tickRotation: this.options.yTickRotation || 0,
-        showAxisLabel: false, // Chart.js handles axis names separately
-        
-        // Grid options - enable if chart grid is enabled
-        grid: this.options.grid?.show || false,
-        gridStyle: {
-          stroke: this.options.grid?.color || '#e0e0e0',
-          strokeWidth: this.options.grid?.width || 1,
-          strokeDasharray: this.options.grid?.dashArray || '4,4'
-        },
-        
-        // Styling
-        axisColor: this.options.axisColor || '#000000',
-        tickColor: this.options.tickColor || '#000000',
-        labelColor: this.options.textColor || '#000000',
-        labelFontFamily: this.options.fontFamily || 'sans-serif'
-      };
-      
-      this.state.components.axes.y = new Axis(yAxisOptions);
-    }
+    // Add to container
+    this.container.appendChild(this.canvas);
+    this.container.appendChild(this.svgOverlay);
   }
-
+  
   /**
-   * Render axes - enhanced for multi-renderer
+   * Process and count data points
    */
-  renderAxes() {
-  console.log('renderAxes called');
-  
-  if (!this.renderer || !this.renderer.isInitialized) {
-    console.error('Cannot render axes: renderer not available');
-    return;
-  }
-  
-  this.createAxes();
-  
-  const { innerWidth, innerHeight } = this.state.dimensions;
-  
-  // Render X axis (bottom of chart)
-  if (this.state.components.axes.x) {
-    const xAxisId = this.state.components.axes.x.render(
-      this.renderer, 
-      innerWidth, 
-      innerHeight, 
-      { translateX: 0, translateY: innerHeight }  // Position at bottom
-    );
-    console.log(`X axis rendered with ID: ${xAxisId}`);
-  }
-  
-  // Render Y axis (left side of chart)
-  if (this.state.components.axes.y) {
-    const yAxisId = this.state.components.axes.y.render(
-      this.renderer, 
-      innerWidth, 
-      innerHeight, 
-      { translateX: 0, translateY: 0 }  // Position at left
-    );
-    console.log(`Y axis rendered with ID: ${yAxisId}`);
-  }
-}
-  /**
-   * Update axes - enhanced for multi-renderer
-   */
-  updateAxes() {
-    console.log('updateAxes called');
+  _processData() {
+    this.dataPointCount = 0;
     
-    if (!this.state.rendered || !this.renderer) {
-      console.warn('Cannot update axes: chart not rendered or renderer not available');
-      return;
-    }
-    
-    const { innerWidth, innerHeight } = this.state.dimensions;
-    const { left, top } = this.options.margins;
-    
-    // Update X axis
-    if (this.state.components.axes?.x) {
-      this.state.components.axes.x.setScale(this.state.scales.x);
-      this.state.components.axes.x.setOptions({
-        formatType: this.options.xType === 'time' ? 'time' : 'number',
-        formatOptions: this.options.xFormatOptions || {}
+    if (Array.isArray(this.config.data)) {
+      // Handle array of datasets
+      this.config.data.forEach(dataset => {
+        if (dataset.data && Array.isArray(dataset.data)) {
+          this.dataPointCount += dataset.data.length;
+        }
       });
-      
-      const xAxisId = this.state.components.axes.x.update(
-        this.renderer, 
-        innerWidth, 
-        innerHeight, 
-        { translateX: left, translateY: top }
-      );
-      console.log(`X axis updated with ID: ${xAxisId}`);
     }
     
-    // Update Y axis
-    if (this.state.components.axes?.y) {
-      this.state.components.axes.y.setScale(this.state.scales.y);
-      this.state.components.axes.y.setOptions({
-        isLogarithmic: this.options.isLogarithmic || false,
-        formatType: this.options.yType === 'time' ? 'time' : 'number',
-        formatOptions: this.options.yFormatOptions || {}
-      });
-      
-      const yAxisId = this.state.components.axes.y.update(
-        this.renderer, 
-        innerWidth, 
-        innerHeight, 
-        { translateX: left, translateY: top }
-      );
-      console.log(`Y axis updated with ID: ${yAxisId}`);
-    }
+    console.log(`Chart initialized with ${this.dataPointCount} data points`);
   }
-
-  // ===== RENDERER MANAGEMENT =====
-
+  
   /**
-   * Create optimal renderer based on chart requirements
-   * @private
+   * Calculate data domains for axes
    */
-  async _createOptimalRenderer() {
-    console.log('Creating optimal renderer');
-    
-    const rendererResult = await this.rendererFactory.createRenderer(
-      this.state.container,
-      this.state.dimensions.width,
-      this.state.dimensions.height,
-      this.config,
-      {
-        backgroundColor: this.options.backgroundColor,
-        antialiasing: this.options.antialiasing !== false
-      }
-    );
-    
-    this.renderer = rendererResult.renderer;
-    this.rendererMetadata = rendererResult.metadata;
-    this.chartId = rendererResult.chartId;
-    
-    console.log(`Created ${this.rendererMetadata.type} renderer`);
-  }
-
-  /**
-   * Create rendering surface (replaces createSvg)
-   * @private
-   */
-  async _createRenderingSurface() {
-    console.log('Creating rendering surface');
-    
-    if (!this.renderer) {
-      throw new Error('No renderer available');
-    }
-    
-    // Clear renderer
-    this.renderer.clear(this.options.backgroundColor);
-    
-    // Create main chart group with margins
-    const chartGroup = this.renderer.createGroup({
-      transform: `translate(${this.options.margins.left},${this.options.margins.top})`,
-      class: 'visioncharts-chart'
-    });
-    
-    // Update state references
-    this.state.chart = chartGroup;
-    this.state.chartGroup = chartGroup;
-    
-    // For backwards compatibility, create legacy SVG references
-    if (this.rendererMetadata.type === 'svg') {
-      this.state.svg = this.renderer.svg;
-    } else {
-      // Create a mock SVG object for components that expect it
-      this.state.svg = {
-        appendChild: (element) => {
-          // Redirect to renderer for non-SVG renderers
-          console.warn('Legacy SVG appendChild called on non-SVG renderer');
-        },
-        getAttribute: () => null,
-        setAttribute: () => {},
-        style: {},
-        querySelector: () => null,
-        querySelectorAll: () => []
-      };
-    }
-    
-    console.log('Rendering surface created');
-  }
-
-  /**
-   * Force renderer switch
-   * @param {string} rendererType - Target renderer type ('svg', 'canvas', 'webgl')
-   * @param {string} reason - Reason for switch
-   * @returns {Promise<boolean>} Success status
-   */
-  async switchRenderer(rendererType, reason = 'Manual request') {
-    if (!this.chartId) {
-      console.warn('Cannot switch renderer: chart not initialized');
-      return false;
-    }
-    
-    if (this.rendererSwitching.inProgress) {
-      console.warn('Renderer switch already in progress');
-      return false;
-    }
-    
-    console.log(`Chart.switchRenderer: Switching to ${rendererType} - ${reason}`);
-    
-    this.rendererSwitching.inProgress = true;
-    this.rendererSwitching.lastSwitchReason = reason;
-    
-    try {
-      const success = await this.rendererFactory.switchRenderer(this.chartId, rendererType, reason);
-      
-      if (success) {
-        // Update local references
-        const newMetadata = this.rendererFactory.getRendererInfo(this.chartId);
-        const oldRenderer = this.renderer;
-        
-        this.renderer = newMetadata?.instance;
-        this.rendererMetadata = newMetadata;
-        
-        // Update all multi-renderer components
-        await this._handleRendererSwitch(this.renderer, oldRenderer);
-        
-        // Re-render with new renderer
-        await this.render();
-        
-        // Update metrics
-        this.performanceMetrics.lastRendererSwitch = Date.now();
-      }
-      
-      return success;
-      
-    } finally {
-      this.rendererSwitching.inProgress = false;
-    }
-  }
-
-  /**
-   * Handle renderer switch for all components
-   * @private
-   */
-  async _handleRendererSwitch(newRenderer, oldRenderer) {
-    console.log('Handling comprehensive renderer switch for all components');
-    
-    // Handle all interaction components
-    await InteractionManager.handleAllInteractionRendererSwitch(this, newRenderer, oldRenderer);
-    
-    // Handle axes
-    await this._handleAxesRendererSwitch(newRenderer, oldRenderer);
-    
-    console.log('All components updated for new renderer');
-  }
-
-  /**
-   * Handle axes renderer switch
-   * @private
-   */
-  async _handleAxesRendererSwitch(newRenderer, oldRenderer) {
-    // Clear axes from old renderer
-    if (oldRenderer && this.state.components.axes) {
-      if (this.state.components.axes.x) {
-        this.state.components.axes.x.clear(oldRenderer);
-      }
-      if (this.state.components.axes.y) {
-        this.state.components.axes.y.clear(oldRenderer);
-      }
-    }
-    
-    // Axes will be re-rendered in the next render cycle
-    console.log('Axes updated for renderer switch');
-  }
-
-  /**
-   * Check if renderer switch is needed based on current data
-   * @private
-   */
-  async _checkRendererOptimality() {
-    if (!this.options.enableAutoSwitching || this.rendererSwitching.inProgress) {
-      return;
-    }
-    
-    const dataPointCount = this._countDataPoints();
-    const currentRenderer = this.rendererMetadata?.type;
-    
-    // VisionCharts policy: Canvas default, WebGL at 100K+
-    let optimalRenderer = 'canvas';
-    
-    if (dataPointCount >= 100000) {
-      // Check if WebGL is available
-      if (this.rendererFactory.capabilityManager.isRendererSupported('webgl')) {
-        optimalRenderer = 'webgl';
-      }
-    }
-    
-    if (currentRenderer !== optimalRenderer) {
-      console.log(`Data size (${dataPointCount} points) suggests switching from ${currentRenderer} to ${optimalRenderer}`);
-      
-      // Auto-switch renderer
-      await this.switchRenderer(optimalRenderer, `Data size optimization (${dataPointCount} points)`);
-    }
-  }
-
-  // ===== HELPER METHODS =====
-
-  /**
-   * Create legend items from datasets
-   * @private
-   */
-  _createLegendItems() {
-    if (!this.config.datasets) return [];
-    
-    return this.config.datasets.map((dataset, index) => {
-      // Count studies if applicable
-      let studyCount = 0;
-      let studyNames = '';
-      let studies = [];
-      
-      if (dataset.studies && Array.isArray(dataset.studies)) {
-        studies = dataset.studies;
-        studyCount = studies.length;
-        studyNames = studies.map(study => study.name || study.type).join(', ');
-      }
-      
-      return {
-        id: dataset.id || `dataset-${index}`,
-        label: dataset.name || dataset.label || `Series ${index + 1}`,
-        color: dataset.color || this.options.colors?.[index] || '#1468a8',
-        visible: dataset.visible !== false,
-        type: this._determineLegendSymbolType(dataset),
-        studyCount: studyCount,
-        studyNames: studyNames,
-        studies: studies,
-        dataset: dataset, // Reference to original dataset
-        index: index
-      };
-    });
-  }
-
-  /**
-   * Determine legend symbol type
-   * @private
-   */
-  _determineLegendSymbolType(dataset) {
-    // Check dataset-specific type first
-    if (dataset.type) {
-      return dataset.type === 'line' ? 'line' : 'rect';
-    }
-    
-    // Check chart type
-    if (this.options.chartType === 'line') {
-      return 'line';
-    } else if (this.options.chartType === 'bar') {
-      return 'rect';
-    }
-    
-    // Default fallback
-    return 'rect';
-  }
-
-  /**
-   * Update crosshair data points for snapping
-   * @private
-   */
-  _updateCrosshairDataPoints() {
-    if (!this.state.components.crosshair || !this.config.datasets) return;
-    
-    const dataPoints = [];
+  _calculateDataDomains() {
+    let xMin = Infinity, xMax = -Infinity;
+    let yMin = Infinity, yMax = -Infinity;
     
     // Collect all data points from all datasets
-    this.config.datasets.forEach(dataset => {
-      if (!dataset.data || !dataset.visible) return;
+    const allData = Array.isArray(this.config.data) ? 
+      this.config.data.flatMap(dataset => dataset.data || []) : 
+      [];
+    
+    for (const point of allData) {
+      const x = this._getXValue(point);
+      const y = this._getYValue(point);
       
-      dataset.data.forEach(point => {
-        if (!point || point[this.options.xField] === undefined || point[this.options.yField] === undefined) {
-          return;
-        }
-        
-        // Convert data point to screen coordinates
-        const screenX = this.state.scales.x?.scale(point[this.options.xField]);
-        const screenY = this.state.scales.y?.scale(point[this.options.yField]);
-        
-        if (screenX !== undefined && screenY !== undefined) {
-          dataPoints.push({
-            x: screenX,
-            y: screenY,
-            data: point,
-            dataset: dataset
-          });
-        }
-      });
-    });
-    
-    // Set data points for crosshair snapping
-    this.state.components.crosshair.setDataPoints(dataPoints);
-    
-    console.log(`Updated crosshair with ${dataPoints.length} data points for snapping`);
-  }
-
-  /**
-   * Create default tooltip formatter
-   * @private
-   */
-  _createTooltipFormatter() {
-    return (data) => {
-      try {
-        if (!data) return ['No data'];
-        
-        const lines = [];
-        
-        // Handle array of data points (multi-dataset)
-        if (Array.isArray(data)) {
-          // Add date/time header if available
-          if (data.length > 0 && this.options.xType === 'time') {
-            const firstPoint = data[0].point;
-            if (firstPoint && firstPoint.x) {
-              const date = firstPoint.x instanceof Date ? firstPoint.x : new Date(firstPoint.x);
-              lines.push(`📅 ${date.toLocaleDateString()}`);
-              lines.push(''); // Empty line for spacing
-            }
-          }
-          
-          data.forEach((item, index) => {
-            const line = this._formatTooltipItem(item, index);
-            if (line) lines.push(line);
-          });
-        } else {
-          // Handle single data point
-          const line = this._formatTooltipItem(data, 0);
-          if (line) lines.push(line);
-        }
-        
-        return lines.length > 0 ? lines : ['No data to display'];
-        
-      } catch (error) {
-        console.error('Tooltip formatter error:', error);
-        return ['Error formatting tooltip'];
+      if (x != null && !isNaN(x)) {
+        xMin = Math.min(xMin, x);
+        xMax = Math.max(xMax, x);
       }
+      
+      if (y != null && !isNaN(y)) {
+        yMin = Math.min(yMin, y);
+        yMax = Math.max(yMax, y);
+      }
+    }
+    
+    // Handle edge cases
+    if (xMin === Infinity) { xMin = 0; xMax = 1; }
+    if (yMin === Infinity) { yMin = 0; yMax = 1; }
+    
+    // Store raw domains (scales will handle padding and nice numbers)
+    this.dataDomains = {
+      x: [xMin, xMax],
+      y: [yMin, yMax]
     };
   }
-
+  
   /**
-   * Format individual tooltip item
-   * @private
+   * Create scale instances
    */
-  _formatTooltipItem(item, index) {
-    if (!item) return null;
+  _createScales() {
+    // Determine scale types
+    const xScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
+    const yScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
     
-    // Extract dataset and point information
-    const dataset = item.dataset || item;
-    const point = item.point || item;
-    
-    // Get dataset name
-    const datasetName = dataset.name || dataset.label || `Series ${index + 1}`;
-    
-    // Format value
-    let value = point.y !== undefined ? point.y : point.value;
-    if (value === undefined && point[this.options.yField]) {
-      value = point[this.options.yField];
-    }
-    
-    // Format the value based on chart type and options
-    const formattedValue = this._formatTooltipValue(value);
-    
-    // Add additional context for time series
-    if (this.options.xType === 'time' && point.x !== undefined) {
-      const date = point.x instanceof Date ? point.x : new Date(point.x);
-      const dateStr = date.toLocaleDateString();
-      return `${datasetName}: ${formattedValue} (${dateStr})`;
-    }
-    
-    return `${datasetName}: ${formattedValue}`;
-  }
-
-  /**
-   * Format tooltip value based on chart configuration
-   * @private
-   */
-  _formatTooltipValue(value) {
-    if (value === null || value === undefined) return 'N/A';
-    
-    if (typeof value !== 'number') return String(value);
-    
-    // Use chart's Y-axis formatting if available
-    if (this.options.yTickFormat && typeof this.options.yTickFormat === 'function') {
-      return this.options.yTickFormat(value);
-    }
-    
-    // Use format type if specified
-    if (this.options.yType === 'percent') {
-      return (value * 100).toFixed(1) + '%';
-    }
-    
-    if (this.options.yType === 'currency') {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(value);
-    }
-    
-    // Default number formatting
-    if (Math.abs(value) >= 1000000000) {
-      return (value / 1000000000).toFixed(1) + 'B';
-    } else if (Math.abs(value) >= 1000000) {
-      return (value / 1000000).toFixed(1) + 'M';
-    } else if (Math.abs(value) >= 1000) {
-      return (value / 1000).toFixed(1) + 'K';
-    } else if (Math.abs(value) < 1 && value !== 0) {
-      return value.toPrecision(3);
-    } else {
-      return value.toFixed(value % 1 === 0 ? 0 : 2);
-    }
-  }
-
-  /**
-   * Count total data points in all datasets
-   * @private
-   */
-  _countDataPoints() {
-    let totalPoints = 0;
-    
-    if (this.config.datasets && Array.isArray(this.config.datasets)) {
-      this.config.datasets.forEach(dataset => {
-        if (dataset.data && Array.isArray(dataset.data)) {
-          totalPoints += dataset.data.length;
-        }
-      });
-    }
-    
-    return totalPoints;
-  }
-
-  // ===== PERFORMANCE AND OPTIMIZATION =====
-
-  /**
-   * Update performance metrics
-   * @private
-   */
-  _updatePerformanceMetrics(renderTime) {
-    this.performanceMetrics.renderCount++;
-    this.performanceMetrics.lastRenderTime = renderTime;
-    this.performanceMetrics.averageRenderTime = 
-      (this.performanceMetrics.averageRenderTime * (this.performanceMetrics.renderCount - 1) + renderTime) / 
-      this.performanceMetrics.renderCount;
-  }
-
-  /**
-   * Apply rendering optimizations
-   * @private
-   */
-  _applyRenderingOptimizations() {
-    // Apply renderer-specific optimizations
-    if (this.renderer && this.renderer.optimize) {
-      this.renderer.optimize();
-    }
-    
-    // Apply component-specific optimizations
-    Object.values(this.state.components).forEach(component => {
-      if (component && component.optimize) {
-        component.optimize();
+    // X Scale
+    this.scales.x = new Scale({
+      type: xScaleType,
+      domain: [...this.dataDomains.x],
+      range: [this.chartArea.x, this.chartArea.x + this.chartArea.width],
+      dataType: this.config.options.xType,
+      options: {
+        nice: true,
+        padding: 0.05
       }
     });
     
-    console.log('Rendering optimizations applied');
+    // Y Scale  
+    this.scales.y = new Scale({
+      type: yScaleType,
+      domain: [...this.dataDomains.y],
+      range: [this.chartArea.y + this.chartArea.height, this.chartArea.y], // Inverted for Canvas/SVG
+      dataType: this.config.options.yType,
+      options: {
+        nice: true,
+        padding: 0.05
+      }
+    });
+    
+    // Register scales with manager
+    this.scaleManager.setScale('x', this.scales.x);
+    this.scaleManager.setScale('y', this.scales.y);
   }
-
+  
   /**
-   * Setup performance monitoring
-   * @private
+   * Create grid instance
    */
-  _setupPerformanceMonitoring() {
-    // Monitor for performance issues and auto-switch renderers if needed
-    setInterval(() => {
-      this._checkRendererOptimality();
-    }, 5000); // Check every 5 seconds
+  _createGrid() {
+    if (!this.scales.x || !this.scales.y) {
+      console.warn('Scales not created before grid');
+      return;
+    }
+    
+    this.grid = new Grid({
+      xScale: this.scales.x,
+      yScale: this.scales.y,
+      chartArea: this.chartArea,
+      showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
+      showYGrid: this.config.options.showYGrid && this.config.options.showGrid,
+      xGridColor: this.config.options.gridColor,
+      yGridColor: this.config.options.gridColor,
+      xGridOpacity: this.config.options.gridOpacity,
+      yGridOpacity: this.config.options.gridOpacity,
+      xGridDash: this.config.options.gridDash,
+      yGridDash: this.config.options.gridDash
+    });
   }
-
+  
   /**
-   * Setup renderer switch event handlers
-   * @private
+   * Create axis instances
    */
-  _setupRendererSwitchHandlers() {
-    // Listen for automatic renderer switches
-    if (this.rendererFactory && typeof this.rendererFactory.addEventListener === 'function') {
-      this.rendererFactory.addEventListener('renderer-switched', (event) => {  // ✅ FIXED
-        if (event.chartId === this.chartId) {
-          console.log(`Chart renderer automatically switched: ${event.reason}`);
-          // Optional: Re-render chart with new renderer
-          // this.render();
-        }
-      });
-      
-      // Also listen for renderer creation events
-      this.rendererFactory.addEventListener('renderer-created', (event) => {
-        if (event.chartId === this.chartId) {
-          console.log(`Chart renderer created: ${event.rendererType}`);
-        }
+  _createAxes() {
+    if (!this.scales.x || !this.scales.y) {
+      console.warn('Scales not created before axes');
+      return;
+    }
+    
+    // X Axis
+    this.axes.x = new Axis({
+      orientation: 'x',
+      scale: this.scales.x,
+      options: {
+        label: this.config.options.xAxisName,
+        fontSize: 12,
+        color: '#333'
+      }
+    });
+    
+    // Y Axis
+    this.axes.y = new Axis({
+      orientation: 'y',
+      scale: this.scales.y,
+      options: {
+        label: this.config.options.yAxisName,
+        fontSize: 12,
+        color: '#333'
+      }
+    });
+  }
+  
+  /**
+   * Extract X value from data point (to be overridden by subclasses if needed)
+   */
+  _getXValue(point) {
+    const xField = this.config.options.xField;
+    let value = point[xField];
+    
+    // Handle Date objects and timestamps
+    if (value instanceof Date) {
+      return value.getTime();
+    }
+    
+    if (typeof value === 'string' && this.config.options.xType === 'time') {
+      return new Date(value).getTime();
+    }
+    
+    return typeof value === 'number' ? value : null;
+  }
+  
+  /**
+   * Extract Y value from data point (to be overridden by subclasses if needed)
+   */
+  _getYValue(point) {
+    const yField = this.config.options.yField;
+    const value = point[yField];
+    return typeof value === 'number' ? value : null;
+  }
+  
+  /**
+   * Toggle grid visibility
+   */
+  toggleGrid(show = null) {
+    this.config.options.showGrid = show !== null ? show : !this.config.options.showGrid;
+    if (this.grid) {
+      this.grid.updateOptions({
+        showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
+        showYGrid: this.config.options.showYGrid && this.config.options.showGrid
       });
     }
+    this.render();
+    return this.config.options.showGrid;
   }
-
-  // ===== UPDATE AND LIFECYCLE METHODS =====
-
+  
+  /**
+   * Toggle X grid lines
+   */
+  toggleXGrid(show = null) {
+    this.config.options.showXGrid = show !== null ? show : !this.config.options.showXGrid;
+    if (this.grid) {
+      this.grid.toggleXGrid(this.config.options.showXGrid && this.config.options.showGrid);
+    }
+    this.render();
+    return this.config.options.showXGrid;
+  }
+  
+  /**
+   * Toggle Y grid lines
+   */
+  toggleYGrid(show = null) {
+    this.config.options.showYGrid = show !== null ? show : !this.config.options.showYGrid;
+    if (this.grid) {
+      this.grid.toggleYGrid(this.config.options.showYGrid && this.config.options.showGrid);
+    }
+    this.render();
+    return this.config.options.showYGrid;
+  }
+  
+  /**
+   * Set grid color
+   */
+  setGridColor(color) {
+    this.config.options.gridColor = color;
+    if (this.grid) {
+      this.grid.setGridColor(color);
+    }
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Set grid opacity
+   */
+  setGridOpacity(opacity) {
+    this.config.options.gridOpacity = opacity;
+    if (this.grid) {
+      this.grid.setGridOpacity(opacity);
+    }
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Select optimal renderer based on data size
+   */
+  _selectRenderer() {
+    if (this.dataPointCount > this.performanceThresholds.canvas) {
+      console.log('Using WebGL renderer for large dataset (when implemented)');
+      this.activeRenderer = 'webgl';
+      // Note: WebGL renderer not yet implemented, falls back to Canvas 2D
+      // When implemented, grid will still use Canvas 2D for hybrid rendering
+    } else {
+      console.log('Using Canvas renderer');
+      this.activeRenderer = 'canvas';
+    }
+  }
+  _selectRenderer() {
+    if (this.dataPointCount > this.performanceThresholds.canvas) {
+      console.log('Using WebGL renderer for large dataset');
+      this.activeRenderer = 'webgl';
+    } else {
+      console.log('Using Canvas renderer');
+      this.activeRenderer = 'canvas';
+    }
+  }
+  
+  /**
+   * Render the chart
+   */
+  async render() {
+    try {
+      // Clear and prepare canvas
+      const ctx = this.canvas.getContext('2d');
+      ctx.clearRect(0, 0, this.config.options.width, this.config.options.height);
+      
+      // HYBRID RENDERING ARCHITECTURE:
+      // 1. Grid: Always Canvas 2D (simple, reliable)
+      if (this.grid && this.config.options.showGrid) {
+        this.grid.render(ctx);
+      }
+      
+      // 2. Axes: Always SVG (crisp text, vector graphics)
+      this._renderAxes();
+      
+      // 3. Data: Canvas 2D (<50K points) or WebGL (50K+ points)
+      //    Currently: Canvas 2D only (WebGL renderer will be added later)
+      await this._renderChartData();
+      
+      console.log('Chart rendered successfully');
+    } catch (error) {
+      console.error('Error rendering chart:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Render axes using the Axis class
+   */
+  _renderAxes() {
+    if (!this.axes.x || !this.axes.y) {
+      console.warn('Axes not initialized');
+      return;
+    }
+    
+    // Render X axis
+    this.axes.x.render(this.svgOverlay, {
+      x: 0,
+      y: this.chartArea.y + this.chartArea.height
+    });
+    
+    // Render Y axis  
+    this.axes.y.render(this.svgOverlay, {
+      x: this.chartArea.x,
+      y: 0
+    });
+  }
+  
+  /**
+   * Render chart data - to be implemented by subclasses
+   */
+  async _renderChartData() {
+    throw new Error('_renderChartData must be implemented by subclass');
+  }
+  
   /**
    * Update chart with new data or options
-   * @param {Object} newConfig - New configuration
-   * @returns {Chart} This chart instance
    */
-  async update(newConfig = {}) {
-    console.log('Chart.update called');
+  update() {
+    this._processData();
+    this._calculateDataDomains();
+    this._createScales();
+    this._createGrid();
     
-    // Merge new configuration
-    if (Object.keys(newConfig).length > 0) {
-      this.config = { ...this.config, ...newConfig };
-      this.options = this._processOptions(this.config);
+    // Update axes with new scales
+    if (this.axes.x && this.axes.y) {
+      this.axes.x.updateScale(this.scales.x);
+      this.axes.x.updateOptions({ label: this.config.options.xAxisName });
+      
+      this.axes.y.updateScale(this.scales.y);
+      this.axes.y.updateOptions({ label: this.config.options.yAxisName });
     }
     
-    // Check if renderer switch is needed
-    await this._checkRendererOptimality();
-    
-    // Update dimensions if container size changed
-    this.updateDimensions();
-    
-    // Update crosshair data points
-    this._updateCrosshairDataPoints();
-    
-    // Update legend items
-    if (this.state.components.legend && this.config.datasets) {
-      const legendItems = this._createLegendItems();
-      this.state.components.legend.setItems(legendItems);
+    // Update grid with new scales and chart area
+    if (this.grid) {
+      this.grid.updateScales(this.scales.x, this.scales.y);
+      this.grid.updateChartArea(this.chartArea);
     }
     
-    // Re-render
-    return this.render();
+    this._selectRenderer();
+    this.render();
   }
-
+  
   /**
-   * Resize chart to new dimensions
-   * @param {number} width - New width (optional, will auto-detect if not provided)
-   * @param {number} height - New height (optional, will auto-detect if not provided)
-   * @returns {Chart} This chart instance
-   */
-  async resize(width, height) {
-    console.log('Chart.resize called');
-    
-    // Update dimensions
-    if (width && height) {
-      this.state.dimensions.width = width;
-      this.state.dimensions.height = height;
-    } else {
-      this.updateDimensions();
-    }
-    
-    // Update inner dimensions
-    this.state.dimensions.innerWidth = this.state.dimensions.width - this.options.margins.left - this.options.margins.right;
-    this.state.dimensions.innerHeight = this.state.dimensions.height - this.options.margins.top - this.options.margins.bottom;
-    
-    // Resize renderer
-    if (this.renderer) {
-      this.renderer.resize(this.state.dimensions.width, this.state.dimensions.height);
-    }
-    
-    // Update crosshair dimensions
-    if (this.state.components.crosshair) {
-      this.state.components.crosshair.resize(this.state.dimensions.innerWidth, this.state.dimensions.innerHeight);
-    }
-    
-    // Re-render
-    return this.render();
-  }
-
-  /**
-   * Clean up and destroy chart
+   * Destroy the chart and clean up resources
    */
   destroy() {
-    console.log('Chart.destroy called');
-    
-    // Clean up all interaction components
-    InteractionManager.cleanupAllInteractions(this);
-    
-    // Clean up axes
-    if (this.state.components.axes) {
-      if (this.state.components.axes.x && this.renderer) {
-        this.state.components.axes.x.destroy(this.renderer);
-      }
-      if (this.state.components.axes.y && this.renderer) {
-        this.state.components.axes.y.destroy(this.renderer);
-      }
+    if (this.container) {
+      this.container.innerHTML = '';
     }
-    
-    // Clean up renderer
-    if (this.chartId && this.rendererFactory) {
-      this.rendererFactory.destroyRenderer(this.chartId);
-    }
-
-    if (this.resizeObserver) {
-    this.resizeObserver.disconnect();
-    }
-    if (this.resizeHandler) {
-      window.removeEventListener('resize', this.resizeHandler);
-    }
-    
-    // Clear all event handlers
-    this.eventHandlers.clear();
-    
-    // Clear references
-    this.renderer = null;
-    this.rendererMetadata = null;
-    this.chartId = null;
-    this.state.container = null;
-    this.config = null;
-    
-    console.log('Chart destroyed');
-  }
-
-  // ===== UTILITY METHODS (PRESERVE EXISTING) =====
-  
-  /**
-   * Process configuration object
-   * @private
-   */
-  _processConfig(config) {
-    return {
-      datasets: [],
-      ...config
-    };
-  }
-
-  /**
-   * Process options from configuration
-   * @private
-   */
-  _processOptions(config) {
-    return {
-      // Default options
-      width: null,
-      height: null,
-      margins: { top: 20, right: 30, bottom: 40, left: 50 },
-      backgroundColor: '#ffffff',
-      fontFamily: 'sans-serif',
-      textColor: '#333333',
-      
-      // Data field mappings
-      xField: 'x',
-      yField: 'y',
-      xType: 'number',
-      yType: 'number',
-      
-      // Component visibility
-      showTooltips: true,
-      showLegend: true,
-      showCrosshair: true,
-      
-      // Performance options
-      enableAutoSwitching: true,
-      enablePerformanceMonitoring: true,
-      canvasThreshold: 100000,
-      autoOptimizeFeatures: true,
-      
-      // Interaction options
-      coordinatedInteractions: true,
-      
-      // Merge with provided options
-      ...config
-    };
-  }
-
-  /**
-   * Update dimensions from container
-   */
-  updateDimensions() {
-  if (!this.state.container) return;
-  
-  const rect = this.state.container.getBoundingClientRect();
-  
-  // IMPORTANT: Use container's INNER dimensions (excluding padding)
-  const computedStyle = getComputedStyle(this.state.container);
-  const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
-  const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
-  const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
-  const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
-  
-  // Calculate available space inside container
-  const availableWidth = rect.width - paddingLeft - paddingRight;
-  const availableHeight = rect.height - paddingTop - paddingBottom;
-  
-  // Set dimensions to fill available space
-  this.state.dimensions.width = this.options.width || Math.max(availableWidth, 100);
-  this.state.dimensions.height = this.options.height || Math.max(availableHeight, 100);
-  
-  this.state.dimensions.innerWidth = this.state.dimensions.width - this.options.margins.left - this.options.margins.right;
-  this.state.dimensions.innerHeight = this.state.dimensions.height - this.options.margins.top - this.options.margins.bottom;
-  
-  // CRITICAL: Update the actual rendering element size
-  this._updateRendererSize();
-}
-
-_updateRendererSize() {
-  if (!this.renderer || !this.renderer.element) return;
-  
-  const { width, height } = this.state.dimensions;
-  
-  // Update the SVG/Canvas element to match calculated dimensions
-  if (this.renderer.element.tagName === 'svg') {
-    this.renderer.element.setAttribute('width', width);
-    this.renderer.element.setAttribute('height', height);
-    this.renderer.element.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  } else if (this.renderer.element.tagName === 'CANVAS') {
-    this.renderer.element.width = width;
-    this.renderer.element.height = height;
-    this.renderer.element.style.width = width + 'px';
-    this.renderer.element.style.height = height + 'px';
-  }
-}
-
-  /**
-   * Setup resize handling
-   * @private
-   */
-  _setupResizeHandling() {
-  // Use ResizeObserver for better performance
-  if (window.ResizeObserver) {
-    this.resizeObserver = new ResizeObserver(entries => {
-      for (let entry of entries) {
-        const oldWidth = this.state.dimensions.width;
-        const oldHeight = this.state.dimensions.height;
-        
-        this.updateDimensions();
-        
-        if (this.state.dimensions.width !== oldWidth || this.state.dimensions.height !== oldHeight) {
-          this.resize();
-        }
-      }
-    });
-    
-    this.resizeObserver.observe(this.state.container);
-  } else {
-    // Fallback to window resize
-    this.resizeHandler = () => {
-      const oldWidth = this.state.dimensions.width;
-      const oldHeight = this.state.dimensions.height;
-      
-      this.updateDimensions();
-      
-      if (this.state.dimensions.width !== oldWidth || this.state.dimensions.height !== oldHeight) {
-        this.resize();
-      }
-    };
-    
-    window.addEventListener('resize', this.resizeHandler);
-  }
-}
-
-  // ===== RENDERING METHODS (TO BE IMPLEMENTED BY SUBCLASSES) =====
-
-  /**
-   * Create scales (to be implemented by subclasses)
-   */
-  createScales() {
-    // Default implementation - subclasses should override
-    console.log('createScales called - should be implemented by subclass');
-  }
-
-  /**
-   * Render title
-   */
-  renderTitle() {
-    if (!this.options.title) return;
-    
-    const titleX = this.state.dimensions.width / 2;
-    const titleY = 20;
-    
-    this.renderer.drawText(this.options.title, titleX, titleY, {
-      textAnchor: 'middle',
-      fontSize: '16px',
-      fontWeight: 'bold',
-      fontFamily: this.options.fontFamily,
-      fill: this.options.textColor,
-      class: 'visioncharts-title'
-    });
-  }
-
-  /**
-   * Render chart features (zero line, recession lines, etc.)
-   * @private
-   */
-  _renderChartFeatures() {
-    // Zero line
-    if (this.options.showZeroLine && this.state.scales.y) {
-      if (!this.state.components.zeroLine) {
-        this.state.components.zeroLine = new ZeroLine();
-      }
-      
-      this.state.components.zeroLine.render(
-        this.state.chart,
-        this.state.scales.y,
-        this.state.dimensions.innerWidth,
-        this.options
-      );
-    }
-    
-    // Recession lines
-    if (this.options.showRecessionLines && this.state.scales.x) {
-      if (!this.state.components.recessionLines) {
-        this.state.components.recessionLines = new RecessionLines();
-      }
-      
-      this.state.components.recessionLines.render(
-        this.state.chart,
-        this.state.scales.x,
-        this.state.dimensions.innerHeight,
-        this.options
-      );
-    }
-    
-    // Additional features can be added here
-  }
-
-  // ===== PUBLIC API METHODS =====
-
-  /**
-   * Get current renderer information
-   * @returns {Object} Renderer information
-   */
-  getRendererInfo() {
-    return this.rendererFactory.getRendererInfo(this.chartId);
-  }
-
-  /**
-   * Get comprehensive performance metrics
-   * @returns {Object} Performance data
-   */
-  getPerformanceMetrics() {
-    const factoryMetrics = this.rendererFactory.getPerformanceAnalysis?.(this.chartId) || {};
-    
-    return {
-      chart: this.performanceMetrics,
-      components: this.componentMetrics,
-      renderer: factoryMetrics,
-      initialization: {
-        componentInitTime: this.performanceMetrics.componentInitTime,
-        tooltipInitialized: this.componentInitializationState.tooltip,
-        legendInitialized: this.componentInitializationState.legend,
-        crosshairInitialized: this.componentInitializationState.crosshair
-      },
-      dataPoints: this._countDataPoints(),
-      rendererType: this.rendererMetadata?.type,
-      isLegacyMode: this.isLegacyMode
-    };
-  }
-
-  /**
-   * Force performance optimization
-   * @returns {Array} Applied optimizations
-   */
-  optimizePerformance() {
-    const optimizations = [];
-    
-    // Renderer optimizations
-    if (this.rendererFactory.optimizePerformance) {
-      const rendererOpts = this.rendererFactory.optimizePerformance(this.chartId);
-      optimizations.push(...rendererOpts);
-    }
-    
-    // Component optimizations
-    this._applyRenderingOptimizations();
-    optimizations.push('Component optimizations applied');
-    
-    return optimizations;
-  }
-
-  /**
-   * Show tooltip at specific position
-   * @param {Object} data - Tooltip data
-   * @param {number} x - X coordinate
-   * @param {number} y - Y coordinate
-   */
-  showTooltip(data, x, y) {
-    if (this.state.components.tooltip) {
-      this.state.components.tooltip.show(data, x, y, {
-        width: this.state.dimensions.width,
-        height: this.state.dimensions.height
-      });
-    }
-  }
-
-  /**
-   * Hide tooltip
-   */
-  hideTooltip() {
-    if (this.state.components.tooltip) {
-      this.state.components.tooltip.hide();
-    }
-  }
-
-  /**
-   * Show crosshair at specific position
-   * @param {number} x - X coordinate
-   * @param {number} y - Y coordinate
-   */
-  showCrosshair(x, y) {
-    if (this.state.components.crosshair) {
-      this.state.components.crosshair.show(x, y);
-    }
-  }
-
-  /**
-   * Hide crosshair
-   */
-  hideCrosshair() {
-    if (this.state.components.crosshair) {
-      this.state.components.crosshair.hide();
-    }
-  }
-
-  /**
-   * Toggle component visibility
-   * @param {string} component - Component name ('tooltip', 'legend', 'crosshair')
-   * @param {boolean} visible - Visibility state
-   */
-  toggleComponent(component, visible) {
-    if (this.state.components[component]) {
-      if (visible) {
-        this.state.components[component].show?.();
-      } else {
-        this.state.components[component].hide?.();
-      }
-    }
+    this.renderers.clear();
   }
 }
