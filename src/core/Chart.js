@@ -1,5 +1,5 @@
 /**
- * Chart.js - Base Chart Class
+ * Chart.js - Base Chart Class with Legend Integration
  * 
  * Foundation class for all chart types in VisionCharts.
  * Handles hybrid rendering coordination, basic lifecycle, and common functionality.
@@ -8,6 +8,7 @@
 import { Axis } from './Axis.js';
 import { Scale, ScaleManager } from './Scale.js';
 import { Grid } from '../components/Grid.js';
+import { Legend } from '../components/Legend.js';
 
 export class Chart {
   constructor(config = {}) {
@@ -42,6 +43,23 @@ export class Chart {
         gridOpacity: 0.7,
         gridDash: [], // [] for solid, [5, 5] for dashed
         
+        // Legend options
+        showLegend: true,
+        legend: {
+          position: 'top',
+          orientation: 'horizontal',
+          align: 'center',
+          itemSpacing: 20,
+          fontSize: 12,
+          interactive: true,
+          hoverEffect: true,
+          showStudyBadges: true,
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          borderColor: '#e0e0e0',
+          borderWidth: 1,
+          borderRadius: 4
+        },
+        
         ...config.options
       }
     };
@@ -70,8 +88,14 @@ export class Chart {
     // Grid component
     this.grid = null;
     
+    // Legend component
+    this.legend = null;
+    
     // Title element reference
     this.titleElement = null;
+    
+    // Dataset visibility state
+    this.hiddenDatasets = new Set();
     
     // Initialize
     this._initialize();
@@ -129,6 +153,9 @@ export class Chart {
     // Create axes
     this._createAxes();
     
+    // Create legend
+    this._createLegend();
+    
     // Choose optimal renderer
     this._selectRenderer();
   }
@@ -164,7 +191,7 @@ export class Chart {
     this.canvas.style.left = '0';
     this.canvas.style.zIndex = '1';
     
-    // Create SVG overlay for UI elements (axes, labels, title, etc.)
+    // Create SVG overlay for UI elements (axes, labels, title, legend, etc.)
     this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.svgOverlay.setAttribute('width', this.config.options.width);
     this.svgOverlay.setAttribute('height', this.config.options.height);
@@ -173,6 +200,10 @@ export class Chart {
     this.svgOverlay.style.left = '0';
     this.svgOverlay.style.zIndex = '2';
     this.svgOverlay.style.pointerEvents = 'none'; // Allow interaction to pass through to canvas
+    
+    // Enable pointer events on specific SVG elements (legend will set this)
+    this.svgOverlay.style.pointerEvents = 'auto';
+    this.canvas.style.pointerEvents = 'none';
     
     // Add to container
     this.container.appendChild(this.canvas);
@@ -204,12 +235,14 @@ export class Chart {
     let xMin = Infinity, xMax = -Infinity;
     let yMin = Infinity, yMax = -Infinity;
     
-    // Collect all data points from all datasets
-    const allData = Array.isArray(this.config.data) ? 
-      this.config.data.flatMap(dataset => dataset.data || []) : 
+    // Collect all data points from visible datasets only
+    const visibleData = Array.isArray(this.config.data) ? 
+      this.config.data
+        .filter(dataset => !this.hiddenDatasets.has(dataset.id))
+        .flatMap(dataset => dataset.data || []) : 
       [];
     
-    for (const point of allData) {
+    for (const point of visibleData) {
       const x = this._getXValue(point);
       const y = this._getYValue(point);
       
@@ -329,6 +362,27 @@ export class Chart {
   }
   
   /**
+   * Create legend instance
+   */
+  _createLegend() {
+    if (!this.config.options.showLegend) {
+      return;
+    }
+    
+    this.legend = new Legend(this.config.options.legend);
+    
+    // Set up legend data
+    this.legend.setDatasets(this.config.data || []);
+    
+    // Set up dataset toggle callback
+    this.legend.onDatasetToggled((datasetId, isVisible) => {
+      this.toggleDataset(datasetId, isVisible);
+    });
+    
+    console.log('Legend created');
+  }
+  
+  /**
    * Extract X value from data point (to be overridden by subclasses if needed)
    */
   _getXValue(point) {
@@ -354,6 +408,89 @@ export class Chart {
     const yField = this.config.options.yField;
     const value = point[yField];
     return typeof value === 'number' ? value : null;
+  }
+  
+  /**
+   * Toggle dataset visibility
+   */
+  toggleDataset(datasetId, forceVisible = null) {
+    if (forceVisible === false || (forceVisible === null && !this.hiddenDatasets.has(datasetId))) {
+      this.hiddenDatasets.add(datasetId);
+      console.log(`Dataset ${datasetId} hidden`);
+    } else {
+      this.hiddenDatasets.delete(datasetId);
+      console.log(`Dataset ${datasetId} shown`);
+    }
+    
+    // Update legend state
+    if (this.legend) {
+      if (this.hiddenDatasets.has(datasetId)) {
+        this.legend.hideDataset(datasetId);
+      } else {
+        this.legend.showDataset(datasetId);
+      }
+    }
+    
+    // Recalculate domains and re-render
+    this._calculateDataDomains();
+    this._createScales();
+    this._createGrid();
+    
+    // Update axes with new scales
+    if (this.axes.x && this.axes.y) {
+      this.axes.x.updateScale(this.scales.x);
+      this.axes.y.updateScale(this.scales.y);
+    }
+    
+    // Update grid with new scales
+    if (this.grid) {
+      this.grid.updateScales(this.scales.x, this.scales.y);
+    }
+    
+    this.render();
+    
+    return !this.hiddenDatasets.has(datasetId);
+  }
+  
+  /**
+   * Get visible datasets (not hidden)
+   */
+  getVisibleDatasets() {
+    return Array.isArray(this.config.data) ? 
+      this.config.data.filter(dataset => !this.hiddenDatasets.has(dataset.id)) : 
+      [];
+  }
+  
+  /**
+   * Show/hide legend
+   */
+  toggleLegend(show = null) {
+    this.config.options.showLegend = show !== null ? show : !this.config.options.showLegend;
+    
+    if (this.config.options.showLegend && !this.legend) {
+      this._createLegend();
+    }
+    
+    if (this.legend) {
+      this.legend.setVisible(this.config.options.showLegend);
+    }
+    
+    this.render();
+    return this.config.options.showLegend;
+  }
+  
+  /**
+   * Update legend configuration
+   */
+  updateLegendConfig(newConfig) {
+    this.config.options.legend = { ...this.config.options.legend, ...newConfig };
+    
+    if (this.legend) {
+      this.legend.updateConfig(this.config.options.legend);
+    }
+    
+    this.render();
+    return this;
   }
   
   /**
@@ -387,6 +524,7 @@ export class Chart {
     this.titleElement.setAttribute('font-weight', this.config.options.titleFontWeight);
     this.titleElement.setAttribute('fill', this.config.options.titleColor);
     this.titleElement.setAttribute('class', 'chart-title');
+    this.titleElement.style.pointerEvents = 'none';
     
     // Set title text
     this.titleElement.textContent = this.config.options.title;
@@ -510,7 +648,12 @@ export class Chart {
       // 3. Axes: Always SVG (crisp text, vector graphics)
       this._renderAxes();
       
-      // 4. Data: Canvas 2D (<50K points) or WebGL (50K+ points)
+      // 4. Legend: Always SVG (crisp text, interactive)
+      if (this.legend && this.config.options.showLegend) {
+        this.legend.render(this.svgOverlay, this.chartArea, this.config.options.width, this.config.options.height);
+      }
+      
+      // 5. Data: Canvas 2D (<50K points) or WebGL (50K+ points)
       //    Currently: Canvas 2D only (WebGL renderer will be added later)
       await this._renderChartData();
       
@@ -545,6 +688,7 @@ export class Chart {
   
   /**
    * Render chart data - to be implemented by subclasses
+   * Should only render visible datasets
    */
   async _renderChartData() {
     throw new Error('_renderChartData must be implemented by subclass');
@@ -574,6 +718,11 @@ export class Chart {
       this.grid.updateChartArea(this.chartArea);
     }
     
+    // Update legend with new datasets
+    if (this.legend) {
+      this.legend.setDatasets(this.config.data || []);
+    }
+    
     this._selectRenderer();
     this.render();
   }
@@ -585,6 +734,11 @@ export class Chart {
     if (this.titleElement) {
       this.titleElement.remove();
       this.titleElement = null;
+    }
+    
+    if (this.legend) {
+      this.legend.destroy();
+      this.legend = null;
     }
     
     if (this.container) {
