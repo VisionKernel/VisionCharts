@@ -18,6 +18,7 @@ export class Chart {
         // Default options
         width: 800,
         height: 400,
+        title: config.options?.title || '', // Chart title
         xAxisName: 'X Axis',
         yAxisName: 'Y Axis',
         xField: 'x',
@@ -25,6 +26,13 @@ export class Chart {
         xType: 'time', // 'time', 'number', 'category'
         yType: 'number',
         margin: { top: 40, right: 60, bottom: 60, left: 80 },
+        
+        // Title styling options
+        titleFontSize: 16,
+        titleFontFamily: 'Arial, sans-serif',
+        titleFontWeight: 'bold',
+        titleColor: '#333333',
+        titlePadding: 10, // Space between title and chart area
         
         // Grid options
         showGrid: true,
@@ -61,6 +69,9 @@ export class Chart {
     
     // Grid component
     this.grid = null;
+    
+    // Title element reference
+    this.titleElement = null;
     
     // Initialize
     this._initialize();
@@ -153,7 +164,7 @@ export class Chart {
     this.canvas.style.left = '0';
     this.canvas.style.zIndex = '1';
     
-    // Create SVG overlay for UI elements (axes, labels, etc.)
+    // Create SVG overlay for UI elements (axes, labels, title, etc.)
     this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.svgOverlay.setAttribute('width', this.config.options.width);
     this.svgOverlay.setAttribute('height', this.config.options.height);
@@ -346,6 +357,63 @@ export class Chart {
   }
   
   /**
+   * Render chart title
+   */
+  _renderTitle() {
+    // Remove existing title if present
+    if (this.titleElement) {
+      this.titleElement.remove();
+      this.titleElement = null;
+    }
+    
+    // Only render title if one is specified
+    if (!this.config.options.title) {
+      return;
+    }
+    
+    // Create title element
+    this.titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    
+    // Position title centered horizontally, in the top margin
+    const centerX = this.config.options.width / 2;
+    const titleY = this.config.options.titlePadding + this.config.options.titleFontSize;
+    
+    // Set title attributes
+    this.titleElement.setAttribute('x', centerX);
+    this.titleElement.setAttribute('y', titleY);
+    this.titleElement.setAttribute('text-anchor', 'middle');
+    this.titleElement.setAttribute('font-size', this.config.options.titleFontSize);
+    this.titleElement.setAttribute('font-family', this.config.options.titleFontFamily);
+    this.titleElement.setAttribute('font-weight', this.config.options.titleFontWeight);
+    this.titleElement.setAttribute('fill', this.config.options.titleColor);
+    this.titleElement.setAttribute('class', 'chart-title');
+    
+    // Set title text
+    this.titleElement.textContent = this.config.options.title;
+    
+    // Add to SVG overlay
+    this.svgOverlay.appendChild(this.titleElement);
+    
+    console.log(`Title rendered: "${this.config.options.title}"`);
+  }
+  
+  /**
+   * Set chart title
+   */
+  setTitle(title) {
+    this.config.options.title = title;
+    this._renderTitle(); // Re-render title immediately
+    return this;
+  }
+  
+  /**
+   * Get current title
+   */
+  getTitle() {
+    return this.config.options.title;
+  }
+  
+  /**
    * Toggle grid visibility
    */
   toggleGrid(show = null) {
@@ -413,17 +481,6 @@ export class Chart {
    */
   _selectRenderer() {
     if (this.dataPointCount > this.performanceThresholds.canvas) {
-      console.log('Using WebGL renderer for large dataset (when implemented)');
-      this.activeRenderer = 'webgl';
-      // Note: WebGL renderer not yet implemented, falls back to Canvas 2D
-      // When implemented, grid will still use Canvas 2D for hybrid rendering
-    } else {
-      console.log('Using Canvas renderer');
-      this.activeRenderer = 'canvas';
-    }
-  }
-  _selectRenderer() {
-    if (this.dataPointCount > this.performanceThresholds.canvas) {
       console.log('Using WebGL renderer for large dataset');
       this.activeRenderer = 'webgl';
     } else {
@@ -447,10 +504,13 @@ export class Chart {
         this.grid.render(ctx);
       }
       
-      // 2. Axes: Always SVG (crisp text, vector graphics)
+      // 2. Title: Always SVG (crisp text, vector graphics)
+      this._renderTitle();
+      
+      // 3. Axes: Always SVG (crisp text, vector graphics)
       this._renderAxes();
       
-      // 3. Data: Canvas 2D (<50K points) or WebGL (50K+ points)
+      // 4. Data: Canvas 2D (<50K points) or WebGL (50K+ points)
       //    Currently: Canvas 2D only (WebGL renderer will be added later)
       await this._renderChartData();
       
@@ -522,6 +582,11 @@ export class Chart {
    * Destroy the chart and clean up resources
    */
   destroy() {
+    if (this.titleElement) {
+      this.titleElement.remove();
+      this.titleElement = null;
+    }
+    
     if (this.container) {
       this.container.innerHTML = '';
     }
