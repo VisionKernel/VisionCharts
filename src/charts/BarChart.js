@@ -25,9 +25,6 @@ export class BarChart extends Chart {
   async _renderChartData() {
     const ctx = this.canvas.getContext('2d');
     
-    // Clear canvas
-    ctx.clearRect(0, 0, this.config.options.width, this.config.options.height);
-    
     // Set up canvas state
     ctx.save();
     

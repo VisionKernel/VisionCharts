@@ -126,7 +126,6 @@ async function initLineChart() {
         yType: 'number',
         xAxisName: xAxisName,
         yAxisName: yAxisName,
-        // Grid enabled by default - no customization needed
         showGrid: true,
         showXGrid: true,
         showYGrid: true
