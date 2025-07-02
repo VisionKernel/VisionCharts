@@ -968,8 +968,19 @@ export default class SvgRenderer extends AbstractRenderer {
     return element;
   }
   
-  static createGroup(attributes = {}) {
-    return SvgRenderer.createElement('g', attributes);
+  createGroup(attributes = {}) {
+    this._ensureInitialized();
+    
+    const groupId = this._generateElementId();
+    const group = this._createSVGElement('g', {
+      'data-group-id': groupId,
+      ...attributes
+    });
+    
+    this.renderingContext.appendChild(group);
+    
+    // Return the actual DOM element, not a wrapper
+    return group;
   }
   
   static applyStyles(element, styles) {

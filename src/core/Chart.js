@@ -66,8 +66,8 @@ constructor(config = {}) {
   // Merge options with defaults
   this.options = {
     // Default options
-    width: 800,
-    height: 400,
+    width: null,
+    height: null,
     backgroundColor: '#ffffff',
     antialiasing: true,
     
@@ -1401,8 +1401,10 @@ constructor(config = {}) {
     if (this.chartId && this.rendererFactory) {
       this.rendererFactory.destroyRenderer(this.chartId);
     }
-    
-    // Remove resize handler
+
+    if (this.resizeObserver) {
+    this.resizeObserver.disconnect();
+    }
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
     }
@@ -1421,7 +1423,7 @@ constructor(config = {}) {
   }
 
   // ===== UTILITY METHODS (PRESERVE EXISTING) =====
-
+  
   /**
    * Process configuration object
    * @private
@@ -1440,8 +1442,8 @@ constructor(config = {}) {
   _processOptions(config) {
     return {
       // Default options
-      width: 800,
-      height: 400,
+      width: null,
+      height: null,
       margins: { top: 20, right: 30, bottom: 40, left: 50 },
       backgroundColor: '#ffffff',
       fontFamily: 'sans-serif',
@@ -1476,21 +1478,73 @@ constructor(config = {}) {
    * Update dimensions from container
    */
   updateDimensions() {
-    if (!this.state.container) return;
-    
-    const rect = this.state.container.getBoundingClientRect();
-    this.state.dimensions.width = this.options.width || rect.width || 800;
-    this.state.dimensions.height = this.options.height || rect.height || 400;
-    
-    this.state.dimensions.innerWidth = this.state.dimensions.width - this.options.margins.left - this.options.margins.right;
-    this.state.dimensions.innerHeight = this.state.dimensions.height - this.options.margins.top - this.options.margins.bottom;
+  if (!this.state.container) return;
+  
+  const rect = this.state.container.getBoundingClientRect();
+  
+  // IMPORTANT: Use container's INNER dimensions (excluding padding)
+  const computedStyle = getComputedStyle(this.state.container);
+  const paddingLeft = parseFloat(computedStyle.paddingLeft) || 0;
+  const paddingRight = parseFloat(computedStyle.paddingRight) || 0;
+  const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+  const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+  
+  // Calculate available space inside container
+  const availableWidth = rect.width - paddingLeft - paddingRight;
+  const availableHeight = rect.height - paddingTop - paddingBottom;
+  
+  // Set dimensions to fill available space
+  this.state.dimensions.width = this.options.width || Math.max(availableWidth, 100);
+  this.state.dimensions.height = this.options.height || Math.max(availableHeight, 100);
+  
+  this.state.dimensions.innerWidth = this.state.dimensions.width - this.options.margins.left - this.options.margins.right;
+  this.state.dimensions.innerHeight = this.state.dimensions.height - this.options.margins.top - this.options.margins.bottom;
+  
+  // CRITICAL: Update the actual rendering element size
+  this._updateRendererSize();
+}
+
+_updateRendererSize() {
+  if (!this.renderer || !this.renderer.element) return;
+  
+  const { width, height } = this.state.dimensions;
+  
+  // Update the SVG/Canvas element to match calculated dimensions
+  if (this.renderer.element.tagName === 'svg') {
+    this.renderer.element.setAttribute('width', width);
+    this.renderer.element.setAttribute('height', height);
+    this.renderer.element.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  } else if (this.renderer.element.tagName === 'CANVAS') {
+    this.renderer.element.width = width;
+    this.renderer.element.height = height;
+    this.renderer.element.style.width = width + 'px';
+    this.renderer.element.style.height = height + 'px';
   }
+}
 
   /**
    * Setup resize handling
    * @private
    */
   _setupResizeHandling() {
+  // Use ResizeObserver for better performance
+  if (window.ResizeObserver) {
+    this.resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const oldWidth = this.state.dimensions.width;
+        const oldHeight = this.state.dimensions.height;
+        
+        this.updateDimensions();
+        
+        if (this.state.dimensions.width !== oldWidth || this.state.dimensions.height !== oldHeight) {
+          this.resize();
+        }
+      }
+    });
+    
+    this.resizeObserver.observe(this.state.container);
+  } else {
+    // Fallback to window resize
     this.resizeHandler = () => {
       const oldWidth = this.state.dimensions.width;
       const oldHeight = this.state.dimensions.height;
@@ -1504,6 +1558,7 @@ constructor(config = {}) {
     
     window.addEventListener('resize', this.resizeHandler);
   }
+}
 
   // ===== RENDERING METHODS (TO BE IMPLEMENTED BY SUBCLASSES) =====
 
