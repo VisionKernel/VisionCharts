@@ -14,47 +14,53 @@ export default class InteractionManager {
    * @param {Chart} chart - Chart instance
    */
   static async initSingleMode(chart) {
-    console.log('InteractionManager.initSingleMode called with multi-renderer support');
-    
-    // Skip if renderer not available
-    if (!chart.renderer || !chart.renderer.isInitialized) {
-      console.warn('InteractionManager: Renderer not available, skipping initialization');
-      return;
-    }
-    
-    // Create crosshair component
-    chart.state.components.crosshair = new Crosshair({
-      showX: true,
-      showY: false,
-      stroke: '#666',
-      strokeWidth: 1,
-      strokeDasharray: '4,4',
-      snapToData: true
-    });
-    
-    // Create tooltip component with multi-renderer support
-    chart.state.components.tooltip = new Tooltip({
-      followCursor: true,
-      offset: { x: 15, y: 10 },
-      background: '#ffffff',
-      border: '#cccccc',
-      borderRadius: 4,
-      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      formatter: InteractionManager.createTooltipFormatter(chart),
-      showDelay: 0,
-      hideDelay: 100,
-      preferHTMLOverlay: chart.renderer.type !== 'svg' // Use HTML overlay for Canvas/WebGL
-    });
-    
-    // Initialize tooltip with current renderer
-    await chart.state.components.tooltip.initialize(chart.renderer, chart.state.container);
-    
-    // Initialize crosshair (renderer-agnostic)
-    await chart.state.components.crosshair.initialize(chart.renderer);
-    
-    // Hide components by default
-    chart.state.components.crosshair.hide();
-    chart.state.components.tooltip.hide();
+  console.log('InteractionManager.initSingleMode called with multi-renderer support');
+  
+  // Skip if renderer not available
+  if (!chart.renderer || !chart.renderer.isInitialized) {
+    console.warn('InteractionManager: Renderer not available, skipping initialization');
+    return;
+  }
+  
+  // IMPORTANT: Clean up any existing components first
+  if (chart.state.components.tooltip || chart.state.components.crosshair) {
+    console.log('InteractionManager: Cleaning up existing components before re-initialization');
+    InteractionManager.cleanup(chart);
+  }
+  
+  // Create crosshair component
+  chart.state.components.crosshair = new Crosshair({
+    showX: true,
+    showY: false,
+    stroke: '#666',
+    strokeWidth: 1,
+    strokeDasharray: '4,4',
+    snapToData: true
+  });
+  
+  // Create tooltip component with multi-renderer support
+  chart.state.components.tooltip = new Tooltip({
+    followCursor: true,
+    offset: { x: 15, y: 10 },
+    background: '#ffffff',
+    border: '#cccccc',
+    borderRadius: 4,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    formatter: InteractionManager.createTooltipFormatter(chart),
+    showDelay: 0,
+    hideDelay: 100,
+    preferHTMLOverlay: chart.renderer.type !== 'svg' // Use HTML overlay for Canvas/WebGL
+  });
+  
+  // Initialize tooltip with current renderer
+  await chart.state.components.tooltip.initialize(chart.renderer, chart.state.container);
+  
+  // Initialize crosshair (renderer-agnostic)
+  await chart.state.components.crosshair.initialize(chart.renderer);
+  
+  // Hide components by default
+  chart.state.components.crosshair.hide();
+  chart.state.components.tooltip.hide();
     
     // Set up event handlers with proper renderer context
     InteractionManager._setupSingleModeEvents(chart);
@@ -2970,30 +2976,52 @@ static async initLegend(chart) {
   }
   
   /**
-   * Clean up interaction handlers
-   * @param {Chart} chart - Chart instance
-   */
-  static cleanup(chart) {
-    // Remove event listeners
-    if (chart.interactionHandlers) {
-      chart.interactionHandlers.forEach(({ target, type, handler }) => {
-        target?.removeEventListener(type, handler);
-      });
-      chart.interactionHandlers = [];
-    }
-    
-    // Destroy tooltip
-    if (chart.state.components.tooltip) {
-      chart.state.components.tooltip.destroy();
-      chart.state.components.tooltip = null;
-    }
-    
-    // Destroy crosshair
-    if (chart.state.components.crosshair) {
-      chart.state.components.crosshair.destroy();
-      chart.state.components.crosshair = null;
-    }
+ * Enhanced cleanup method for interaction handlers
+ * @param {Chart} chart - Chart instance
+ */
+static cleanup(chart) {
+  console.log('InteractionManager: Cleaning up interaction components');
+  
+  // Remove event listeners
+  if (chart.interactionHandlers) {
+    chart.interactionHandlers.forEach(({ target, type, handler }) => {
+      target?.removeEventListener(type, handler);
+    });
+    chart.interactionHandlers = [];
   }
+  
+  // Destroy tooltip with proper cleanup
+  if (chart.state.components.tooltip) {
+    try {
+      chart.state.components.tooltip.destroy();
+    } catch (error) {
+      console.warn('Error destroying tooltip:', error);
+    }
+    chart.state.components.tooltip = null;
+  }
+  
+  // Destroy crosshair
+  if (chart.state.components.crosshair) {
+    try {
+      chart.state.components.crosshair.destroy();
+    } catch (error) {
+      console.warn('Error destroying crosshair:', error);
+    }
+    chart.state.components.crosshair = null;
+  }
+  
+  // Clean up any orphaned tooltip elements in the chart container
+  if (chart.state.container) {
+    const orphanedTooltips = chart.state.container.querySelectorAll('.visioncharts-tooltip-overlay');
+    orphanedTooltips.forEach(tooltip => {
+      if (tooltip.parentNode) {
+        tooltip.parentNode.removeChild(tooltip);
+      }
+    });
+  }
+  
+  console.log('InteractionManager: Cleanup complete');
+}
 
   /**
    * Handle renderer switch - update interaction components

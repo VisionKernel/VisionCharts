@@ -87,7 +87,7 @@ export default class Tooltip {
   }
   
   /**
-   * Initialize tooltip with renderer
+   * Enhanced initialize method with proper cleanup
    * @param {AbstractRenderer} renderer - Renderer instance
    * @param {HTMLElement} container - Chart container
    * @returns {Promise<boolean>} Success status
@@ -96,6 +96,11 @@ export default class Tooltip {
     if (!renderer || !renderer.isInitialized) {
       console.error('Tooltip: Invalid or uninitialized renderer provided');
       return false;
+    }
+    
+    // Clean up any existing initialization first
+    if (this.isInitialized) {
+      this._cleanupHTMLTooltip();
     }
     
     this.currentRenderer = renderer;
@@ -139,40 +144,48 @@ export default class Tooltip {
   }
   
   /**
-   * Initialize HTML overlay tooltip
-   * @private
-   */
-  _initializeHTMLOverlay() {
-    // Create HTML tooltip element
-    this.htmlTooltip = document.createElement('div');
-    this.htmlTooltip.className = 'visioncharts-tooltip-overlay';
-    this.htmlTooltip.style.cssText = `
-      position: absolute;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity ${this.options.animationDuration}ms ease;
-      z-index: ${this.options.htmlZIndex};
-      background: ${this.options.background};
-      border: ${this.options.borderWidth}px solid ${this.options.border};
-      border-radius: ${this.options.borderRadius}px;
-      padding: ${this.options.padding.top}px ${this.options.padding.right}px ${this.options.padding.bottom}px ${this.options.padding.left}px;
-      font-family: ${this.options.fontFamily};
-      font-size: ${this.options.fontSize}px;
-      font-weight: ${this.options.fontWeight};
-      color: ${this.options.textColor};
-      line-height: ${this.options.lineHeight};
-      max-width: ${this.options.maxWidth}px;
-      min-width: ${this.options.minWidth}px;
-      box-shadow: ${this.options.boxShadow};
-      white-space: ${this.options.multiline ? 'pre-line' : 'nowrap'};
-      word-wrap: break-word;
-      box-sizing: border-box;
-    `;
-    
-    // Add to chart container or body
-    const container = this.chartContainer || document.body;
-    container.appendChild(this.htmlTooltip);
-  }
+ * Initialize HTML overlay tooltip
+ * @private
+ */
+_initializeHTMLOverlay() {
+  // FIRST: Remove any existing tooltip to prevent duplicates
+  this._cleanupHTMLTooltip();
+  
+  // Create HTML tooltip element
+  this.htmlTooltip = document.createElement('div');
+  this.htmlTooltip.className = 'visioncharts-tooltip-overlay';
+  
+  // Add unique identifier to prevent conflicts
+  this.htmlTooltip.setAttribute('data-tooltip-id', this.elementId);
+  
+  this.htmlTooltip.style.cssText = `
+    position: absolute;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity ${this.options.animationDuration}ms ease;
+    z-index: ${this.options.htmlZIndex};
+    background: ${this.options.background};
+    border: ${this.options.borderWidth}px solid ${this.options.border};
+    border-radius: ${this.options.borderRadius}px;
+    padding: ${this.options.padding.top}px ${this.options.padding.right}px ${this.options.padding.bottom}px ${this.options.padding.left}px;
+    font-family: ${this.options.fontFamily};
+    font-size: ${this.options.fontSize}px;
+    font-weight: ${this.options.fontWeight};
+    color: ${this.options.textColor};
+    line-height: ${this.options.lineHeight};
+    max-width: ${this.options.maxWidth}px;
+    min-width: ${this.options.minWidth}px;
+    box-shadow: ${this.options.boxShadow};
+    white-space: ${this.options.multiline ? 'pre-line' : 'nowrap'};
+    word-wrap: break-word;
+    box-sizing: border-box;
+  `;
+  
+  // Add to chart container or body
+  const container = this.chartContainer || document.body;
+  container.appendChild(this.htmlTooltip);
+}
+
   
   /**
    * Show the tooltip
@@ -660,32 +673,52 @@ export default class Tooltip {
       this.currentRenderer.setAttribute(element, 'opacity', 1);
     }
   }
-  
+
   /**
-   * Clean up and destroy tooltip
+   * Clean up existing HTML tooltip
+   * @private
    */
-  destroy() {
-    // Clear timeouts
-    if (this.showTimeout) clearTimeout(this.showTimeout);
-    if (this.hideTimeout) clearTimeout(this.hideTimeout);
-    if (this.moveThrottle) clearTimeout(this.moveThrottle);
-    
-    // Clear rendered elements
-    this._clearRenderedElements();
-    
-    // Remove HTML tooltip
+  _cleanupHTMLTooltip() {
+    // Remove existing tooltip if it exists
     if (this.htmlTooltip && this.htmlTooltip.parentNode) {
       this.htmlTooltip.parentNode.removeChild(this.htmlTooltip);
+      this.htmlTooltip = null;
     }
     
-    // Clear references
-    this.htmlTooltip = null;
-    this.currentRenderer = null;
-    this.chartContainer = null;
-    this.contentCache.clear();
-    
-    this.isInitialized = false;
+    // Also clean up any orphaned tooltips with our class in the container
+    const container = this.chartContainer || document.body;
+    const existingTooltips = container.querySelectorAll('.visioncharts-tooltip-overlay');
+    existingTooltips.forEach(tooltip => {
+      // Only remove tooltips that belong to this chart container
+      if (tooltip.closest(this.chartContainer?.tagName || 'body') === container) {
+        tooltip.parentNode.removeChild(tooltip);
+      }
+    });
   }
+  
+  /**
+ * Enhanced destroy method
+ */
+destroy() {
+  // Clear timeouts
+  if (this.showTimeout) clearTimeout(this.showTimeout);
+  if (this.hideTimeout) clearTimeout(this.hideTimeout);
+  if (this.moveThrottle) clearTimeout(this.moveThrottle);
+  
+  // Clear rendered elements
+  this._clearRenderedElements();
+  
+  // Clean up HTML tooltip
+  this._cleanupHTMLTooltip();
+  
+  // Clear references
+  this.currentRenderer = null;
+  this.chartContainer = null;
+  this.contentCache.clear();
+  
+  this.isInitialized = false;
+  this.visible = false;
+}
   
   /**
    * Get performance metrics
