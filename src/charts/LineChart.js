@@ -25,41 +25,58 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Render line chart data using the selected renderer (Canvas 2D or WebGL)
+   * Render line chart data using standardized paths from PathGenerator
    */
   async _renderChartData() {
     if (!this.rendererInstance) {
       console.error('No renderer instance available');
       return;
     }
-    
-    // Use transformed data if available, otherwise fall back to original data
-    const dataToRender = this.transformedData || this.config.data;
-    
-    if (!Array.isArray(dataToRender) || dataToRender.length === 0) {
-      console.log('No data to render');
+
+    // Use generated paths instead of raw data
+    if (!this.generatedPaths || !Array.isArray(this.generatedPaths) || this.generatedPaths.length === 0) {
+      console.log('No generated paths to render');
       return;
     }
-    
+
     try {
       // Set viewport for clipping
       this.rendererInstance.setViewport(this.chartArea);
-      
-      // Render lines using the selected renderer with transformed data
-      await this.rendererInstance.renderLines(dataToRender, this.scales, {
-        curve: this.config.options.curve,
-        strokeWidth: this.config.options.strokeWidth,
+
+      // Render lines using standardized paths
+      await this.rendererInstance.renderLines(this.generatedPaths, this.scales, {
         showPoints: this.config.options.showPoints,
         pointRadius: this.config.options.pointRadius
       });
-      
-      const totalPoints = dataToRender.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
-      console.log(`LineChart: Rendered ${dataToRender.length} datasets with ${totalPoints} total points using ${this.activeRenderer}`);
-      
+
+      const totalVertices = this.generatedPaths.reduce((sum, path) => sum + (path.vertexCount || 0), 0);
+      console.log(`LineChart: Rendered ${this.generatedPaths.length} datasets with ${totalVertices} total vertices using ${this.activeRenderer}`);
+
     } catch (error) {
       console.error('Error rendering line chart data:', error);
       throw error;
     }
+  }
+
+  /**
+   * Set curve type for line interpolation - now updates PathGenerator
+   */
+  setCurveType(curveType) {
+    const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
+    
+    if (!validCurves.includes(curveType)) {
+      console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
+      return this;
+    }
+    
+    // Update both config and PathGenerator
+    this.config.options.curve = curveType;
+    this.pathGenerator.setCurveType(curveType);
+    
+    console.log(`Curve type set to: ${curveType}`);
+    
+    this.render(); // Re-render with new curve type
+    return this;
   }
   
   /**

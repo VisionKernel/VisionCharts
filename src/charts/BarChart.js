@@ -32,30 +32,29 @@ export class BarChart extends Chart {
       console.error('No renderer instance available');
       return;
     }
-    
+
+    // For bar charts, we still pass the transformed datasets directly to renderers
+    // since bar rendering doesn't use the PathGenerator yet (bars need different geometry)
     if (!Array.isArray(this.config.data) || this.config.data.length === 0) {
       console.log('No data to render');
       return;
     }
-    
+
     try {
-      // Preprocess data to add screen coordinates
-      this._preprocessDataForRenderer();
-      
       // Set viewport for clipping
       this.rendererInstance.setViewport(this.chartArea);
-      
-      // Render bars using the selected renderer
+
+      // Render bars using the selected renderer with transformed data
       await this.rendererInstance.renderBars(this.config.data, this.scales, {
         barWidth: this.config.options.barWidth,
         barSpacing: this.config.options.barSpacing,
         showBorder: this.config.options.showBorder,
         borderWidth: this.config.options.borderWidth
       });
-      
+
       const totalBars = this.config.data.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
       console.log(`BarChart: Rendered ${this.config.data.length} datasets with ${totalBars} total bars using ${this.activeRenderer}`);
-      
+
     } catch (error) {
       console.error('Error rendering bar chart data:', error);
       throw error;

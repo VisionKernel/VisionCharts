@@ -293,40 +293,120 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-     * Render line datasets using WebGL with pre-transformed coordinates
-     */
-    async renderLines(datasets, scales, options = {}) {
-    if (!this.isInitialized || !datasets || datasets.length === 0) {
-        return;
+ * Render line paths using standardized path data from PathGenerator
+ */
+async renderLines(generatedPaths, scales, options = {}) {
+  if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
+    return;
+  }
+
+  const gl = this.gl;
+  const program = this.programs.get('line');
+  
+  if (!program) {
+    console.error('Line shader program not found');
+    return;
+  }
+
+  try {
+    // Use line shader program
+    gl.useProgram(program);
+    this.currentProgram = program;
+
+    // Set uniforms
+    this._setUniforms(program, scales);
+
+    // Render each standardized path
+    for (const pathData of generatedPaths) {
+      if (!pathData.vertices || pathData.vertices.length === 0) continue;
+
+      await this._renderStandardizedPath(pathData, options);
     }
 
-    const gl = this.gl;
-    const program = this.programs.get('line');
+  } catch (error) {
+    console.error('Error rendering lines with WebGL:', error);
+  }
+}
+
+/**
+ * Render a single standardized path using WebGL
+ */
+async _renderStandardizedPath(pathData, options) {
+  const gl = this.gl;
+  const program = this.currentProgram;
+
+  // Convert standardized path data to WebGL format
+  const webglData = this._convertPathToWebGLData(pathData);
+  
+  if (webglData.positions.length === 0) return;
+
+  // Set line width to match Canvas exactly
+  const lineWidth = pathData.lineWidth || 2;
+  gl.lineWidth(lineWidth);
+
+  // Upload position data - use standardized vertices directly!
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(webglData.positions), gl.STATIC_DRAW);
+  
+  // Enable position attribute
+  const positionLocation = program.attributes.a_position;
+  gl.enableVertexAttribArray(positionLocation);
+  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+  // Upload color data
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(webglData.colors), gl.STATIC_DRAW);
+  
+  // Enable color attribute
+  const colorLocation = program.attributes.a_color;
+  gl.enableVertexAttribArray(colorLocation);
+  gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
+
+  // Render as line strip
+  const vertexCount = webglData.positions.length / 2;
+  
+  if (vertexCount > this.maxVertices) {
+    // Render in batches for very large datasets
+    await this._renderInBatches(vertexCount, gl.LINE_STRIP);
+  } else {
+    gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
+  }
+  
+  console.log(`WebGL rendered standardized path with ${vertexCount} vertices and line width ${lineWidth}`);
+}
+
+/**
+ * Convert standardized path data to WebGL vertex format
+ */
+_convertPathToWebGLData(pathData) {
+  const positions = [];
+  const colors = [];
+
+  const vertices = pathData.vertices;
+  const pathColors = pathData.colors;
+
+  for (let i = 0; i < vertices.length; i++) {
+    const vertex = vertices[i];
     
-    if (!program) {
-        console.error('Line shader program not found');
-        return;
+    // Use standardized pixel coordinates directly!
+    if (vertex.x != null && vertex.y != null && isFinite(vertex.x) && isFinite(vertex.y)) {
+      // Add position (screen coordinates in pixels)
+      positions.push(vertex.x, vertex.y);
+
+      // Add color - use path color or default
+      let color;
+      if (pathColors && pathColors[i]) {
+        color = pathColors[i];
+      } else {
+        color = this._parseColor(pathData.color || '#1468a8');
+      }
+      
+      colors.push(color.r, color.g, color.b, color.a);
     }
+  }
 
-    try {
-        // Use line shader program
-        gl.useProgram(program);
-        this.currentProgram = program;
-
-        // Set uniforms (simplified)
-        this._setUniforms(program, scales);
-
-        // Render each dataset (data is already transformed to clip space)
-        for (const dataset of datasets) {
-        if (!dataset.data || dataset.data.length === 0) continue;
-
-        await this._renderLineDataset(dataset, scales, options);
-        }
-
-    } catch (error) {
-        console.error('Error rendering lines with WebGL:', error);
-    }
-    }
+  return { positions, colors };
+}
 
  /**
  * Render a single line dataset
@@ -386,33 +466,6 @@ async _renderLineDataset(dataset, scales, options) {
     // Convert bars to line representation for now
     await this.renderLines(datasets, scales, options);
   }
-
-  /**
- * Convert chart data to WebGL vertices using screen coordinates
- */
-_convertDataToVertices(data, scales) {
-  const positions = [];
-  const colors = [];
-
-  for (const point of data) {
-    // Use screen coordinates (pixels) instead of clip coordinates
-    const x = point.screenX;
-    const y = point.screenY;
-
-    if (x == null || y == null || isNaN(x) || isNaN(y)) {
-      continue;
-    }
-
-    // Add position (screen coordinates in pixels)
-    positions.push(x, y);
-
-    // Add color (RGBA)
-    const color = this._parseColor(point.original?.color || '#1468a8');
-    colors.push(color.r, color.g, color.b, color.a);
-  }
-
-  return { positions, colors };
-}
 
   /**
  * Set shader uniforms

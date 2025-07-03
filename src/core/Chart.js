@@ -12,6 +12,7 @@ import CanvasRenderer from '../renderers/CanvasRenderer.js';
 import WebGLRenderer from '../renderers/WebGLRenderer.js';
 import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 import { DataProcessor } from '../utils/DataProcessor.js';
+import { PathGenerator } from '../utils/PathGenerator.js';
 
 export class Chart {
   constructor(config = {}) {
@@ -59,6 +60,13 @@ export class Chart {
       sortByTime: true,
       removeDuplicates: true
     });
+
+    this.pathGenerator = new PathGenerator({
+      curve: 'linear',
+      enableOptimization: true
+    });
+
+    this.generatedPaths = null;
     
     // Multi-renderer infrastructure
     this.renderers = new Map(); // Holds renderer instances
@@ -596,25 +604,35 @@ export class Chart {
   }
   
   /**
-   * Preprocess data for rendering using coordinate system
+   * Preprocess data for rendering using coordinate system and path generator
    */
   async _preprocessDataForRenderer() {
     if (!Array.isArray(this.config.data) || !this.coordinateSystem) {
       return;
     }
-    
+
     try {
       console.log('Transforming coordinates with CoordinateSystem...');
       
-      // Use CoordinateSystem to transform data to pixel coordinates
+      // Step 1: Use CoordinateSystem to transform data to pixel coordinates
       this.config.data = await this.coordinateSystem.transformDatasets(this.config.data, {
         strictValidation: false
       });
-      
+
       console.log('Data transformed for', this.activeRenderer, 'renderer');
+
+      // Step 2: Use PathGenerator to create standardized rendering paths
+      console.log('Generating standardized paths with PathGenerator...');
+      
+      this.generatedPaths = await this.pathGenerator.generatePaths(this.config.data, {
+        curve: this.config.options.curve || 'linear',
+        strokeWidth: this.config.options.strokeWidth || 2
+      });
+
+      console.log('Standardized paths generated for', this.activeRenderer, 'renderer');
       
     } catch (error) {
-      console.error('Error transforming coordinates:', error);
+      console.error('Error in preprocessing data for renderer:', error);
       throw error;
     }
   }

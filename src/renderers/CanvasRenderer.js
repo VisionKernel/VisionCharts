@@ -116,126 +116,118 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * Render line datasets
-   */
-  async renderLines(datasets, scales, options = {}) {
-    if (!this.isInitialized || !datasets || datasets.length === 0) {
-      return;
+     * Render line paths using standardized path data from PathGenerator
+     */
+    async renderLines(generatedPaths, scales, options = {}) {
+    if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
+        return;
     }
 
     const ctx = this.ctx;
     
     try {
-      ctx.save();
-      
-      // Render each dataset
-      for (let i = 0; i < datasets.length; i++) {
-        const dataset = datasets[i];
-        if (!dataset.data || dataset.data.length === 0) continue;
+        ctx.save();
         
-        await this._renderLineDataset(ctx, dataset, scales, options, i);
-      }
-      
+        // Render each standardized path
+        for (let i = 0; i < generatedPaths.length; i++) {
+        const pathData = generatedPaths[i];
+        if (!pathData.vertices || pathData.vertices.length === 0) continue;
+        
+        await this._renderStandardizedPath(ctx, pathData, options, i);
+        }
+        
     } catch (error) {
-      console.error('Error rendering lines with Canvas:', error);
+        console.error('Error rendering lines with Canvas:', error);
     } finally {
-      ctx.restore();
+        ctx.restore();
     }
-  }
+    }
 
     /**
-     * Render a single line dataset with transformed coordinates
+     * Render a single standardized path
      */
-    async _renderLineDataset(ctx, dataset, scales, options, datasetIndex) {
-    // Set line style
-    ctx.strokeStyle = dataset.color || this._getDefaultColor(datasetIndex);
-    ctx.lineWidth = dataset.width || options.strokeWidth || 2;
-    ctx.globalAlpha = dataset.opacity || 1.0;
-    
+    async _renderStandardizedPath(ctx, pathData, options, pathIndex) {
+    // Set line style from path data
+    ctx.strokeStyle = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
+    ctx.lineWidth = pathData.lineWidth || 2;
+    ctx.globalAlpha = 1.0; // Could be made configurable
+
     // Begin path
     ctx.beginPath();
-    
-    let isFirstPoint = true;
-    let pointCount = 0;
-    
-    for (const point of dataset.data) {
-        const x = this._getXValue(point, scales);
-        const y = this._getYValue(point, scales);
-        
-        if (x == null || y == null || isNaN(x) || isNaN(y)) {
-        continue;
-        }
-        
-        if (isFirstPoint) {
-        ctx.moveTo(x, y);
-        isFirstPoint = false;
-        } else {
-        // Handle different curve types
-        if (options.curve === 'step') {
-            // Step interpolation
-            const prevPoint = dataset.data[pointCount - 1];
-            const prevX = this._getXValue(prevPoint, scales);
-            
-            if (prevX != null && !isNaN(prevX)) {
-            ctx.lineTo(x, this._getYValue(prevPoint, scales)); // Horizontal
-            ctx.lineTo(x, y); // Vertical
-            }
-        } else {
-            // Linear interpolation (default)
-            ctx.lineTo(x, y);
-        }
-        }
-        
-        pointCount++;
-        
-        // Yield control periodically for large datasets
-        if (pointCount % 1000 === 0) {
+
+    const vertices = pathData.vertices;
+    if (vertices.length === 0) return;
+
+    // Use standardized vertices directly - no coordinate transformation needed!
+    ctx.moveTo(vertices[0].x, vertices[0].y);
+
+    for (let i = 1; i < vertices.length; i++) {
+        const vertex = vertices[i];
+        ctx.lineTo(vertex.x, vertex.y);
+
+        // Yield control periodically for large paths
+        if (i % 1000 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
         }
-    }
-    
-    // Stroke the path
-    ctx.stroke();
-    
-    // Draw points if enabled
-    if (options.showPoints) {
-        await this._renderPoints(ctx, dataset, scales);
-    }
-    
-    console.log(`Rendered line dataset with ${pointCount} points using Canvas`);
     }
 
-  /**
-   * Render data points
-   */
-  async _renderPoints(ctx, dataset, scales) {
+    // Stroke the path
+    ctx.stroke();
+
+    // Draw points if enabled
+    if (options.showPoints) {
+        await this._renderPathPoints(ctx, pathData, options);
+    }
+
+    console.log(`Rendered standardized path with ${vertices.length} vertices using Canvas`);
+    }
+
+    /**
+     * Render points for a standardized path
+     */
+    async _renderPathPoints(ctx, pathData, options) {
     ctx.save();
     ctx.fillStyle = ctx.strokeStyle; // Use same color as line
-    
-    let pointCount = 0;
-    
-    for (const point of dataset.data) {
-      const x = this._getXValue(point, scales);
-      const y = this._getYValue(point, scales);
-      
-      if (x == null || y == null || isNaN(x) || isNaN(y)) {
-        continue;
-      }
-      
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, 2 * Math.PI);
-      ctx.fill();
-      
-      pointCount++;
-      
-      // Yield control periodically
-      if (pointCount % 500 === 0) {
+
+    const pointRadius = options.pointRadius || 3;
+    const vertices = pathData.vertices;
+
+    for (let i = 0; i < vertices.length; i++) {
+        const vertex = vertices[i];
+        
+        ctx.beginPath();
+        ctx.arc(vertex.x, vertex.y, pointRadius, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Yield control periodically
+        if (i % 500 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
-      }
+        }
+    }
+
+    ctx.restore();
+    }
+
+    /**
+     * Format color for Canvas context
+     */
+    _formatColorForCanvas(color) {
+    if (typeof color === 'string') {
+        return color; // Already in hex format
     }
     
-    ctx.restore();
-  }
+    if (color && typeof color === 'object' && 'r' in color) {
+        // Convert normalized RGBA to CSS format
+        const r = Math.round(color.r * 255);
+        const g = Math.round(color.g * 255);
+        const b = Math.round(color.b * 255);
+        const a = color.a || 1.0;
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    
+    return null;
+    }
+
 
   /**
    * Render bar datasets
@@ -411,49 +403,6 @@ export default class CanvasRenderer extends AbstractRenderer {
     showBorder: options.showBorder || false
   };
 }
-
-   /**
-     * Get X coordinate from transformed data point
-     */
-    _getXValue(point, scales) {
-        // USE PRE-CALCULATED COORDINATES FROM COORDINATESYSTEM
-        if (point.screenX !== undefined && point.screenX !== null) {
-            return point.screenX;
-        }
-        
-        // Fallback: if no pre-calculated coordinates, log warning
-        console.warn('Point missing pre-calculated screenX coordinate, using fallback');
-        
-        // Fallback transformation (should not be needed with CoordinateSystem)
-        const value = point.x || point.date;
-        if (value == null) return null;
-        
-        let normalizedValue = value;
-        if (value instanceof Date) {
-            normalizedValue = value.getTime();
-        }
-        
-        return scales.x.scale(normalizedValue);
-        }
-
-    /**
-     * Get Y coordinate from transformed data point  
-     */
-    _getYValue(point, scales) {
-        // USE PRE-CALCULATED COORDINATES FROM COORDINATESYSTEM
-        if (point.screenY !== undefined && point.screenY !== null) {
-            return point.screenY;
-        }
-        
-        // Fallback: if no pre-calculated coordinates, log warning
-        console.warn('Point missing pre-calculated screenY coordinate, using fallback');
-        
-        // Fallback transformation (should not be needed with CoordinateSystem)
-        const value = point.y || point.value || point.price;
-        if (value == null) return null;
-        
-        return scales.y.scale(value);
-        }
 
   /**
    * Get default color for dataset by index
