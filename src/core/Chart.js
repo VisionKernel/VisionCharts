@@ -83,7 +83,7 @@ export class Chart {
     this.isInitialized = false;
     
     // Initialize
-    this._initialize();
+    this._initPromise = this._initialize();
   }
   
   /**
@@ -530,8 +530,8 @@ export class Chart {
    */
   async render() {
     if (!this.isInitialized) {
-      console.warn('Chart not initialized, skipping render');
-      return;
+      console.log('Waiting for chart initialization to complete...');
+      await this._initPromise;
     }
     
     try {
