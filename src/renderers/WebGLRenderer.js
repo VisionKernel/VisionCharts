@@ -396,8 +396,8 @@ _convertDataToVertices(data, scales) {
 
   for (const point of data) {
     // Use screen coordinates (pixels) instead of clip coordinates
-    const x = point.x;
-    const y = point.y;
+    const x = point.screenX;
+    const y = point.screenY;
 
     if (x == null || y == null || isNaN(x) || isNaN(y)) {
       continue;
