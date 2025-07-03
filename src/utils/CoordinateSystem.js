@@ -4,282 +4,660 @@
  * Provides unified coordinate transformation and normalization across
  * SVG, Canvas, and WebGL rendering backends, ensuring consistent
  * positioning, scaling, and event handling.
+ * 
+ * Key Features:
+ * - Unified coordinate transformation for all renderers
+ * - Canvas Y-down vs Chart Y-up coordinate system handling
+ * - Viewport and clipping transformations
+ * - High DPI and device pixel ratio support
+ * - Event coordinate normalization
+ * - Batch coordinate processing for performance
  */
 
 export class CoordinateSystem {
   constructor(config = {}) {
-    this.chartArea = config.chartArea || { x: 0, y: 0, width: 400, height: 300 };
-    this.canvasSize = config.canvasSize || { width: 800, height: 600 };
-    this.devicePixelRatio = config.devicePixelRatio || window.devicePixelRatio || 1;
+    this.config = {
+      // Coordinate system settings
+      coordinateOrigin: 'bottom-left', // 'top-left', 'bottom-left', 'center'
+      flipY: true, // Flip Y axis for chart coordinates (bottom = 0)
+      
+      // High DPI settings
+      devicePixelRatio: window.devicePixelRatio || 1,
+      enableHighDPI: true,
+      
+      // Viewport settings
+      viewport: {
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600
+      },
+      
+      // Chart area (within viewport)
+      chartArea: {
+        x: 80,
+        y: 40,
+        width: 660,
+        height: 520
+      },
+      
+      // Performance settings
+      batchSize: 1000,
+      enableCaching: true,
+      
+      // Transformation settings
+      enableClipping: true,
+      enableTransforms: true,
+      
+      ...config
+    };
     
-    // Coordinate spaces
-    this.spaces = {
-      // Data space: raw data values
-      data: 'data',
-      // Screen space: pixel coordinates (Canvas/SVG style)
-      screen: 'screen', 
-      // Normalized space: 0-1 coordinates
-      normalized: 'normalized',
-      // Clip space: -1 to 1 (WebGL style)
-      clip: 'clip'
+    // Internal state
+    this.scales = { x: null, y: null };
+    this.transforms = {
+      scale: { x: 1, y: 1 },
+      translate: { x: 0, y: 0 },
+      rotate: 0
+    };
+    
+    // Cache for coordinate transformations
+    this.coordinateCache = new Map();
+    this.transformedDatasets = new Map();
+    
+    // Performance monitoring
+    this.transformStats = {
+      totalTransformations: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      averageTransformTime: 0
     };
   }
   
   /**
-   * Update chart area and canvas size
+   * Set scales for coordinate transformation
+   * @param {Object} scales - { x: Scale, y: Scale }
    */
-  updateDimensions(chartArea, canvasSize) {
-    this.chartArea = chartArea;
-    this.canvasSize = canvasSize;
+  setScales(scales) {
+    this.scales = scales;
+    this._clearCache();
     return this;
   }
   
   /**
-   * Convert data coordinates to screen coordinates (pixels)
-   * This is what Canvas renderer expects
+   * Update viewport dimensions
+   * @param {Object} viewport - { x, y, width, height }
    */
-  dataToScreen(dataX, dataY, scales) {
-    const screenX = scales.x.scale(dataX);
-    const screenY = scales.y.scale(dataY);
-    
-    // Debug logging for first few points
-    if (Math.random() < 0.001) { // Log ~0.1% of points
-      console.log('Screen coordinate debug:', {
-        data: [dataX, dataY],
-        screen: [screenX, screenY],
-        chartArea: this.chartArea,
-        scaleRanges: {
-          x: scales.x.range,
-          y: scales.y.range
-        }
-      });
+  setViewport(viewport) {
+    this.config.viewport = { ...this.config.viewport, ...viewport };
+    this._clearCache();
+    return this;
+  }
+  
+  /**
+   * Update chart area within viewport
+   * @param {Object} chartArea - { x, y, width, height }
+   */
+  setChartArea(chartArea) {
+    this.config.chartArea = { ...this.config.chartArea, ...chartArea };
+    this._clearCache();
+    return this;
+  }
+  
+  /**
+   * Transform datasets from data coordinates to pixel coordinates
+   * @param {Array} datasets - Array of datasets to transform
+   * @param {Object} options - Transformation options
+   * @returns {Array} Datasets with pixel coordinates
+   */
+  async transformDatasets(datasets, options = {}) {
+    if (!Array.isArray(datasets)) {
+      throw new Error('Datasets must be an array');
     }
     
-    return { x: screenX, y: screenY };
-  }
-  
-  /**
-   * Convert screen coordinates to normalized coordinates (0-1)
-   */
-  screenToNormalized(screenX, screenY) {
-    // Always use logical canvas size, not physical size affected by device pixel ratio
-    const normalizedX = screenX / this.canvasSize.width;
-    const normalizedY = screenY / this.canvasSize.height;
-    
-    return { x: normalizedX, y: normalizedY };
-  }
-  
-  /**
-   * Convert normalized coordinates to clip space (-1 to 1)
-   * This is what WebGL expects
-   */
-  normalizedToClip(normalizedX, normalizedY) {
-    // Convert from 0-1 to -1 to 1
-    const clipX = (normalizedX * 2.0) - 1.0;
-    // Flip Y axis for WebGL (Canvas has Y down, WebGL has Y up)
-    const clipY = -((normalizedY * 2.0) - 1.0);
-    
-    return { x: clipX, y: clipY };
-  }
-  
-  /**
-   * Convert data coordinates directly to clip space (for WebGL)
-   * This combines all transformations in one step
-   */
-  dataToClip(dataX, dataY, scales) {
-    // Step 1: Data to screen
-    const screen = this.dataToScreen(dataX, dataY, scales);
-    
-    // Step 2: Screen to normalized
-    const normalized = this.screenToNormalized(screen.x, screen.y);
-    
-    // Step 3: Normalized to clip
-    const clip = this.normalizedToClip(normalized.x, normalized.y);
-    
-    // Debug logging for first few points
-    if (Math.random() < 0.001) { // Log ~0.1% of points
-      console.log('Coordinate transform debug:', {
-        data: [dataX, dataY],
-        screen: [screen.x, screen.y],
-        normalized: [normalized.x, normalized.y],
-        clip: [clip.x, clip.y],
-        canvasSize: this.canvasSize
-      });
+    if (!this.scales.x || !this.scales.y) {
+      throw new Error('Scales must be set before transforming coordinates');
     }
     
-    return clip;
-  }
-  
-  /**
-   * Convert data coordinates directly to screen space (for Canvas)
-   * This is a pass-through since Canvas uses screen coordinates
-   */
-  dataToCanvas(dataX, dataY, scales) {
-    return this.dataToScreen(dataX, dataY, scales);
-  }
-  
-  /**
-   * Batch convert array of data points to screen coordinates
-   * Optimized for Canvas renderer
-   */
-  batchDataToScreen(dataPoints, scales, xField = 'x', yField = 'y') {
-    return dataPoints.map(point => {
-      const dataX = this._getFieldValue(point, xField);
-      const dataY = this._getFieldValue(point, yField);
-      
-      if (dataX == null || dataY == null) {
-        return { x: null, y: null, original: point };
-      }
-      
-      const screen = this.dataToScreen(dataX, dataY, scales);
-      return {
-        x: screen.x,
-        y: screen.y,
-        original: point
-      };
-    });
-  }
-  
-  /**
-   * Batch convert array of data points to clip coordinates
-   * Optimized for WebGL renderer
-   */
-  batchDataToClip(dataPoints, scales, xField = 'x', yField = 'y') {
-    return dataPoints.map(point => {
-      const dataX = this._getFieldValue(point, xField);
-      const dataY = this._getFieldValue(point, yField);
-      
-      if (dataX == null || dataY == null) {
-        return { x: null, y: null, original: point };
-      }
-      
-      const clip = this.dataToClip(dataX, dataY, scales);
-      return {
-        x: clip.x,
-        y: clip.y,
-        original: point
-      };
-    });
-  }
-  
-  /**
-   * Get field value from data point, handling different field formats
-   */
-  _getFieldValue(point, field) {
-    let value = point[field];
-    
-    // Handle Date objects and timestamps for time fields
-    if (value instanceof Date) {
-      return value.getTime();
-    }
-    
-    if (typeof value === 'string' && (field === 'x' || field === 'date')) {
-      const dateValue = new Date(value);
-      if (!isNaN(dateValue.getTime())) {
-        return dateValue.getTime();
-      }
-    }
-    
-    // Handle alternative field names
-    if (value == null) {
-      if (field === 'x') {
-        value = point.date || point.time || point.timestamp;
-      } else if (field === 'y') {
-        value = point.value || point.price || point.amount;
-      }
-    }
-    
-    return typeof value === 'number' ? value : null;
-  }
-  
-  /**
-   * Transform datasets for specific renderer
-   */
-  transformDatasetsForRenderer(datasets, scales, rendererType, xField = 'x', yField = 'y') {
+    const startTime = performance.now();
     const transformedDatasets = [];
     
-    for (const dataset of datasets) {
-      if (!dataset.data || !Array.isArray(dataset.data)) {
-        transformedDatasets.push(dataset);
-        continue;
+    try {
+      for (let i = 0; i < datasets.length; i++) {
+        const dataset = datasets[i];
+        console.log(`Transforming coordinates for dataset ${i + 1}/${datasets.length}: ${dataset.name || dataset.id || 'Unknown'}`);
+        
+        const transformedDataset = await this.transformDataset(dataset, options);
+        transformedDatasets.push(transformedDataset);
       }
       
-      let transformedPoints;
+      const transformTime = performance.now() - startTime;
+      this._updateTransformStats(transformTime, datasets.length);
       
-      switch (rendererType) {
-        case 'canvas':
-          transformedPoints = this.batchDataToScreen(dataset.data, scales, xField, yField);
-          break;
-          
-        case 'webgl':
-          // WebGL now also uses screen coordinates - shader handles clip space conversion
-          transformedPoints = this.batchDataToScreen(dataset.data, scales, xField, yField);
-          break;
-          
-        case 'svg':
-          // SVG uses screen coordinates like Canvas
-          transformedPoints = this.batchDataToScreen(dataset.data, scales, xField, yField);
-          break;
-          
-        default:
-          console.warn(`Unknown renderer type: ${rendererType}`);
-          transformedPoints = dataset.data;
-      }
+      console.log(`CoordinateSystem: Transformed ${transformedDatasets.length} datasets in ${transformTime.toFixed(2)}ms`);
+      return transformedDatasets;
       
-      transformedDatasets.push({
-        ...dataset,
-        data: transformedPoints
-      });
+    } catch (error) {
+      console.error('Error transforming datasets:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Transform a single dataset
+   * @param {Object} dataset - Dataset to transform
+   * @param {Object} options - Transformation options
+   * @returns {Object} Dataset with pixel coordinates
+   */
+  async transformDataset(dataset, options = {}) {
+    if (!dataset || !dataset.data || !Array.isArray(dataset.data)) {
+      throw new Error('Dataset must have a data array');
     }
     
-    return transformedDatasets;
+    const cacheKey = this._generateCacheKey(dataset, options);
+    
+    // Check cache first
+    if (this.config.enableCaching && this.coordinateCache.has(cacheKey)) {
+      this.transformStats.cacheHits++;
+      return this.coordinateCache.get(cacheKey);
+    }
+    
+    this.transformStats.cacheMisses++;
+    
+    try {
+      // Transform data points
+      const transformedData = await this._transformDataPoints(dataset.data, options);
+      
+      // Create transformed dataset
+      const transformedDataset = {
+        ...dataset,
+        data: transformedData,
+        coordinatesTransformed: true,
+        transformedAt: Date.now(),
+        originalDataCount: dataset.data.length,
+        transformedDataCount: transformedData.length
+      };
+      
+      // Cache if enabled
+      if (this.config.enableCaching) {
+        this.coordinateCache.set(cacheKey, transformedDataset);
+      }
+      
+      console.log(`Dataset transformed: ${dataset.data.length} → ${transformedData.length} points with pixel coordinates`);
+      
+      return transformedDataset;
+      
+    } catch (error) {
+      console.error('Error transforming dataset:', error);
+      throw error;
+    }
   }
   
   /**
-   * Check if coordinates are valid
+   * Transform data points to pixel coordinates
+   * @private
    */
-  isValidCoordinate(x, y) {
-    return x != null && y != null && !isNaN(x) && !isNaN(y);
+  async _transformDataPoints(data, options) {
+    const transformedData = [];
+    let processedCount = 0;
+    
+    for (let i = 0; i < data.length; i++) {
+      const point = data[i];
+      
+      try {
+        // Extract data coordinates
+        const dataCoords = this._extractDataCoordinates(point);
+        
+        if (dataCoords.x == null || dataCoords.y == null) {
+          if (options.strictValidation) {
+            throw new Error(`Missing coordinates at point ${i}`);
+          }
+          console.warn(`Skipping point ${i} due to missing coordinates`);
+          continue;
+        }
+        
+        // Transform to pixel coordinates
+        const pixelCoords = this.dataToPixel(dataCoords.x, dataCoords.y);
+        
+        if (pixelCoords.x == null || pixelCoords.y == null) {
+          if (options.strictValidation) {
+            throw new Error(`Invalid pixel coordinates at point ${i}`);
+          }
+          console.warn(`Skipping point ${i} due to invalid pixel coordinates`);
+          continue;
+        }
+        
+        // Create transformed point
+        const transformedPoint = {
+          ...point,
+          // Original data coordinates
+          dataX: dataCoords.x,
+          dataY: dataCoords.y,
+          // Pixel coordinates for rendering
+          screenX: pixelCoords.x,
+          screenY: pixelCoords.y,
+          pixelX: pixelCoords.x, // Alias for compatibility
+          pixelY: pixelCoords.y, // Alias for compatibility
+          // Clipping information
+          inBounds: this._isPointInBounds(pixelCoords.x, pixelCoords.y),
+          // High DPI coordinates if needed
+          ...(this.config.enableHighDPI && this.config.devicePixelRatio > 1 ? {
+            hiDPIX: pixelCoords.x * this.config.devicePixelRatio,
+            hiDPIY: pixelCoords.y * this.config.devicePixelRatio
+          } : {})
+        };
+        
+        transformedData.push(transformedPoint);
+        processedCount++;
+        
+      } catch (error) {
+        if (options.strictValidation) {
+          throw error;
+        }
+        console.warn(`Error transforming point ${i}:`, error.message);
+      }
+      
+      // Yield control periodically for large datasets
+      if (i % this.config.batchSize === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+    
+    return transformedData;
   }
   
   /**
-   * Clamp coordinates to valid ranges
+   * Extract data coordinates from point
+   * @private
    */
-  clampScreenCoordinates(x, y) {
-    const clampedX = Math.max(0, Math.min(this.canvasSize.width, x));
-    const clampedY = Math.max(0, Math.min(this.canvasSize.height, y));
-    return { x: clampedX, y: clampedY };
-  }
-  
-  /**
-   * Clamp clip coordinates to valid ranges
-   */
-  clampClipCoordinates(x, y) {
-    const clampedX = Math.max(-1, Math.min(1, x));
-    const clampedY = Math.max(-1, Math.min(1, y));
-    return { x: clampedX, y: clampedY };
-  }
-  
-  /**
-   * Get coordinate space info for debugging
-   */
-  getCoordinateSpaceInfo() {
+  _extractDataCoordinates(point) {
+    // Handle different coordinate field names
+    const x = point.x || point.date || point.time || point.timestamp;
+    const y = point.y || point.value || point.price || point.close;
+    
+    // Convert Date objects to timestamps
+    let normalizedX = x;
+    if (x instanceof Date) {
+      normalizedX = x.getTime();
+    } else if (typeof x === 'string') {
+      // Try to parse as date if it looks like one
+      const parsed = new Date(x);
+      if (!isNaN(parsed.getTime())) {
+        normalizedX = parsed.getTime();
+      } else {
+        normalizedX = parseFloat(x);
+      }
+    }
+    
+    // Ensure Y is numeric
+    let normalizedY = y;
+    if (typeof y === 'string') {
+      normalizedY = parseFloat(y);
+    }
+    
     return {
-      chartArea: this.chartArea,
-      canvasSize: this.canvasSize,
-      devicePixelRatio: this.devicePixelRatio,
-      supportedSpaces: Object.values(this.spaces)
+      x: normalizedX,
+      y: normalizedY
     };
   }
-}
-
-/**
- * Factory function to create coordinate system
- */
-export function createCoordinateSystem(chartArea, canvasSize, devicePixelRatio) {
-  return new CoordinateSystem({
-    chartArea,
-    canvasSize,
-    devicePixelRatio
-  });
+  
+  /**
+   * Transform data coordinates to pixel coordinates
+   * @param {number} dataX - Data X coordinate
+   * @param {number} dataY - Data Y coordinate
+   * @returns {Object} { x: pixelX, y: pixelY }
+   */
+  dataToPixel(dataX, dataY) {
+    if (!this.scales.x || !this.scales.y) {
+      throw new Error('Scales not available for coordinate transformation');
+    }
+    
+    try {
+      // Use scales to transform data to pixel coordinates
+      let pixelX = this.scales.x.scale(dataX);
+      let pixelY = this.scales.y.scale(dataY);
+      
+      // Handle invalid transformations
+      if (!isFinite(pixelX) || !isFinite(pixelY)) {
+        return { x: null, y: null };
+      }
+      
+      // Apply coordinate system transformations
+      const transformedCoords = this._applyCoordinateTransforms(pixelX, pixelY);
+      
+      return {
+        x: transformedCoords.x,
+        y: transformedCoords.y
+      };
+      
+    } catch (error) {
+      console.error('Error in dataToPixel transformation:', error);
+      return { x: null, y: null };
+    }
+  }
+  
+  /**
+   * Transform pixel coordinates to data coordinates (inverse)
+   * @param {number} pixelX - Pixel X coordinate
+   * @param {number} pixelY - Pixel Y coordinate
+   * @returns {Object} { x: dataX, y: dataY }
+   */
+  pixelToData(pixelX, pixelY) {
+    if (!this.scales.x || !this.scales.y) {
+      throw new Error('Scales not available for coordinate transformation');
+    }
+    
+    try {
+      // Reverse coordinate system transformations
+      const originalCoords = this._reverseCoordinateTransforms(pixelX, pixelY);
+      
+      // Use scales to transform pixel to data coordinates
+      const dataX = this.scales.x.invert(originalCoords.x);
+      const dataY = this.scales.y.invert(originalCoords.y);
+      
+      return { x: dataX, y: dataY };
+      
+    } catch (error) {
+      console.error('Error in pixelToData transformation:', error);
+      return { x: null, y: null };
+    }
+  }
+  
+  /**
+   * Apply coordinate system transformations
+   * @private
+   */
+  _applyCoordinateTransforms(x, y) {
+    let transformedX = x;
+    let transformedY = y;
+    
+    // Handle coordinate origin and Y-axis flipping
+    if (this.config.coordinateOrigin === 'bottom-left' && this.config.flipY) {
+      // Y coordinates are already flipped by the scale (range is inverted)
+      // No additional transformation needed
+    } else if (this.config.coordinateOrigin === 'top-left') {
+      // Standard canvas/SVG coordinates (Y increases downward)
+      // Scale should handle this with non-inverted range
+    }
+    
+    // Apply custom transforms if enabled
+    if (this.config.enableTransforms) {
+      // Apply scaling
+      transformedX *= this.transforms.scale.x;
+      transformedY *= this.transforms.scale.y;
+      
+      // Apply translation
+      transformedX += this.transforms.translate.x;
+      transformedY += this.transforms.translate.y;
+      
+      // Apply rotation (around origin)
+      if (this.transforms.rotate !== 0) {
+        const cos = Math.cos(this.transforms.rotate);
+        const sin = Math.sin(this.transforms.rotate);
+        const rotatedX = transformedX * cos - transformedY * sin;
+        const rotatedY = transformedX * sin + transformedY * cos;
+        transformedX = rotatedX;
+        transformedY = rotatedY;
+      }
+    }
+    
+    return { x: transformedX, y: transformedY };
+  }
+  
+  /**
+   * Reverse coordinate system transformations
+   * @private
+   */
+  _reverseCoordinateTransforms(x, y) {
+    let originalX = x;
+    let originalY = y;
+    
+    // Reverse custom transforms if enabled
+    if (this.config.enableTransforms) {
+      // Reverse rotation
+      if (this.transforms.rotate !== 0) {
+        const cos = Math.cos(-this.transforms.rotate);
+        const sin = Math.sin(-this.transforms.rotate);
+        const rotatedX = originalX * cos - originalY * sin;
+        const rotatedY = originalX * sin + originalY * cos;
+        originalX = rotatedX;
+        originalY = rotatedY;
+      }
+      
+      // Reverse translation
+      originalX -= this.transforms.translate.x;
+      originalY -= this.transforms.translate.y;
+      
+      // Reverse scaling
+      originalX /= this.transforms.scale.x;
+      originalY /= this.transforms.scale.y;
+    }
+    
+    return { x: originalX, y: originalY };
+  }
+  
+  /**
+   * Check if point is within chart bounds
+   * @private
+   */
+  _isPointInBounds(x, y) {
+    const chartArea = this.config.chartArea;
+    
+    return x >= chartArea.x && 
+           x <= chartArea.x + chartArea.width &&
+           y >= chartArea.y && 
+           y <= chartArea.y + chartArea.height;
+  }
+  
+  /**
+   * Transform event coordinates to data coordinates
+   * @param {MouseEvent|TouchEvent} event - DOM event
+   * @param {HTMLElement} element - Target element
+   * @returns {Object} { x: dataX, y: dataY }
+   */
+  eventToData(event, element) {
+    // Get pixel coordinates relative to element
+    const rect = element.getBoundingClientRect();
+    const pixelX = event.clientX - rect.left;
+    const pixelY = event.clientY - rect.top;
+    
+    // Transform to data coordinates
+    return this.pixelToData(pixelX, pixelY);
+  }
+  
+  /**
+   * Transform data coordinates to event coordinates
+   * @param {number} dataX - Data X coordinate  
+   * @param {number} dataY - Data Y coordinate
+   * @param {HTMLElement} element - Target element
+   * @returns {Object} { x: eventX, y: eventY }
+   */
+  dataToEvent(dataX, dataY, element) {
+    // Transform to pixel coordinates
+    const pixelCoords = this.dataToPixel(dataX, dataY);
+    
+    // Convert to event coordinates (relative to viewport)
+    const rect = element.getBoundingClientRect();
+    
+    return {
+      x: pixelCoords.x + rect.left,
+      y: pixelCoords.y + rect.top
+    };
+  }
+  
+  /**
+   * Set custom transformation matrix
+   * @param {Object} transforms - { scale: {x, y}, translate: {x, y}, rotate: number }
+   */
+  setTransforms(transforms) {
+    this.transforms = { ...this.transforms, ...transforms };
+    this._clearCache();
+    return this;
+  }
+  
+  /**
+   * Reset transformations to default
+   */
+  resetTransforms() {
+    this.transforms = {
+      scale: { x: 1, y: 1 },
+      translate: { x: 0, y: 0 },
+      rotate: 0
+    };
+    this._clearCache();
+    return this;
+  }
+  
+  /**
+   * Get coordinate system information
+   */
+  getCoordinateInfo() {
+    return {
+      config: this.config,
+      scales: {
+        x: this.scales.x ? {
+          domain: this.scales.x.domain,
+          range: this.scales.x.range,
+          type: this.scales.x.type
+        } : null,
+        y: this.scales.y ? {
+          domain: this.scales.y.domain,
+          range: this.scales.y.range,
+          type: this.scales.y.type
+        } : null
+      },
+      transforms: this.transforms,
+      performanceStats: this.transformStats
+    };
+  }
+  
+  /**
+   * Clear coordinate cache
+   */
+  clearCache() {
+    this._clearCache();
+  }
+  
+  /**
+   * Clear internal cache
+   * @private
+   */
+  _clearCache() {
+    this.coordinateCache.clear();
+    this.transformedDatasets.clear();
+    console.log('CoordinateSystem cache cleared');
+  }
+  
+  /**
+   * Generate cache key for transformed data
+   * @private
+   */
+  _generateCacheKey(dataset, options) {
+    const scaleInfo = {
+      x: this.scales.x ? {
+        domain: this.scales.x.domain,
+        range: this.scales.x.range,
+        type: this.scales.x.type
+      } : null,
+      y: this.scales.y ? {
+        domain: this.scales.y.domain,
+        range: this.scales.y.range,
+        type: this.scales.y.type
+      } : null
+    };
+    
+    const cacheData = {
+      datasetId: dataset.id || 'unknown',
+      dataHash: this._hashData(dataset.data),
+      scales: scaleInfo,
+      transforms: this.transforms,
+      config: {
+        coordinateOrigin: this.config.coordinateOrigin,
+        flipY: this.config.flipY,
+        viewport: this.config.viewport,
+        chartArea: this.config.chartArea
+      },
+      options
+    };
+    
+    return this._hashObject(cacheData);
+  }
+  
+  /**
+   * Simple hash function for data
+   * @private
+   */
+  _hashData(data) {
+    if (!Array.isArray(data) || data.length === 0) return '0';
+    
+    // Hash based on first, middle, and last points plus length
+    const first = data[0];
+    const middle = data[Math.floor(data.length / 2)];
+    const last = data[data.length - 1];
+    
+    return `${data.length}-${JSON.stringify(first)}-${JSON.stringify(middle)}-${JSON.stringify(last)}`.replace(/\s/g, '');
+  }
+  
+  /**
+   * Hash object for cache key
+   * @private
+   */
+  _hashObject(obj) {
+    return JSON.stringify(obj).replace(/\s/g, '');
+  }
+  
+  /**
+   * Update performance statistics
+   * @private
+   */
+  _updateTransformStats(transformTime, datasetCount) {
+    this.transformStats.totalTransformations += datasetCount;
+    
+    // Update rolling average
+    const alpha = 0.1; // Smoothing factor
+    this.transformStats.averageTransformTime = 
+      this.transformStats.averageTransformTime * (1 - alpha) + 
+      transformTime * alpha;
+  }
+  
+  /**
+   * Get performance statistics
+   */
+  getPerformanceStats() {
+    return {
+      ...this.transformStats,
+      cacheEfficiency: this.transformStats.cacheHits / 
+                      (this.transformStats.cacheHits + this.transformStats.cacheMisses) || 0
+    };
+  }
+  
+  /**
+   * Create coordinate system for common chart configurations
+   */
+  static createForChart(chartType, viewport, chartArea, options = {}) {
+    const config = {
+      viewport,
+      chartArea,
+      coordinateOrigin: 'bottom-left',
+      flipY: true,
+      ...options
+    };
+    
+    // Chart-specific adjustments
+    switch (chartType) {
+      case 'line':
+      case 'area':
+        config.enableTransforms = true;
+        break;
+        
+      case 'bar':
+        config.enableClipping = true;
+        break;
+        
+      case 'scatter':
+        config.enableHighDPI = true;
+        break;
+    }
+    
+    return new CoordinateSystem(config);
+  }
 }

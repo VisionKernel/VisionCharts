@@ -306,108 +306,154 @@ export default class CanvasRenderer extends AbstractRenderer {
    * Render a single bar
    */
   _renderBar(ctx, x, y, barInfo, datasetIndex, pointIndex, scales) {
-    // Calculate bar position and size
-    const barX = x - (barInfo.width / 2);
-    
-    // Get baseline Y (usually zero line)
-    const baselineY = scales.y.scale(0);
-    const barHeight = Math.abs(y - baselineY);
-    const barY = Math.min(y, baselineY);
-    
-    // Handle multiple datasets - offset bars horizontally
-    const totalDatasets = barInfo.totalDatasets;
-    let adjustedBarX = barX;
-    let adjustedBarWidth = barInfo.width;
-    
-    if (totalDatasets > 1) {
-      adjustedBarWidth = barInfo.width / totalDatasets;
-      adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
-    }
-    
-    // Ensure minimum bar height for visibility
-    const minBarHeight = Math.max(barHeight, 1);
-    
-    // Draw the bar
-    ctx.fillRect(
+  // Calculate bar position and size
+  const barX = x - (barInfo.width / 2);
+  
+  // FIXED: Use bottom of chart area as baseline for bars
+  // This works correctly with financial data that doesn't include 0
+  const chartBottom = scales.y.range[0]; // Bottom of chart area
+  const baselineY = chartBottom;
+  const barHeight = Math.abs(y - baselineY);
+  const barY = Math.min(y, baselineY);
+  
+  // Handle multiple datasets - offset bars horizontally
+  const totalDatasets = barInfo.totalDatasets;
+  let adjustedBarX = barX;
+  let adjustedBarWidth = barInfo.width;
+  
+  if (totalDatasets > 1) {
+    adjustedBarWidth = barInfo.width / totalDatasets;
+    adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
+  }
+  
+  // Ensure minimum bar height for visibility
+  const minBarHeight = Math.max(barHeight, 1);
+  
+  // DEBUG: Log first few bars to verify coordinates
+  if (pointIndex < 3) {
+    console.log('Bar render:', {
+      pointIndex,
+      x, y,
+      baselineY,
+      barHeight,
+      barY,
+      barWidth: adjustedBarWidth,
+      chartBottom,
+      chartTop: scales.y.range[1]
+    });
+  }
+  
+  // Draw the bar
+  ctx.fillRect(
+    Math.round(adjustedBarX),
+    Math.round(barY),
+    Math.round(adjustedBarWidth),
+    Math.round(minBarHeight)
+  );
+  
+  // Optional: Add border
+  if (barInfo.showBorder) {
+    ctx.strokeRect(
       Math.round(adjustedBarX),
       Math.round(barY),
       Math.round(adjustedBarWidth),
       Math.round(minBarHeight)
     );
-    
-    // Optional: Add border
-    if (barInfo.showBorder) {
-      ctx.strokeRect(
-        Math.round(adjustedBarX),
-        Math.round(barY),
-        Math.round(adjustedBarWidth),
-        Math.round(minBarHeight)
-      );
-    }
   }
+}
 
   /**
    * Calculate bar dimensions
    */
   _calculateBarDimensions(datasets, scales, options) {
-    const firstDataset = datasets[0];
-    if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
-      return { width: 10, spacing: 2, totalDatasets: datasets.length, showBorder: false };
-    }
+  const firstDataset = datasets[0];
+  if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
+    return { width: 10, spacing: 2, totalDatasets: datasets.length, showBorder: false };
+  }
 
-    const data = firstDataset.data;
-    const barWidth = options.barWidth || 0.7;
-    const barSpacing = options.barSpacing || 0.1;
+  const data = firstDataset.data;
+  const barWidth = options.barWidth || 0.7;
+  const barSpacing = options.barSpacing || 0.1;
 
-    // For time series data, calculate based on time differences
-    if (data.length > 1) {
-      // Sort data by x value to ensure proper spacing calculation
-      const sortedData = [...data].sort((a, b) => {
-        const aX = this._getXValue(a, scales);
-        const bX = this._getXValue(b, scales);
-        return aX - bX;
-      });
+  // For time series data, calculate based on pixel differences between points
+  if (data.length > 1) {
+    // Use pre-calculated screen coordinates for accurate spacing
+    const screenXValues = data
+      .map(point => point.screenX)
+      .filter(x => x != null && isFinite(x))
+      .sort((a, b) => a - b);
 
-      // Calculate average difference between adjacent points
+    if (screenXValues.length > 1) {
+      // Calculate average pixel distance between consecutive points
       let totalDiff = 0;
-      for (let i = 1; i < sortedData.length; i++) {
-        const diff = this._getXValue(sortedData[i], scales) - this._getXValue(sortedData[i - 1], scales);
-        totalDiff += diff;
+      for (let i = 1; i < screenXValues.length; i++) {
+        totalDiff += screenXValues[i] - screenXValues[i - 1];
       }
-      const avgDiff = totalDiff / (sortedData.length - 1);
+      const avgPixelDistance = totalDiff / (screenXValues.length - 1);
 
+      // Calculate bar width based on available space
+      const calculatedWidth = Math.max(avgPixelDistance * barWidth, 1);
+      
       return {
-        width: Math.max(Math.abs(avgDiff) * barWidth, 2),
-        spacing: Math.abs(avgDiff) * barSpacing,
-        totalDatasets: datasets.length,
-        showBorder: options.showBorder || false
-      };
-    } else {
-      // Single point or no data
-      return {
-        width: 20,
-        spacing: 4,
+        width: calculatedWidth,
+        spacing: avgPixelDistance * barSpacing,
         totalDatasets: datasets.length,
         showBorder: options.showBorder || false
       };
     }
   }
 
+  // Fallback for edge cases
+  return {
+    width: 20,
+    spacing: 4,
+    totalDatasets: datasets.length,
+    showBorder: options.showBorder || false
+  };
+}
+
    /**
      * Get X coordinate from transformed data point
      */
     _getXValue(point, scales) {
-    // Use transformed coordinates from coordinate system
-    return point.x;
-    }
+        // USE PRE-CALCULATED COORDINATES FROM COORDINATESYSTEM
+        if (point.screenX !== undefined && point.screenX !== null) {
+            return point.screenX;
+        }
+        
+        // Fallback: if no pre-calculated coordinates, log warning
+        console.warn('Point missing pre-calculated screenX coordinate, using fallback');
+        
+        // Fallback transformation (should not be needed with CoordinateSystem)
+        const value = point.x || point.date;
+        if (value == null) return null;
+        
+        let normalizedValue = value;
+        if (value instanceof Date) {
+            normalizedValue = value.getTime();
+        }
+        
+        return scales.x.scale(normalizedValue);
+        }
 
     /**
      * Get Y coordinate from transformed data point  
      */
     _getYValue(point, scales) {
-    // Use transformed coordinates from coordinate system
-    return point.y;
-    }
+        // USE PRE-CALCULATED COORDINATES FROM COORDINATESYSTEM
+        if (point.screenY !== undefined && point.screenY !== null) {
+            return point.screenY;
+        }
+        
+        // Fallback: if no pre-calculated coordinates, log warning
+        console.warn('Point missing pre-calculated screenY coordinate, using fallback');
+        
+        // Fallback transformation (should not be needed with CoordinateSystem)
+        const value = point.y || point.value || point.price;
+        if (value == null) return null;
+        
+        return scales.y.scale(value);
+        }
 
   /**
    * Get default color for dataset by index

@@ -11,6 +11,7 @@ import { Grid } from '../components/Grid.js';
 import CanvasRenderer from '../renderers/CanvasRenderer.js';
 import WebGLRenderer from '../renderers/WebGLRenderer.js';
 import { CoordinateSystem } from '../utils/CoordinateSystem.js';
+import { DataProcessor } from '../utils/DataProcessor.js';
 
 export class Chart {
   constructor(config = {}) {
@@ -51,6 +52,13 @@ export class Chart {
         ...config.options
       }
     };
+
+    this.dataProcessor = new DataProcessor({
+      strictValidation: false,
+      autoDetectTimeFormat: true,
+      sortByTime: true,
+      removeDuplicates: true
+    });
     
     // Multi-renderer infrastructure
     this.renderers = new Map(); // Holds renderer instances
@@ -69,14 +77,14 @@ export class Chart {
     this.axes = { x: null, y: null };
     this.chartArea = { x: 0, y: 0, width: 0, height: 0 };
     this.dataDomains = { x: [0, 1], y: [0, 1] };
-    
-    // Coordinate system for data transformations
-    this.coordinateSystem = null;
-    this.transformedData = null; // Store transformed data for renderers
 
     // Scale management
     this.scaleManager = new ScaleManager();
     this.scales = { x: null, y: null };
+
+    // Coordinate system for data transformations
+    this.coordinateSystem = null;
+    this.transformedData = null; // Store transformed data for renderers
     
     // Grid component
     this.grid = null;
@@ -146,6 +154,9 @@ export class Chart {
       
       // Create axes
       this._createAxes();
+
+      // Create coordinate system
+      this._createCoordinateSystem();
       
       // Choose and initialize optimal renderer
       await this._selectAndInitializeRenderer();
@@ -218,19 +229,33 @@ export class Chart {
   /**
    * Process and count data points
    */
-  _processData() {
-    this.dataPointCount = 0;
-    
-    if (Array.isArray(this.config.data)) {
-      // Handle array of datasets
-      this.config.data.forEach(dataset => {
-        if (dataset.data && Array.isArray(dataset.data)) {
-          this.dataPointCount += dataset.data.length;
-        }
+  async _processData() {
+    try {
+      console.log('Processing raw data with DataProcessor...');
+      
+      // Use DataProcessor to clean and validate data
+      this.config.data = await this.dataProcessor.processDatasets(this.config.data, {
+        strictValidation: false,
+        fillGaps: false,
+        removeOutliers: false
       });
+      
+      // Count total data points after processing
+      this.dataPointCount = 0;
+      if (Array.isArray(this.config.data)) {
+        this.config.data.forEach(dataset => {
+          if (dataset.data && Array.isArray(dataset.data)) {
+            this.dataPointCount += dataset.data.length;
+          }
+        });
+      }
+      
+      console.log(`DataProcessor: Cleaned data, ${this.dataPointCount} total points`);
+      
+    } catch (error) {
+      console.error('Error processing data:', error);
+      throw error;
     }
-    
-    console.log(`Chart initialized with ${this.dataPointCount} data points`);
   }
   
   /**
@@ -377,6 +402,41 @@ export class Chart {
       }
     });
   }
+
+
+  /** 
+   * Create coordinate system for unified transformations
+    */
+  _createCoordinateSystem() {
+  if (!this.scales.x || !this.scales.y) {
+    console.warn('Scales not created before coordinate system');
+    return;
+  }
+  
+  this.coordinateSystem = CoordinateSystem.createForChart('line', // or 'bar'
+    this.config.options.width,
+    this.config.options.height,
+    this.chartArea,
+    {
+      devicePixelRatio: window.devicePixelRatio || 1,
+      enableHighDPI: true,
+      enableCaching: true
+    }
+  );
+  
+  // Set scales for coordinate transformation
+  this.coordinateSystem.setScales(this.scales);
+  this.coordinateSystem.setViewport({
+    x: 0,
+    y: 0,
+    width: this.config.options.width,
+    height: this.config.options.height
+  });
+  this.coordinateSystem.setChartArea(this.chartArea);
+  
+  console.log('CoordinateSystem created and configured');
+}
+
   
   /**
    * Select and initialize optimal renderer based on data size and capabilities
@@ -538,19 +598,25 @@ export class Chart {
   /**
    * Preprocess data for rendering using coordinate system
    */
-  _preprocessDataForRenderer() {
-    if (!Array.isArray(this.config.data) || !this.coordinateSystem) return;
+  async _preprocessDataForRenderer() {
+    if (!Array.isArray(this.config.data) || !this.coordinateSystem) {
+      return;
+    }
     
-    // Transform datasets for the active renderer
-    this.transformedData = this.coordinateSystem.transformDatasetsForRenderer(
-      this.config.data,
-      this.scales,
-      this.activeRenderer,
-      this.config.options.xField,
-      this.config.options.yField
-    );
-    
-    console.log(`Data transformed for ${this.activeRenderer} renderer`);
+    try {
+      console.log('Transforming coordinates with CoordinateSystem...');
+      
+      // Use CoordinateSystem to transform data to pixel coordinates
+      this.config.data = await this.coordinateSystem.transformDatasets(this.config.data, {
+        strictValidation: false
+      });
+      
+      console.log('Data transformed for', this.activeRenderer, 'renderer');
+      
+    } catch (error) {
+      console.error('Error transforming coordinates:', error);
+      throw error;
+    }
   }
   
   /**
@@ -652,22 +718,15 @@ export class Chart {
     
     const oldDataPointCount = this.dataPointCount;
     
-    this._processData();
+    // Process data first
+    await this._processData();
+    
     this._calculateDataDomains();
     this._createScales();
-    
-    // Update coordinate system
-    if (this.coordinateSystem) {
-      this.coordinateSystem.updateDimensions(
-        this.chartArea,
-        {
-          width: this.config.options.width,
-          height: this.config.options.height
-        }
-      );
-    }
-    
     this._createGrid();
+    
+    // NEW: Recreate coordinate system with new scales
+    this._createCoordinateSystem();
     
     // Check if we need to switch renderers due to data size change
     const newOptimalRenderer = this._determineOptimalRenderer();
@@ -701,7 +760,7 @@ export class Chart {
     
     // Update renderer
     if (this.rendererInstance) {
-      this.rendererInstance.update(this.transformedData || this.config.data);
+      this.rendererInstance.update(this.config.data);
     }
     
     await this.render();
