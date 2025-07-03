@@ -138,7 +138,7 @@ export class Chart {
       this._setupRenderingLayers();
       
       // Process data
-      this._processData();
+      await this._processData();
       
       // Calculate data domains
       this._calculateDataDomains();
@@ -631,20 +631,20 @@ export class Chart {
     try {
       // Update coordinate system dimensions
       if (this.coordinateSystem) {
-        this.coordinateSystem.updateDimensions(
-          this.chartArea,
-          {
-            width: this.config.options.width,
-            height: this.config.options.height
-          }
-        );
+        this.coordinateSystem.setViewport({
+          x: 0,
+          y: 0,
+          width: this.config.options.width,
+          height: this.config.options.height
+        });
+        this.coordinateSystem.setChartArea(this.chartArea);
       }
       
       // Clear renderer
       this.rendererInstance.clear();
       
       // Transform data for the active renderer
-      this._preprocessDataForRenderer();
+      await this._preprocessDataForRenderer();
       
       // HYBRID RENDERING ARCHITECTURE:
       // 1. Grid: Always Canvas 2D (simple, reliable) - use separate canvas for WebGL
