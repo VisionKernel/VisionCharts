@@ -1,7 +1,8 @@
 /**
- * LineChart.js - Line Chart Implementation
+ * LineChart.js - Enhanced Line Chart Implementation with Multi-Renderer Support
  * 
- * Extends the base Chart class to render line charts with Canvas/WebGL.
+ * Extends the base Chart class to render line charts using either Canvas 2D or WebGL
+ * based on dataset size. Automatically switches to WebGL for datasets over 50K points.
  */
 
 import { Chart } from '../core/Chart.js';
@@ -16,109 +17,212 @@ export class LineChart extends Chart {
       curve: 'monotone', // 'linear', 'step', 'cardinal', 'monotone'
       strokeWidth: 2,
       showPoints: false,
+      pointRadius: 3,
       ...config.options
+    };
+    
+    console.log('LineChart created with multi-renderer support');
+  }
+  
+  /**
+   * Render line chart data using the selected renderer (Canvas 2D or WebGL)
+   */
+  async _renderChartData() {
+    if (!this.rendererInstance) {
+      console.error('No renderer instance available');
+      return;
+    }
+    
+    if (!Array.isArray(this.config.data) || this.config.data.length === 0) {
+      console.log('No data to render');
+      return;
+    }
+    
+    try {
+      // Preprocess data to add screen coordinates
+      this._preprocessDataForRenderer();
+      
+      // Set viewport for clipping
+      this.rendererInstance.setViewport(this.chartArea);
+      
+      // Render lines using the selected renderer
+      await this.rendererInstance.renderLines(this.config.data, this.scales, {
+        curve: this.config.options.curve,
+        strokeWidth: this.config.options.strokeWidth,
+        showPoints: this.config.options.showPoints,
+        pointRadius: this.config.options.pointRadius
+      });
+      
+      const totalPoints = this.config.data.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
+      console.log(`LineChart: Rendered ${this.config.data.length} datasets with ${totalPoints} total points using ${this.activeRenderer}`);
+      
+    } catch (error) {
+      console.error('Error rendering line chart data:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Add a new dataset to the chart
+   */
+  addDataset(dataset) {
+    if (!dataset || !dataset.data) {
+      console.warn('Invalid dataset provided to addDataset');
+      return this;
+    }
+    
+    // Ensure required properties
+    const processedDataset = {
+      id: dataset.id || `dataset-${this.config.data.length + 1}`,
+      name: dataset.name || `Dataset ${this.config.data.length + 1}`,
+      color: dataset.color || this._getDefaultColor(this.config.data.length),
+      width: dataset.width || this.config.options.strokeWidth,
+      ...dataset
+    };
+    
+    this.config.data.push(processedDataset);
+    
+    console.log(`Added dataset: ${processedDataset.id} with ${processedDataset.data.length} points`);
+    
+    // Update and re-render
+    this.update();
+    
+    return this;
+  }
+  
+  /**
+   * Remove a dataset by ID
+   */
+  removeDataset(datasetId) {
+    const initialCount = this.config.data.length;
+    this.config.data = this.config.data.filter(dataset => dataset.id !== datasetId);
+    
+    if (this.config.data.length < initialCount) {
+      console.log(`Removed dataset: ${datasetId}`);
+      this.update();
+    } else {
+      console.warn(`Dataset not found: ${datasetId}`);
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Update a specific dataset
+   */
+  updateDataset(datasetId, newData) {
+    const dataset = this.config.data.find(ds => ds.id === datasetId);
+    
+    if (!dataset) {
+      console.warn(`Dataset not found: ${datasetId}`);
+      return this;
+    }
+    
+    // Update dataset properties
+    Object.assign(dataset, newData);
+    
+    console.log(`Updated dataset: ${datasetId}`);
+    this.update();
+    
+    return this;
+  }
+  
+  /**
+   * Set curve type for line interpolation
+   */
+  setCurveType(curveType) {
+    const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
+    
+    if (!validCurves.includes(curveType)) {
+      console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
+      return this;
+    }
+    
+    this.config.options.curve = curveType;
+    console.log(`Curve type set to: ${curveType}`);
+    
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Toggle point visibility
+   */
+  togglePoints(show = null) {
+    this.config.options.showPoints = show !== null ? show : !this.config.options.showPoints;
+    console.log(`Points ${this.config.options.showPoints ? 'enabled' : 'disabled'}`);
+    
+    this.render();
+    return this.config.options.showPoints;
+  }
+  
+  /**
+   * Set stroke width for all lines
+   */
+  setStrokeWidth(width) {
+    if (typeof width !== 'number' || width <= 0) {
+      console.warn('Invalid stroke width provided');
+      return this;
+    }
+    
+    this.config.options.strokeWidth = width;
+    
+    // Update all datasets that don't have custom widths
+    this.config.data.forEach(dataset => {
+      if (!dataset.customWidth) {
+        dataset.width = width;
+      }
+    });
+    
+    console.log(`Stroke width set to: ${width}`);
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Set point radius
+   */
+  setPointRadius(radius) {
+    if (typeof radius !== 'number' || radius <= 0) {
+      console.warn('Invalid point radius provided');
+      return this;
+    }
+    
+    this.config.options.pointRadius = radius;
+    console.log(`Point radius set to: ${radius}`);
+    
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Get line chart specific information
+   */
+  getLineChartInfo() {
+    const baseInfo = this.getRendererInfo();
+    
+    return {
+      ...baseInfo,
+      chartType: 'line',
+      curveType: this.config.options.curve,
+      strokeWidth: this.config.options.strokeWidth,
+      showPoints: this.config.options.showPoints,
+      pointRadius: this.config.options.pointRadius,
+      datasets: this.config.data.map(dataset => ({
+        id: dataset.id,
+        name: dataset.name,
+        color: dataset.color,
+        pointCount: dataset.data?.length || 0,
+        width: dataset.width
+      }))
     };
   }
   
-  /**
-   * Render line chart data using Canvas
-   */
-  async _renderChartData() {
-    const ctx = this.canvas.getContext('2d');
-    ctx.save();
-    
-    // Render each dataset
-    if (Array.isArray(this.config.data)) {
-      for (let i = 0; i < this.config.data.length; i++) {
-        const dataset = this.config.data[i];
-        await this._renderDataset(ctx, dataset, i);
-      }
-    }
-    
-    ctx.restore();
-  }
-  
-  /**
-   * Render a single dataset
-   */
-  async _renderDataset(ctx, dataset, index) {
-    if (!dataset.data || !Array.isArray(dataset.data) || dataset.data.length === 0) {
-      return;
-    }
-    
-    // Use shared scales from Chart
-    if (!this.scales.x || !this.scales.y) {
-      console.warn('Scales not available for scaling');
-      return;
-    }
-    
-    // Set line style
-    ctx.strokeStyle = dataset.color || this._getDefaultColor(index);
-    ctx.lineWidth = dataset.width || this.config.options.strokeWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
-    // Begin path
-    ctx.beginPath();
-    
-    // Draw line
-    let isFirstPoint = true;
-    
-    for (const point of dataset.data) {
-      const x = this._getXValue(point);
-      const y = this._getYValue(point);
-      
-      if (x == null || y == null || isNaN(x) || isNaN(y)) {
-        continue;
-      }
-      
-      // Use shared scales for consistency with axes
-      const canvasX = this.scales.x.scale(x);
-      const canvasY = this.scales.y.scale(y);
-      
-      if (isFirstPoint) {
-        ctx.moveTo(canvasX, canvasY);
-        isFirstPoint = false;
-      } else {
-        ctx.lineTo(canvasX, canvasY);
-      }
-    }
-    
-    // Stroke the path
-    ctx.stroke();
-    
-    // Draw points if enabled
-    if (this.config.options.showPoints) {
-      this._renderPoints(ctx, dataset);
-    }
-  }
-  
-  /**
-   * Render data points
-   */
-  _renderPoints(ctx, dataset) {
-    ctx.fillStyle = ctx.strokeStyle; // Use same color as line
-    
-    for (const point of dataset.data) {
-      const x = this._getXValue(point);
-      const y = this._getYValue(point);
-      
-      if (x == null || y == null || isNaN(x) || isNaN(y)) {
-        continue;
-      }
-      
-      // Use shared scales for consistency with axes
-      const canvasX = this.scales.x.scale(x);
-      const canvasY = this.scales.y.scale(y);
-      
-      ctx.beginPath();
-      ctx.arc(canvasX, canvasY, 3, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-  }
+
   
   /**
    * Get default color for dataset by index
+   * @private
    */
   _getDefaultColor(index) {
     const colors = [
@@ -134,4 +238,21 @@ export class LineChart extends Chart {
     
     return colors[index % colors.length];
   }
+  
+  /**
+   * Optimize for large datasets by enabling WebGL if needed
+   */
+  optimizeForLargeDataset() {
+    const currentRenderer = this.activeRenderer;
+    
+    if (this.dataPointCount > this.performanceThresholds.canvas && currentRenderer !== 'webgl') {
+      console.log('Optimizing for large dataset - switching to WebGL');
+      return this.switchRenderer('webgl');
+    } else {
+      console.log('Dataset size acceptable for current renderer');
+      return Promise.resolve();
+    }
+  }
+  
+
 }

@@ -1,14 +1,15 @@
 /**
- * Chart.js - Base Chart Class with Legend Integration
+ * Chart.js - Enhanced Base Chart Class with Multi-Renderer Support
  * 
  * Foundation class for all chart types in VisionCharts.
- * Handles hybrid rendering coordination, basic lifecycle, and common functionality.
+ * Handles automatic renderer selection (Canvas 2D vs WebGL) based on dataset size.
  */
 
 import { Axis } from './Axis.js';
 import { Scale, ScaleManager } from './Scale.js';
 import { Grid } from '../components/Grid.js';
-import { Legend } from '../components/Legend.js';
+import CanvasRenderer from '../renderers/CanvasRenderer.js';
+import WebGLRenderer from '../renderers/WebGLRenderer.js';
 
 export class Chart {
   constructor(config = {}) {
@@ -43,30 +44,17 @@ export class Chart {
         gridOpacity: 0.7,
         gridDash: [], // [] for solid, [5, 5] for dashed
         
-        // Legend options
-        showLegend: true,
-        legend: {
-          position: 'top',
-          orientation: 'horizontal',
-          align: 'center',
-          itemSpacing: 20,
-          fontSize: 12,
-          interactive: true,
-          hoverEffect: true,
-          showStudyBadges: true,
-          backgroundColor: 'rgba(255, 255, 255, 0.9)',
-          borderColor: '#e0e0e0',
-          borderWidth: 1,
-          borderRadius: 4
-        },
+        // Renderer options
+        forceRenderer: null, // 'canvas', 'webgl', or null for auto
         
         ...config.options
       }
     };
     
-    // Rendering infrastructure
-    this.renderers = new Map(); // Will hold Canvas, WebGL, SVG renderers
+    // Multi-renderer infrastructure
+    this.renderers = new Map(); // Holds renderer instances
     this.activeRenderer = null;
+    this.rendererInstance = null;
     this.svgOverlay = null;
     
     // Performance monitoring
@@ -88,14 +76,11 @@ export class Chart {
     // Grid component
     this.grid = null;
     
-    // Legend component
-    this.legend = null;
-    
     // Title element reference
     this.titleElement = null;
     
-    // Dataset visibility state
-    this.hiddenDatasets = new Set();
+    // Initialization state
+    this.isInitialized = false;
     
     // Initialize
     this._initialize();
@@ -123,41 +108,47 @@ export class Chart {
   /**
    * Initialize the chart infrastructure
    */
-  _initialize() {
-    // Clear container
-    this.container.innerHTML = '';
-    
-    // Set up container styling
-    this.container.style.position = 'relative';
-    this.container.style.width = '100%';
-    this.container.style.height = '100%';
-    
-    // Calculate dimensions
-    this._calculateDimensions();
-    
-    // Set up rendering layers
-    this._setupRenderingLayers();
-    
-    // Process data
-    this._processData();
-    
-    // Calculate data domains
-    this._calculateDataDomains();
-    
-    // Create scales
-    this._createScales();
-    
-    // Create grid
-    this._createGrid();
-    
-    // Create axes
-    this._createAxes();
-    
-    // Create legend
-    this._createLegend();
-    
-    // Choose optimal renderer
-    this._selectRenderer();
+  async _initialize() {
+    try {
+      // Clear container
+      this.container.innerHTML = '';
+      
+      // Set up container styling
+      this.container.style.position = 'relative';
+      this.container.style.width = '100%';
+      this.container.style.height = '100%';
+      
+      // Calculate dimensions
+      this._calculateDimensions();
+      
+      // Set up rendering layers
+      this._setupRenderingLayers();
+      
+      // Process data
+      this._processData();
+      
+      // Calculate data domains
+      this._calculateDataDomains();
+      
+      // Create scales
+      this._createScales();
+      
+      // Create grid
+      this._createGrid();
+      
+      // Create axes
+      this._createAxes();
+      
+      // Choose and initialize optimal renderer
+      await this._selectAndInitializeRenderer();
+      
+      this.isInitialized = true;
+      console.log('Chart initialization complete with', this.activeRenderer, 'renderer');
+      
+    } catch (error) {
+      console.error('Chart initialization failed:', error);
+      throw error;
+    }
   }
   
   /**
@@ -191,7 +182,7 @@ export class Chart {
     this.canvas.style.left = '0';
     this.canvas.style.zIndex = '1';
     
-    // Create SVG overlay for UI elements (axes, labels, title, legend, etc.)
+    // Create SVG overlay for UI elements (axes, labels, title, etc.)
     this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.svgOverlay.setAttribute('width', this.config.options.width);
     this.svgOverlay.setAttribute('height', this.config.options.height);
@@ -200,10 +191,6 @@ export class Chart {
     this.svgOverlay.style.left = '0';
     this.svgOverlay.style.zIndex = '2';
     this.svgOverlay.style.pointerEvents = 'none'; // Allow interaction to pass through to canvas
-    
-    // Enable pointer events on specific SVG elements (legend will set this)
-    this.svgOverlay.style.pointerEvents = 'auto';
-    this.canvas.style.pointerEvents = 'none';
     
     // Add to container
     this.container.appendChild(this.canvas);
@@ -235,14 +222,12 @@ export class Chart {
     let xMin = Infinity, xMax = -Infinity;
     let yMin = Infinity, yMax = -Infinity;
     
-    // Collect all data points from visible datasets only
-    const visibleData = Array.isArray(this.config.data) ? 
-      this.config.data
-        .filter(dataset => !this.hiddenDatasets.has(dataset.id))
-        .flatMap(dataset => dataset.data || []) : 
+    // Collect all data points from all datasets
+    const allData = Array.isArray(this.config.data) ? 
+      this.config.data.flatMap(dataset => dataset.data || []) : 
       [];
     
-    for (const point of visibleData) {
+    for (const point of allData) {
       const x = this._getXValue(point);
       const y = this._getYValue(point);
       
@@ -362,24 +347,91 @@ export class Chart {
   }
   
   /**
-   * Create legend instance
+   * Select and initialize optimal renderer based on data size and capabilities
    */
-  _createLegend() {
-    if (!this.config.options.showLegend) {
-      return;
+  async _selectAndInitializeRenderer() {
+    // Check for forced renderer
+    if (this.config.options.forceRenderer) {
+      this.activeRenderer = this.config.options.forceRenderer;
+      console.log(`Using forced renderer: ${this.activeRenderer}`);
+    } else {
+      // Auto-select based on data size and capabilities
+      this._selectOptimalRenderer();
     }
     
-    this.legend = new Legend(this.config.options.legend);
+    // Initialize the selected renderer
+    await this._initializeRenderer();
+  }
+  
+  /**
+   * Select optimal renderer based on data size and browser capabilities
+   */
+  _selectOptimalRenderer() {
+    const dataPoints = this.dataPointCount;
     
-    // Set up legend data
-    this.legend.setDatasets(this.config.data || []);
+    // Check WebGL support first
+    const webglSupported = WebGLRenderer.isSupported();
     
-    // Set up dataset toggle callback
-    this.legend.onDatasetToggled((datasetId, isVisible) => {
-      this.toggleDataset(datasetId, isVisible);
-    });
-    
-    console.log('Legend created');
+    if (dataPoints > this.performanceThresholds.canvas && webglSupported) {
+      this.activeRenderer = 'webgl';
+      console.log(`Auto-selected WebGL renderer for ${dataPoints} data points`);
+    } else if (dataPoints > this.performanceThresholds.webgl) {
+      // Dataset too large even for WebGL
+      console.warn(`Dataset (${dataPoints} points) exceeds WebGL limit (${this.performanceThresholds.webgl})`);
+      this.activeRenderer = webglSupported ? 'webgl' : 'canvas';
+    } else {
+      this.activeRenderer = 'canvas';
+      console.log(`Auto-selected Canvas renderer for ${dataPoints} data points`);
+    }
+  }
+  
+  /**
+   * Initialize the selected renderer
+   */
+  async _initializeRenderer() {
+    try {
+      // Create renderer instance
+      switch (this.activeRenderer) {
+        case 'webgl':
+          this.rendererInstance = new WebGLRenderer({
+            antialias: true,
+            preserveDrawingBuffer: false
+          });
+          break;
+          
+        case 'canvas':
+        default:
+          this.rendererInstance = new CanvasRenderer({
+            antialias: true,
+            imageSmoothingEnabled: true
+          });
+          break;
+      }
+      
+      // Initialize renderer with canvas
+      await this.rendererInstance.initialize(this.canvas, {
+        width: this.config.options.width,
+        height: this.config.options.height
+      });
+      
+      console.log(`${this.activeRenderer} renderer initialized successfully`);
+      
+    } catch (error) {
+      console.error(`Failed to initialize ${this.activeRenderer} renderer:`, error);
+      
+      // Fallback to Canvas if WebGL fails
+      if (this.activeRenderer === 'webgl') {
+        console.log('Falling back to Canvas renderer');
+        this.activeRenderer = 'canvas';
+        this.rendererInstance = new CanvasRenderer();
+        await this.rendererInstance.initialize(this.canvas, {
+          width: this.config.options.width,
+          height: this.config.options.height
+        });
+      } else {
+        throw error;
+      }
+    }
   }
   
   /**
@@ -408,89 +460,6 @@ export class Chart {
     const yField = this.config.options.yField;
     const value = point[yField];
     return typeof value === 'number' ? value : null;
-  }
-  
-  /**
-   * Toggle dataset visibility
-   */
-  toggleDataset(datasetId, forceVisible = null) {
-    if (forceVisible === false || (forceVisible === null && !this.hiddenDatasets.has(datasetId))) {
-      this.hiddenDatasets.add(datasetId);
-      console.log(`Dataset ${datasetId} hidden`);
-    } else {
-      this.hiddenDatasets.delete(datasetId);
-      console.log(`Dataset ${datasetId} shown`);
-    }
-    
-    // Update legend state
-    if (this.legend) {
-      if (this.hiddenDatasets.has(datasetId)) {
-        this.legend.hideDataset(datasetId);
-      } else {
-        this.legend.showDataset(datasetId);
-      }
-    }
-    
-    // Recalculate domains and re-render
-    this._calculateDataDomains();
-    this._createScales();
-    this._createGrid();
-    
-    // Update axes with new scales
-    if (this.axes.x && this.axes.y) {
-      this.axes.x.updateScale(this.scales.x);
-      this.axes.y.updateScale(this.scales.y);
-    }
-    
-    // Update grid with new scales
-    if (this.grid) {
-      this.grid.updateScales(this.scales.x, this.scales.y);
-    }
-    
-    this.render();
-    
-    return !this.hiddenDatasets.has(datasetId);
-  }
-  
-  /**
-   * Get visible datasets (not hidden)
-   */
-  getVisibleDatasets() {
-    return Array.isArray(this.config.data) ? 
-      this.config.data.filter(dataset => !this.hiddenDatasets.has(dataset.id)) : 
-      [];
-  }
-  
-  /**
-   * Show/hide legend
-   */
-  toggleLegend(show = null) {
-    this.config.options.showLegend = show !== null ? show : !this.config.options.showLegend;
-    
-    if (this.config.options.showLegend && !this.legend) {
-      this._createLegend();
-    }
-    
-    if (this.legend) {
-      this.legend.setVisible(this.config.options.showLegend);
-    }
-    
-    this.render();
-    return this.config.options.showLegend;
-  }
-  
-  /**
-   * Update legend configuration
-   */
-  updateLegendConfig(newConfig) {
-    this.config.options.legend = { ...this.config.options.legend, ...newConfig };
-    
-    if (this.legend) {
-      this.legend.updateConfig(this.config.options.legend);
-    }
-    
-    this.render();
-    return this;
   }
   
   /**
@@ -524,7 +493,6 @@ export class Chart {
     this.titleElement.setAttribute('font-weight', this.config.options.titleFontWeight);
     this.titleElement.setAttribute('fill', this.config.options.titleColor);
     this.titleElement.setAttribute('class', 'chart-title');
-    this.titleElement.style.pointerEvents = 'none';
     
     // Set title text
     this.titleElement.textContent = this.config.options.title;
@@ -533,6 +501,217 @@ export class Chart {
     this.svgOverlay.appendChild(this.titleElement);
     
     console.log(`Title rendered: "${this.config.options.title}"`);
+  }
+  
+  /**
+   * Preprocess data for rendering (add screen coordinates)
+   */
+  _preprocessDataForRenderer() {
+    if (!Array.isArray(this.config.data)) return;
+    
+    this.config.data.forEach(dataset => {
+      if (!dataset.data || !Array.isArray(dataset.data)) return;
+      
+      dataset.data.forEach(point => {
+        // Add screen coordinates for efficient rendering
+        const x = this._getXValue(point);
+        const y = this._getYValue(point);
+        
+        if (x != null && y != null && !isNaN(x) && !isNaN(y)) {
+          point.screenX = this.scales.x.scale(x);
+          point.screenY = this.scales.y.scale(y);
+        }
+      });
+    });
+  }
+  
+  /**
+   * Render the chart using the selected renderer
+   */
+  async render() {
+    if (!this.isInitialized) {
+      console.warn('Chart not initialized, skipping render');
+      return;
+    }
+    
+    try {
+      // Clear renderer
+      this.rendererInstance.clear();
+      
+      // HYBRID RENDERING ARCHITECTURE:
+      // 1. Grid: Always Canvas 2D (simple, reliable)
+      if (this.grid && this.config.options.showGrid) {
+        // Grid renders directly to canvas context
+        const ctx = this.canvas.getContext('2d');
+        this.grid.render(ctx);
+      }
+      
+      // 2. Title: Always SVG (crisp text, vector graphics)
+      this._renderTitle();
+      
+      // 3. Axes: Always SVG (crisp text, vector graphics)
+      this._renderAxes();
+      
+      // 4. Data: Selected renderer (Canvas 2D or WebGL based on dataset size)
+      await this._renderChartData();
+      
+      console.log(`Chart rendered successfully using ${this.activeRenderer} renderer`);
+      
+    } catch (error) {
+      console.error('Error rendering chart:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Render axes using the Axis class
+   */
+  _renderAxes() {
+    if (!this.axes.x || !this.axes.y) {
+      console.warn('Axes not initialized');
+      return;
+    }
+    
+    // Render X axis
+    this.axes.x.render(this.svgOverlay, {
+      x: 0,
+      y: this.chartArea.y + this.chartArea.height
+    });
+    
+    // Render Y axis  
+    this.axes.y.render(this.svgOverlay, {
+      x: this.chartArea.x,
+      y: 0
+    });
+  }
+  
+  /**
+   * Render chart data using the selected renderer - to be implemented by subclasses
+   */
+  async _renderChartData() {
+    throw new Error('_renderChartData must be implemented by subclass');
+  }
+  
+  /**
+   * Update chart with new data or options
+   */
+  async update() {
+    if (!this.isInitialized) {
+      await this._initialize();
+      return;
+    }
+    
+    const oldDataPointCount = this.dataPointCount;
+    
+    this._processData();
+    this._calculateDataDomains();
+    this._createScales();
+    this._createGrid();
+    
+    // Check if we need to switch renderers due to data size change
+    const newOptimalRenderer = this._determineOptimalRenderer();
+    if (newOptimalRenderer !== this.activeRenderer) {
+      console.log(`Switching renderer from ${this.activeRenderer} to ${newOptimalRenderer} due to data size change`);
+      
+      // Destroy current renderer
+      if (this.rendererInstance) {
+        this.rendererInstance.destroy();
+      }
+      
+      // Initialize new renderer
+      this.activeRenderer = newOptimalRenderer;
+      await this._initializeRenderer();
+    }
+    
+    // Update axes with new scales
+    if (this.axes.x && this.axes.y) {
+      this.axes.x.updateScale(this.scales.x);
+      this.axes.x.updateOptions({ label: this.config.options.xAxisName });
+      
+      this.axes.y.updateScale(this.scales.y);
+      this.axes.y.updateOptions({ label: this.config.options.yAxisName });
+    }
+    
+    // Update grid with new scales and chart area
+    if (this.grid) {
+      this.grid.updateScales(this.scales.x, this.scales.y);
+      this.grid.updateChartArea(this.chartArea);
+    }
+    
+    // Update renderer
+    if (this.rendererInstance) {
+      this.rendererInstance.update(this.config.data);
+    }
+    
+    await this.render();
+    
+    console.log(`Chart updated: ${oldDataPointCount} → ${this.dataPointCount} points`);
+  }
+  
+  /**
+   * Determine optimal renderer without setting it
+   */
+  _determineOptimalRenderer() {
+    if (this.config.options.forceRenderer) {
+      return this.config.options.forceRenderer;
+    }
+    
+    const webglSupported = WebGLRenderer.isSupported();
+    
+    if (this.dataPointCount > this.performanceThresholds.canvas && webglSupported) {
+      return 'webgl';
+    } else {
+      return 'canvas';
+    }
+  }
+  
+  /**
+   * Get renderer performance information
+   */
+  getRendererInfo() {
+    return {
+      activeRenderer: this.activeRenderer,
+      dataPointCount: this.dataPointCount,
+      thresholds: this.performanceThresholds,
+      rendererCapabilities: this.rendererInstance ? this.rendererInstance.getPerformanceProfile() : null,
+      webglSupported: WebGLRenderer.isSupported(),
+      webglCapabilities: WebGLRenderer.getCapabilities()
+    };
+  }
+  
+  /**
+   * Force switch to a specific renderer
+   */
+  async switchRenderer(rendererType) {
+    if (!['canvas', 'webgl'].includes(rendererType)) {
+      throw new Error(`Invalid renderer type: ${rendererType}`);
+    }
+    
+    if (rendererType === 'webgl' && !WebGLRenderer.isSupported()) {
+      throw new Error('WebGL is not supported in this browser');
+    }
+    
+    if (rendererType === this.activeRenderer) {
+      console.log(`Already using ${rendererType} renderer`);
+      return;
+    }
+    
+    console.log(`Manually switching to ${rendererType} renderer`);
+    
+    // Destroy current renderer
+    if (this.rendererInstance) {
+      this.rendererInstance.destroy();
+    }
+    
+    // Set new renderer
+    this.activeRenderer = rendererType;
+    this.config.options.forceRenderer = rendererType;
+    
+    // Initialize new renderer
+    await this._initializeRenderer();
+    
+    // Re-render
+    await this.render();
   }
   
   /**
@@ -615,119 +794,6 @@ export class Chart {
   }
   
   /**
-   * Select optimal renderer based on data size
-   */
-  _selectRenderer() {
-    if (this.dataPointCount > this.performanceThresholds.canvas) {
-      console.log('Using WebGL renderer for large dataset');
-      this.activeRenderer = 'webgl';
-    } else {
-      console.log('Using Canvas renderer');
-      this.activeRenderer = 'canvas';
-    }
-  }
-  
-  /**
-   * Render the chart
-   */
-  async render() {
-    try {
-      // Clear and prepare canvas
-      const ctx = this.canvas.getContext('2d');
-      ctx.clearRect(0, 0, this.config.options.width, this.config.options.height);
-      
-      // HYBRID RENDERING ARCHITECTURE:
-      // 1. Grid: Always Canvas 2D (simple, reliable)
-      if (this.grid && this.config.options.showGrid) {
-        this.grid.render(ctx);
-      }
-      
-      // 2. Title: Always SVG (crisp text, vector graphics)
-      this._renderTitle();
-      
-      // 3. Axes: Always SVG (crisp text, vector graphics)
-      this._renderAxes();
-      
-      // 4. Legend: Always SVG (crisp text, interactive)
-      if (this.legend && this.config.options.showLegend) {
-        this.legend.render(this.svgOverlay, this.chartArea, this.config.options.width, this.config.options.height);
-      }
-      
-      // 5. Data: Canvas 2D (<50K points) or WebGL (50K+ points)
-      //    Currently: Canvas 2D only (WebGL renderer will be added later)
-      await this._renderChartData();
-      
-      console.log('Chart rendered successfully');
-    } catch (error) {
-      console.error('Error rendering chart:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Render axes using the Axis class
-   */
-  _renderAxes() {
-    if (!this.axes.x || !this.axes.y) {
-      console.warn('Axes not initialized');
-      return;
-    }
-    
-    // Render X axis
-    this.axes.x.render(this.svgOverlay, {
-      x: 0,
-      y: this.chartArea.y + this.chartArea.height
-    });
-    
-    // Render Y axis  
-    this.axes.y.render(this.svgOverlay, {
-      x: this.chartArea.x,
-      y: 0
-    });
-  }
-  
-  /**
-   * Render chart data - to be implemented by subclasses
-   * Should only render visible datasets
-   */
-  async _renderChartData() {
-    throw new Error('_renderChartData must be implemented by subclass');
-  }
-  
-  /**
-   * Update chart with new data or options
-   */
-  update() {
-    this._processData();
-    this._calculateDataDomains();
-    this._createScales();
-    this._createGrid();
-    
-    // Update axes with new scales
-    if (this.axes.x && this.axes.y) {
-      this.axes.x.updateScale(this.scales.x);
-      this.axes.x.updateOptions({ label: this.config.options.xAxisName });
-      
-      this.axes.y.updateScale(this.scales.y);
-      this.axes.y.updateOptions({ label: this.config.options.yAxisName });
-    }
-    
-    // Update grid with new scales and chart area
-    if (this.grid) {
-      this.grid.updateScales(this.scales.x, this.scales.y);
-      this.grid.updateChartArea(this.chartArea);
-    }
-    
-    // Update legend with new datasets
-    if (this.legend) {
-      this.legend.setDatasets(this.config.data || []);
-    }
-    
-    this._selectRenderer();
-    this.render();
-  }
-  
-  /**
    * Destroy the chart and clean up resources
    */
   destroy() {
@@ -736,14 +802,18 @@ export class Chart {
       this.titleElement = null;
     }
     
-    if (this.legend) {
-      this.legend.destroy();
-      this.legend = null;
+    if (this.rendererInstance) {
+      this.rendererInstance.destroy();
+      this.rendererInstance = null;
     }
     
     if (this.container) {
       this.container.innerHTML = '';
     }
+    
     this.renderers.clear();
+    this.isInitialized = false;
+    
+    console.log('Chart destroyed and resources cleaned up');
   }
 }
