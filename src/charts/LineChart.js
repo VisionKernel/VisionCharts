@@ -33,28 +33,28 @@ export class LineChart extends Chart {
       return;
     }
     
-    if (!Array.isArray(this.config.data) || this.config.data.length === 0) {
+    // Use transformed data if available, otherwise fall back to original data
+    const dataToRender = this.transformedData || this.config.data;
+    
+    if (!Array.isArray(dataToRender) || dataToRender.length === 0) {
       console.log('No data to render');
       return;
     }
     
     try {
-      // Preprocess data to add screen coordinates
-      this._preprocessDataForRenderer();
-      
       // Set viewport for clipping
       this.rendererInstance.setViewport(this.chartArea);
       
-      // Render lines using the selected renderer
-      await this.rendererInstance.renderLines(this.config.data, this.scales, {
+      // Render lines using the selected renderer with transformed data
+      await this.rendererInstance.renderLines(dataToRender, this.scales, {
         curve: this.config.options.curve,
         strokeWidth: this.config.options.strokeWidth,
         showPoints: this.config.options.showPoints,
         pointRadius: this.config.options.pointRadius
       });
       
-      const totalPoints = this.config.data.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
-      console.log(`LineChart: Rendered ${this.config.data.length} datasets with ${totalPoints} total points using ${this.activeRenderer}`);
+      const totalPoints = dataToRender.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
+      console.log(`LineChart: Rendered ${dataToRender.length} datasets with ${totalPoints} total points using ${this.activeRenderer}`);
       
     } catch (error) {
       console.error('Error rendering line chart data:', error);

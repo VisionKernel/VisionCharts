@@ -25,73 +25,83 @@ export default class WebGLRenderer extends AbstractRenderer {
     
     // Shader sources
     this.shaderSources = {
-      line: {
-        vertex: `
-          attribute vec2 a_position;
-          attribute vec4 a_color;
-          
-          uniform vec2 u_resolution;
-          uniform mat3 u_transform;
-          
-          varying vec4 v_color;
-          
-          void main() {
-            // Transform position
-            vec3 position = u_transform * vec3(a_position, 1.0);
-            
-            // Convert to clip space
-            vec2 clipSpace = ((position.xy / u_resolution) * 2.0) - 1.0;
-            
-            gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-            v_color = a_color;
-          }
-        `,
-        fragment: `
-          precision mediump float;
-          varying vec4 v_color;
-          
-          void main() {
-            gl_FragColor = v_color;
-          }
-        `
-      },
+  line: {
+    vertex: `
+      precision highp float;
       
-      point: {
-        vertex: `
-          attribute vec2 a_position;
-          attribute vec4 a_color;
-          attribute float a_size;
-          
-          uniform vec2 u_resolution;
-          uniform mat3 u_transform;
-          
-          varying vec4 v_color;
-          
-          void main() {
-            vec3 position = u_transform * vec3(a_position, 1.0);
-            vec2 clipSpace = ((position.xy / u_resolution) * 2.0) - 1.0;
-            
-            gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-            gl_PointSize = a_size;
-            v_color = a_color;
-          }
-        `,
-        fragment: `
-          precision mediump float;
-          varying vec4 v_color;
-          
-          void main() {
-            // Create circular points
-            vec2 center = vec2(0.5, 0.5);
-            float dist = distance(gl_PointCoord, center);
-            if (dist > 0.5) discard;
-            
-            gl_FragColor = v_color;
-          }
-        `
+      attribute vec2 a_position;
+      attribute vec4 a_color;
+      
+      uniform vec2 u_resolution;
+      
+      varying vec4 v_color;
+      
+      void main() {
+        // Use high precision for coordinate transformation
+        // a_position comes as screen coordinates (pixels)
+        
+        // Convert pixels to 0-1 range with high precision
+        vec2 normalized = a_position / u_resolution;
+        
+        // Convert to -1 to +1 clip space
+        vec2 clipSpace = (normalized * 2.0) - 1.0;
+        
+        // Flip Y axis (WebGL has Y up, Canvas has Y down)
+        clipSpace.y = -clipSpace.y;
+        
+        // Apply pixel-perfect positioning
+        gl_Position = vec4(clipSpace, 0.0, 1.0);
+        v_color = a_color;
       }
-    };
-    
+    `,
+    fragment: `
+      precision mediump float;
+      varying vec4 v_color;
+      
+      void main() {
+        gl_FragColor = v_color;
+      }
+    `
+  },
+  
+  point: {
+    vertex: `
+      precision highp float;
+      
+      attribute vec2 a_position;
+      attribute vec4 a_color;
+      attribute float a_size;
+      
+      uniform vec2 u_resolution;
+      
+      varying vec4 v_color;
+      
+      void main() {
+        // High precision coordinate transformation
+        vec2 normalized = a_position / u_resolution;
+        vec2 clipSpace = (normalized * 2.0) - 1.0;
+        clipSpace.y = -clipSpace.y;
+        
+        gl_Position = vec4(clipSpace, 0.0, 1.0);
+        gl_PointSize = a_size;
+        v_color = a_color;
+      }
+    `,
+    fragment: `
+      precision mediump float;
+      varying vec4 v_color;
+      
+      void main() {
+        // Create circular points
+        vec2 center = vec2(0.5, 0.5);
+        float dist = distance(gl_PointCoord, center);
+        if (dist > 0.5) discard;
+        
+        gl_FragColor = v_color;
+      }
+    `
+  }
+};
     console.log('WebGLRenderer created for high-performance rendering');
   }
 
@@ -99,41 +109,55 @@ export default class WebGLRenderer extends AbstractRenderer {
    * Initialize WebGL context and shaders
    */
   async initialize(canvas, dimensions) {
-    try {
-      this.canvas = canvas;
-      this.viewport = {
-        x: 0,
-        y: 0,
-        width: dimensions.width,
-        height: dimensions.height
-      };
+  try {
+    this.canvas = canvas;
+    this.devicePixelRatio = window.devicePixelRatio || 1;
+    
+    // Store logical dimensions (what coordinate system uses)
+    this.logicalWidth = dimensions.width;
+    this.logicalHeight = dimensions.height;
+    
+    this.viewport = {
+      x: 0,
+      y: 0,
+      width: this.logicalWidth,   
+      height: this.logicalHeight  
+    };
 
-      // Get WebGL context
-      this.gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      
-      if (!this.gl) {
-        throw new Error('WebGL not supported');
-      }
-
-      console.log('WebGL context initialized');
-
-      // Set up WebGL state
-      this._setupWebGLState();
-
-      // Compile shaders
-      await this._compileShaders();
-
-      // Create buffers
-      this._createBuffers();
-
-      this.isInitialized = true;
-      console.log('WebGLRenderer initialization complete');
-
-    } catch (error) {
-      console.error('WebGL initialization failed:', error);
-      throw error;
+    // Get WebGL context with anti-aliasing to match Canvas
+    const contextAttributes = {
+      antialias: true,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+      alpha: true
+    };
+    
+    this.gl = canvas.getContext('webgl2', contextAttributes) || 
+              canvas.getContext('webgl', contextAttributes);
+    
+    if (!this.gl) {
+      throw new Error('WebGL not supported');
     }
+
+    console.log('WebGL context initialized with anti-aliasing');
+
+    // Set up WebGL state
+    this._setupWebGLState();
+
+    // Compile shaders
+    await this._compileShaders();
+
+    // Create buffers
+    this._createBuffers();
+
+    this.isInitialized = true;
+    console.log('WebGLRenderer initialization complete');
+
+  } catch (error) {
+    console.error('WebGL initialization failed:', error);
+    throw error;
   }
+}
 
   /**
    * Set up initial WebGL state
@@ -141,16 +165,16 @@ export default class WebGLRenderer extends AbstractRenderer {
   _setupWebGLState() {
     const gl = this.gl;
 
-    // Set viewport
-    gl.viewport(0, 0, this.viewport.width, this.viewport.height);
-
+    // Set viewport to actual canvas size (includes device pixel ratio)
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    
     // Enable blending for transparency
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     // Set clear color
     gl.clearColor(0.0, 0.0, 0.0, 0.0); // Transparent
-  }
+    }
 
   /**
    * Compile all shader programs
@@ -269,81 +293,87 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * Render line datasets using WebGL
-   */
-  async renderLines(datasets, scales, options = {}) {
+     * Render line datasets using WebGL with pre-transformed coordinates
+     */
+    async renderLines(datasets, scales, options = {}) {
     if (!this.isInitialized || !datasets || datasets.length === 0) {
-      return;
+        return;
     }
 
     const gl = this.gl;
     const program = this.programs.get('line');
     
     if (!program) {
-      console.error('Line shader program not found');
-      return;
+        console.error('Line shader program not found');
+        return;
     }
 
     try {
-      // Use line shader program
-      gl.useProgram(program);
-      this.currentProgram = program;
+        // Use line shader program
+        gl.useProgram(program);
+        this.currentProgram = program;
 
-      // Set uniforms
-      this._setUniforms(program, scales);
+        // Set uniforms (simplified)
+        this._setUniforms(program, scales);
 
-      // Render each dataset
-      for (const dataset of datasets) {
+        // Render each dataset (data is already transformed to clip space)
+        for (const dataset of datasets) {
         if (!dataset.data || dataset.data.length === 0) continue;
 
         await this._renderLineDataset(dataset, scales, options);
-      }
+        }
 
     } catch (error) {
-      console.error('Error rendering lines with WebGL:', error);
+        console.error('Error rendering lines with WebGL:', error);
     }
-  }
-
-  /**
-   * Render a single line dataset
-   */
-  async _renderLineDataset(dataset, scales, options) {
-    const gl = this.gl;
-    const program = this.currentProgram;
-
-    // Convert data to vertices
-    const vertices = this._convertDataToVertices(dataset.data, scales);
-    
-    if (vertices.positions.length === 0) return;
-
-    // Upload position data
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices.positions), gl.STATIC_DRAW);
-    
-    // Enable position attribute
-    const positionLocation = program.attributes.a_position;
-    gl.enableVertexAttribArray(positionLocation);
-    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-    // Upload color data
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices.colors), gl.STATIC_DRAW);
-    
-    // Enable color attribute
-    const colorLocation = program.attributes.a_color;
-    gl.enableVertexAttribArray(colorLocation);
-    gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
-
-    // Render as line strip
-    const vertexCount = vertices.positions.length / 2;
-    
-    if (vertexCount > this.maxVertices) {
-      // Render in batches for very large datasets
-      await this._renderInBatches(vertexCount, gl.LINE_STRIP);
-    } else {
-      gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
     }
+
+ /**
+ * Render a single line dataset
+ */
+async _renderLineDataset(dataset, scales, options) {
+  const gl = this.gl;
+  const program = this.currentProgram;
+
+  // Convert data to vertices
+  const vertices = this._convertDataToVertices(dataset.data, scales);
+  
+  if (vertices.positions.length === 0) return;
+
+  // Set line width to match Canvas exactly
+  const lineWidth = dataset.width || options.strokeWidth || 2;
+  gl.lineWidth(lineWidth);
+
+  // Upload position data
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices.positions), gl.STATIC_DRAW);
+  
+  // Enable position attribute
+  const positionLocation = program.attributes.a_position;
+  gl.enableVertexAttribArray(positionLocation);
+  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+  // Upload color data
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices.colors), gl.STATIC_DRAW);
+  
+  // Enable color attribute
+  const colorLocation = program.attributes.a_color;
+  gl.enableVertexAttribArray(colorLocation);
+  gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
+
+  // Render as line strip
+  const vertexCount = vertices.positions.length / 2;
+  
+  if (vertexCount > this.maxVertices) {
+    // Render in batches for very large datasets
+    await this._renderInBatches(vertexCount, gl.LINE_STRIP);
+  } else {
+    gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
   }
+  
+  console.log(`WebGL rendered ${vertexCount} vertices with line width ${lineWidth}`);
+}
 
   /**
    * Render bars (simplified implementation for large datasets)
@@ -358,53 +388,43 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * Convert chart data to WebGL vertices
-   */
-  _convertDataToVertices(data, scales) {
-    const positions = [];
-    const colors = [];
+ * Convert chart data to WebGL vertices using screen coordinates
+ */
+_convertDataToVertices(data, scales) {
+  const positions = [];
+  const colors = [];
 
-    for (const point of data) {
-      // Get screen coordinates from scales
-      const x = point.screenX !== undefined ? point.screenX : scales.x.scale(point.x || point.date);
-      const y = point.screenY !== undefined ? point.screenY : scales.y.scale(point.y || point.value || point.price);
+  for (const point of data) {
+    // Use screen coordinates (pixels) instead of clip coordinates
+    const x = point.x;
+    const y = point.y;
 
-      if (x == null || y == null || isNaN(x) || isNaN(y)) {
-        continue;
-      }
-
-      // Add position
-      positions.push(x, y);
-
-      // Add color (RGBA)
-      const color = this._parseColor(point.color || '#1468a8');
-      colors.push(color.r, color.g, color.b, color.a);
+    if (x == null || y == null || isNaN(x) || isNaN(y)) {
+      continue;
     }
 
-    return { positions, colors };
+    // Add position (screen coordinates in pixels)
+    positions.push(x, y);
+
+    // Add color (RGBA)
+    const color = this._parseColor(point.original?.color || '#1468a8');
+    colors.push(color.r, color.g, color.b, color.a);
   }
+
+  return { positions, colors };
+}
 
   /**
-   * Set shader uniforms
-   */
-  _setUniforms(program, scales) {
-    const gl = this.gl;
+ * Set shader uniforms
+ */
+_setUniforms(program, scales) {
+  const gl = this.gl;
 
-    // Set resolution uniform
-    if (program.uniforms.u_resolution) {
-      gl.uniform2f(program.uniforms.u_resolution, this.viewport.width, this.viewport.height);
-    }
-
-    // Set transform matrix (identity for now)
-    if (program.uniforms.u_transform) {
-      const transform = new Float32Array([
-        1, 0, 0,
-        0, 1, 0,
-        0, 0, 1
-      ]);
-      gl.uniformMatrix3fv(program.uniforms.u_transform, false, transform);
-    }
+  // Pass logical canvas resolution (not physical resolution)
+  if (program.uniforms.u_resolution) {
+    gl.uniform2f(program.uniforms.u_resolution, this.logicalWidth, this.logicalHeight);
   }
+}
 
   /**
    * Render large datasets in batches

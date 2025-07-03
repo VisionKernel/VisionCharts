@@ -143,10 +143,10 @@ export default class CanvasRenderer extends AbstractRenderer {
     }
   }
 
-  /**
-   * Render a single line dataset
-   */
-  async _renderLineDataset(ctx, dataset, scales, options, datasetIndex) {
+    /**
+     * Render a single line dataset with transformed coordinates
+     */
+    async _renderLineDataset(ctx, dataset, scales, options, datasetIndex) {
     // Set line style
     ctx.strokeStyle = dataset.color || this._getDefaultColor(datasetIndex);
     ctx.lineWidth = dataset.width || options.strokeWidth || 2;
@@ -159,39 +159,39 @@ export default class CanvasRenderer extends AbstractRenderer {
     let pointCount = 0;
     
     for (const point of dataset.data) {
-      const x = this._getXValue(point, scales);
-      const y = this._getYValue(point, scales);
-      
-      if (x == null || y == null || isNaN(x) || isNaN(y)) {
+        const x = this._getXValue(point, scales);
+        const y = this._getYValue(point, scales);
+        
+        if (x == null || y == null || isNaN(x) || isNaN(y)) {
         continue;
-      }
-      
-      if (isFirstPoint) {
+        }
+        
+        if (isFirstPoint) {
         ctx.moveTo(x, y);
         isFirstPoint = false;
-      } else {
+        } else {
         // Handle different curve types
         if (options.curve === 'step') {
-          // Step interpolation
-          const prevPoint = dataset.data[pointCount - 1];
-          const prevX = this._getXValue(prevPoint, scales);
-          
-          if (prevX != null && !isNaN(prevX)) {
+            // Step interpolation
+            const prevPoint = dataset.data[pointCount - 1];
+            const prevX = this._getXValue(prevPoint, scales);
+            
+            if (prevX != null && !isNaN(prevX)) {
             ctx.lineTo(x, this._getYValue(prevPoint, scales)); // Horizontal
             ctx.lineTo(x, y); // Vertical
-          }
+            }
         } else {
-          // Linear interpolation (default)
-          ctx.lineTo(x, y);
+            // Linear interpolation (default)
+            ctx.lineTo(x, y);
         }
-      }
-      
-      pointCount++;
-      
-      // Yield control periodically for large datasets
-      if (pointCount % 1000 === 0) {
+        }
+        
+        pointCount++;
+        
+        // Yield control periodically for large datasets
+        if (pointCount % 1000 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
-      }
+        }
     }
     
     // Stroke the path
@@ -199,11 +199,11 @@ export default class CanvasRenderer extends AbstractRenderer {
     
     // Draw points if enabled
     if (options.showPoints) {
-      await this._renderPoints(ctx, dataset, scales);
+        await this._renderPoints(ctx, dataset, scales);
     }
     
     console.log(`Rendered line dataset with ${pointCount} points using Canvas`);
-  }
+    }
 
   /**
    * Render data points
@@ -393,37 +393,21 @@ export default class CanvasRenderer extends AbstractRenderer {
     }
   }
 
-  /**
-   * Get X coordinate from data point
-   */
-  _getXValue(point, scales) {
-    // Use pre-calculated screen coordinates if available
-    if (point.screenX !== undefined) {
-      return point.screenX;
+   /**
+     * Get X coordinate from transformed data point
+     */
+    _getXValue(point, scales) {
+    // Use transformed coordinates from coordinate system
+    return point.x;
     }
-    
-    // Calculate from data value
-    const value = point.x || point.date;
-    if (value == null) return null;
-    
-    return scales.x.scale(value);
-  }
 
-  /**
-   * Get Y coordinate from data point
-   */
-  _getYValue(point, scales) {
-    // Use pre-calculated screen coordinates if available
-    if (point.screenY !== undefined) {
-      return point.screenY;
+    /**
+     * Get Y coordinate from transformed data point  
+     */
+    _getYValue(point, scales) {
+    // Use transformed coordinates from coordinate system
+    return point.y;
     }
-    
-    // Calculate from data value
-    const value = point.y || point.value || point.price;
-    if (value == null) return null;
-    
-    return scales.y.scale(value);
-  }
 
   /**
    * Get default color for dataset by index

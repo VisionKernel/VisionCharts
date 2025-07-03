@@ -10,6 +10,7 @@ import { Scale, ScaleManager } from './Scale.js';
 import { Grid } from '../components/Grid.js';
 import CanvasRenderer from '../renderers/CanvasRenderer.js';
 import WebGLRenderer from '../renderers/WebGLRenderer.js';
+import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 
 export class Chart {
   constructor(config = {}) {
@@ -60,7 +61,7 @@ export class Chart {
     // Performance monitoring
     this.dataPointCount = 0;
     this.performanceThresholds = {
-      canvas: 50000, // Switch to WebGL after 50K points
+      canvas: 10000, // Switch to WebGL after 50K points
       webgl: 100000  // WebGL upper limit
     };
     
@@ -69,6 +70,10 @@ export class Chart {
     this.chartArea = { x: 0, y: 0, width: 0, height: 0 };
     this.dataDomains = { x: [0, 1], y: [0, 1] };
     
+    // Coordinate system for data transformations
+    this.coordinateSystem = null;
+    this.transformedData = null; // Store transformed data for renderers
+
     // Scale management
     this.scaleManager = new ScaleManager();
     this.scales = { x: null, y: null };
@@ -133,6 +138,9 @@ export class Chart {
       // Create scales
       this._createScales();
       
+      // Create coordinate system
+      this._createCoordinateSystem();
+      
       // Create grid
       this._createGrid();
       
@@ -173,6 +181,15 @@ export class Chart {
    * Set up the hybrid rendering layers
    */
   _setupRenderingLayers() {
+    // Create separate canvas for grid (needed for WebGL compatibility)
+    this.gridCanvas = document.createElement('canvas');
+    this.gridCanvas.width = this.config.options.width;
+    this.gridCanvas.height = this.config.options.height;
+    this.gridCanvas.style.position = 'absolute';
+    this.gridCanvas.style.top = '0';
+    this.gridCanvas.style.left = '0';
+    this.gridCanvas.style.zIndex = '0'; // Behind data layer
+    
     // Create canvas for data rendering
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.config.options.width;
@@ -192,7 +209,8 @@ export class Chart {
     this.svgOverlay.style.zIndex = '2';
     this.svgOverlay.style.pointerEvents = 'none'; // Allow interaction to pass through to canvas
     
-    // Add to container
+    // Add to container in correct order
+    this.container.appendChild(this.gridCanvas);
     this.container.appendChild(this.canvas);
     this.container.appendChild(this.svgOverlay);
   }
@@ -288,6 +306,20 @@ export class Chart {
     // Register scales with manager
     this.scaleManager.setScale('x', this.scales.x);
     this.scaleManager.setScale('y', this.scales.y);
+  }
+  
+  /**
+   * Create coordinate system for unified transformations
+   */
+  _createCoordinateSystem() {
+    this.coordinateSystem = new CoordinateSystem({
+      chartArea: this.chartArea,
+      canvasSize: {
+        width: this.config.options.width,
+        height: this.config.options.height
+      },
+      devicePixelRatio: window.devicePixelRatio || 1
+    });
   }
   
   /**
@@ -504,25 +536,21 @@ export class Chart {
   }
   
   /**
-   * Preprocess data for rendering (add screen coordinates)
+   * Preprocess data for rendering using coordinate system
    */
   _preprocessDataForRenderer() {
-    if (!Array.isArray(this.config.data)) return;
+    if (!Array.isArray(this.config.data) || !this.coordinateSystem) return;
     
-    this.config.data.forEach(dataset => {
-      if (!dataset.data || !Array.isArray(dataset.data)) return;
-      
-      dataset.data.forEach(point => {
-        // Add screen coordinates for efficient rendering
-        const x = this._getXValue(point);
-        const y = this._getYValue(point);
-        
-        if (x != null && y != null && !isNaN(x) && !isNaN(y)) {
-          point.screenX = this.scales.x.scale(x);
-          point.screenY = this.scales.y.scale(y);
-        }
-      });
-    });
+    // Transform datasets for the active renderer
+    this.transformedData = this.coordinateSystem.transformDatasetsForRenderer(
+      this.config.data,
+      this.scales,
+      this.activeRenderer,
+      this.config.options.xField,
+      this.config.options.yField
+    );
+    
+    console.log(`Data transformed for ${this.activeRenderer} renderer`);
   }
   
   /**
@@ -535,14 +563,35 @@ export class Chart {
     }
     
     try {
+      // Update coordinate system dimensions
+      if (this.coordinateSystem) {
+        this.coordinateSystem.updateDimensions(
+          this.chartArea,
+          {
+            width: this.config.options.width,
+            height: this.config.options.height
+          }
+        );
+      }
+      
       // Clear renderer
       this.rendererInstance.clear();
       
+      // Transform data for the active renderer
+      this._preprocessDataForRenderer();
+      
       // HYBRID RENDERING ARCHITECTURE:
-      // 1. Grid: Always Canvas 2D (simple, reliable)
+      // 1. Grid: Always Canvas 2D (simple, reliable) - use separate canvas for WebGL
       if (this.grid && this.config.options.showGrid) {
-        // Grid renders directly to canvas context
-        const ctx = this.canvas.getContext('2d');
+        const ctx = this.activeRenderer === 'webgl' 
+          ? this.gridCanvas.getContext('2d')
+          : this.canvas.getContext('2d');
+        
+        // Clear grid canvas if using WebGL
+        if (this.activeRenderer === 'webgl') {
+          ctx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+        }
+        
         this.grid.render(ctx);
       }
       
@@ -552,7 +601,7 @@ export class Chart {
       // 3. Axes: Always SVG (crisp text, vector graphics)
       this._renderAxes();
       
-      // 4. Data: Selected renderer (Canvas 2D or WebGL based on dataset size)
+      // 4. Data: Selected renderer using transformed data
       await this._renderChartData();
       
       console.log(`Chart rendered successfully using ${this.activeRenderer} renderer`);
@@ -606,6 +655,18 @@ export class Chart {
     this._processData();
     this._calculateDataDomains();
     this._createScales();
+    
+    // Update coordinate system
+    if (this.coordinateSystem) {
+      this.coordinateSystem.updateDimensions(
+        this.chartArea,
+        {
+          width: this.config.options.width,
+          height: this.config.options.height
+        }
+      );
+    }
+    
     this._createGrid();
     
     // Check if we need to switch renderers due to data size change
@@ -640,7 +701,7 @@ export class Chart {
     
     // Update renderer
     if (this.rendererInstance) {
-      this.rendererInstance.update(this.config.data);
+      this.rendererInstance.update(this.transformedData || this.config.data);
     }
     
     await this.render();
