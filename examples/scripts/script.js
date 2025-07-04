@@ -34,7 +34,7 @@ async function loadAllDatasets() {
   
   try {
     // Load timeseries data
-    datasets.timeseries = await fetch('../examples/data/NASDAQCOM.json')
+    datasets.timeseries = await fetch('../examples/data/timeseries.json')
       .then(response => response.json())
       .catch(error => {
         console.error('Error loading timeseries data:', error);

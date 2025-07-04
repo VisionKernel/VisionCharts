@@ -7,12 +7,12 @@ A modern, high-performance JavaScript charting library optimized for economic an
 
 ## Overview
 
-VisionCharts is a specialized charting library designed specifically for financial and economic data visualization within the VisionKernel platform. Unlike general-purpose charting libraries, VisionCharts focuses on delivering professional-grade financial charts with optimal performance and a modern aesthetic.
+VisionCharts is a specialized charting library that uses a hybrid approach of SVG, Canvas and WebGL to generate charts. Unlike general-purpose charting libraries, VisionCharts focuses on delivering professional-grade financial charts with optimal performance and a modern aesthetic.
 
 ## Key Features
 
 - **Financial-First Design**: Optimized for financial data patterns and visualization needs
-- **SVG Rendering**: Vector-based rendering for crisp visuals at any resolution
+- **Hybrid Rendering**: Hybrid rendering approach to handle large datasets efficiently
 - **Responsive by Default**: Charts automatically adapt to container dimensions
 - **Performance Focused**: Optimized for handling large financial datasets
 - **Zero Dependencies**: Standalone library with no external dependencies
@@ -215,23 +215,3 @@ MIT License - see the [LICENSE](LICENSE) file for details.
 ## About
 
 VisionCharts is developed as a core component of the VisionKernel platform, a comprehensive solution for financial and economic data analysis.
-
-## FOR DEV
-
-Containers:
-line-chart
-bar-chart
-
-Components:
-Chart Datapoints/Line: Render with Canvas up until 50K datapoints, WebGL (if available) after
-Chart Axis: Canvas/WebGL
-Grid: Canvas/WebGL
-Study Lines: Canvas/WebGL
-Axis Labels: SVG
-Title: SVG
-Legend: SVG
-Crosshair: SVG
-Tooltip: SVG
-Ending Labels: SVG
-Zero/Avg/Median Lines: Canvas/WebGL
-Panel View: Canvas/WebGL
