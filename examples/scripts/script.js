@@ -1,4 +1,4 @@
-// Simplified script.js - Essential functionality only
+// Enhanced script.js with full dataset management functionality
 // Import the new VisionCharts classes
 import { LineChart, BarChart } from '../../src/index.js';
 
@@ -8,6 +8,10 @@ let availableDatasets = {};
 // Chart instances
 let lineChart = null;
 let barChart = null;
+
+// Dataset counters for unique IDs
+let lineDatasetCounter = 1;
+let barDatasetCounter = 1;
 
 // Debug helper function
 function log(message, obj = null) {
@@ -58,7 +62,8 @@ async function loadAllDatasets() {
       .then(response => response.json())
       .catch(error => {
         console.error('Error loading daily returns data:', error);
-        return [];
+        // Generate fallback daily returns data
+        return generateFallbackDailyReturns();
       });
     
     // Load monthly data
@@ -66,7 +71,17 @@ async function loadAllDatasets() {
       .then(response => response.json())
       .catch(error => {
         console.error('Error loading monthly data:', error);
-        return [];
+        // Generate fallback monthly data
+        return generateFallbackMonthlyData();
+      });
+
+      // Load NASDAQ data
+      datasets.nasdaq = await fetch('../examples/data/NASDAQCOM.json')
+      .then(response => response.json())
+      .catch(error => {
+        console.error('Error loading monthly data:', error);
+        // Generate fallback monthly data
+        return generateFallbackMonthlyData();
       });
     
   } catch (error) {
@@ -74,6 +89,216 @@ async function loadAllDatasets() {
   }
   
   return datasets;
+}
+
+// Generate fallback daily returns data
+function generateFallbackDailyReturns() {
+  const data = [];
+  const startDate = new Date('2023-01-01');
+  for (let i = 0; i < 252; i++) { // ~1 year of trading days
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+    data.push({
+      x: date.getTime(),
+      y: (Math.random() - 0.5) * 0.1 // Daily returns between -5% and 5%
+    });
+  }
+  return data;
+}
+
+// Generate fallback monthly data
+function generateFallbackMonthlyData() {
+  const data = [];
+  const startDate = new Date('2020-01-01');
+  let value = 100;
+  for (let i = 0; i < 48; i++) { // 4 years of monthly data
+    const date = new Date(startDate);
+    date.setMonth(date.getMonth() + i);
+    value += (Math.random() - 0.45) * 20; // Slight upward trend
+    data.push({
+      x: date.getTime(),
+      y: value
+    });
+  }
+  return data;
+}
+
+// Apply random variation to dataset
+function applyRandomVariation(data, variationPercent = 0.1) {
+  return data.map(point => {
+    const variation = 1 + (Math.random() - 0.5) * 2 * variationPercent;
+    return {
+      ...point,
+      y: point.y * variation
+    };
+  });
+}
+
+// Get default colors for datasets
+function getDefaultColors() {
+  return [
+    '#1468a8', // Blue
+    '#34A853', // Green
+    '#FBBC05', // Yellow
+    '#EA4335', // Red
+    '#9C27B0', // Purple
+    '#00ACC1', // Cyan
+    '#FF9800', // Orange
+    '#607D8B'  // Blue Grey
+  ];
+}
+
+// Format data for chart consumption
+function formatDataForChart(rawData, chartType) {
+  return rawData.map(item => {
+    if (chartType === 'line') {
+      return {
+        date: new Date(item.x),
+        price: item.y
+      };
+    } else if (chartType === 'bar') {
+      return {
+        x: new Date(item.x),
+        y: item.y
+      };
+    }
+    return item;
+  });
+}
+
+// Generate dataset preview text
+function generateDatasetPreview(datasetKey) {
+  const dataset = availableDatasets[datasetKey];
+  if (!dataset || dataset.length === 0) {
+    return 'No data available';
+  }
+
+  const firstPoint = dataset[0];
+  const lastPoint = dataset[dataset.length - 1];
+  const startDate = new Date(firstPoint.x).toLocaleDateString();
+  const endDate = new Date(lastPoint.x).toLocaleDateString();
+  
+  return `${dataset.length} points from ${startDate} to ${endDate}`;
+}
+
+// Update dataset preview
+function updateDatasetPreview(chartType) {
+  const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+  const previewDiv = document.getElementById(`${chartType}-dataset-preview`);
+  
+  if (sourceSelect && previewDiv) {
+    const selectedDataset = sourceSelect.value;
+    previewDiv.textContent = generateDatasetPreview(selectedDataset);
+  }
+}
+
+// Create dataset item element for the manager
+function createDatasetItem(dataset, chartType, chart) {
+  const item = document.createElement('div');
+  item.className = 'dataset-item';
+  item.setAttribute('data-id', dataset.id);
+  
+  item.innerHTML = `
+    <div class="dataset-info">
+      <span class="dataset-name">${dataset.name}</span>
+      <span class="dataset-points">${dataset.data.length} points</span>
+      <span class="dataset-color" style="background-color: ${dataset.color}"></span>
+    </div>
+    <div class="dataset-controls">
+      <button class="remove-dataset" data-id="${dataset.id}">Remove</button>
+    </div>
+  `;
+  
+  // Add remove functionality
+  const removeBtn = item.querySelector('.remove-dataset');
+  removeBtn.addEventListener('click', () => {
+    if (chartType === 'line') {
+      lineChart.removeDataset(dataset.id);
+    } else if (chartType === 'bar') {
+      barChart.removeDataset(dataset.id);
+    }
+    item.remove();
+    log(`Removed dataset: ${dataset.id}`);
+  });
+  
+  return item;
+}
+
+// Add dataset to chart
+function addDatasetToChart(chartType) {
+  try {
+    const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+    const randomizeCheckbox = document.getElementById(`${chartType}-randomize`);
+    const datasetManager = document.getElementById(`${chartType}-datasets`);
+    
+    if (!sourceSelect || !randomizeCheckbox || !datasetManager) {
+      console.error('Dataset controls not found');
+      return;
+    }
+    
+    const selectedSource = sourceSelect.value;
+    const shouldRandomize = randomizeCheckbox.checked;
+    
+    // Get raw data
+    let rawData = availableDatasets[selectedSource];
+    if (!rawData || rawData.length === 0) {
+      console.error('No data available for selected source:', selectedSource);
+      return;
+    }
+    
+    // Apply randomization if requested
+    if (shouldRandomize) {
+      rawData = applyRandomVariation([...rawData], 0.15); // 15% variation
+    }
+    
+    // Format data for the chart
+    const formattedData = formatDataForChart(rawData, chartType);
+    
+    // Generate dataset ID and get color
+    const colors = getDefaultColors();
+    let datasetId, datasetName, datasetColor;
+    
+    if (chartType === 'line') {
+      datasetId = `line-dataset-${lineDatasetCounter}`;
+      datasetName = `Line Dataset ${lineDatasetCounter}`;
+      datasetColor = colors[(lineDatasetCounter - 1) % colors.length];
+      lineDatasetCounter++;
+    } else if (chartType === 'bar') {
+      datasetId = `bar-dataset-${barDatasetCounter}`;
+      datasetName = `Bar Dataset ${barDatasetCounter}`;
+      datasetColor = colors[(barDatasetCounter - 1) % colors.length];
+      barDatasetCounter++;
+    }
+    
+    // Create dataset object
+    const dataset = {
+      id: datasetId,
+      name: datasetName,
+      color: datasetColor,
+      data: formattedData
+    };
+    
+    // Add line-specific properties
+    if (chartType === 'line') {
+      dataset.width = 2;
+    }
+    
+    // Add to chart
+    if (chartType === 'line' && lineChart) {
+      lineChart.addDataset(dataset);
+    } else if (chartType === 'bar' && barChart) {
+      barChart.addDataset(dataset);
+    }
+    
+    // Add to dataset manager UI
+    const datasetItem = createDatasetItem(dataset, chartType, chartType === 'line' ? lineChart : barChart);
+    datasetManager.appendChild(datasetItem);
+    
+    log(`Added ${chartType} dataset: ${datasetName} with ${formattedData.length} points (randomized: ${shouldRandomize})`);
+    
+  } catch (error) {
+    console.error('Error adding dataset:', error);
+  }
 }
 
 // Initialize Line Chart
@@ -102,13 +327,16 @@ async function initLineChart() {
     // Create a single dataset
     const data = [
       {
-        id: 'dataset-1',
-        name: 'Time Series Data',
+        id: 'line-dataset-1',
+        name: 'Line Dataset 1',
         color: '#1468a8', 
         width: 2,
         data: formattedData
       }
     ];
+    
+    // Increment counter since we used the first ID
+    lineDatasetCounter = 2;
     
     // Get initial values from inputs
     const xAxisName = document.getElementById('line-x-name')?.value || 'Date';
@@ -137,8 +365,16 @@ async function initLineChart() {
     
     log('Line chart rendered successfully with grid');
     
-    // Setup basic controls
+    // Setup controls and dataset management
     setupLineChartControls();
+    setupLineDatasetManagement();
+    
+    // Add initial dataset to UI
+    const datasetManager = document.getElementById('line-datasets');
+    if (datasetManager) {
+      const datasetItem = createDatasetItem(data[0], 'line', lineChart);
+      datasetManager.appendChild(datasetItem);
+    }
     
   } catch (error) {
     log('Error initializing line chart:', error);
@@ -172,12 +408,15 @@ async function initBarChart() {
     
     const data = [
       {
-        id: 'dataset-1',
-        name: 'Time Series Data',
+        id: 'bar-dataset-1',
+        name: 'Bar Dataset 1',
         color: '#1468a8',
         data: transformedData
       }
     ];
+    
+    // Increment counter since we used the first ID
+    barDatasetCounter = 2;
     
     const xAxisName = document.getElementById('bar-x-name')?.value || 'Date';
     const yAxisName = document.getElementById('bar-y-name')?.value || 'Value';
@@ -194,7 +433,6 @@ async function initBarChart() {
         yType: 'number',
         xAxisName: xAxisName,
         yAxisName: yAxisName,
-        // Grid enabled by default - no customization needed
         showGrid: true,
         showXGrid: true,
         showYGrid: true
@@ -205,8 +443,16 @@ async function initBarChart() {
     
     log('Bar chart rendered successfully with grid');
     
-    // Setup basic controls
+    // Setup controls and dataset management
     setupBarChartControls();
+    setupBarDatasetManagement();
+    
+    // Add initial dataset to UI
+    const datasetManager = document.getElementById('bar-datasets');
+    if (datasetManager) {
+      const datasetItem = createDatasetItem(data[0], 'bar', barChart);
+      datasetManager.appendChild(datasetItem);
+    }
     
   } catch (error) {
     log('Error initializing bar chart:', error);
@@ -214,7 +460,7 @@ async function initBarChart() {
   }
 }
 
-// Basic Line Chart Controls - Only axis names
+// Setup Line Chart Controls
 function setupLineChartControls() {
   if (!lineChart) return;
   
@@ -237,7 +483,7 @@ function setupLineChartControls() {
   }
 }
 
-// Basic Bar Chart Controls - Only axis names
+// Setup Bar Chart Controls
 function setupBarChartControls() {
   if (!barChart) return;
   
@@ -256,6 +502,48 @@ function setupBarChartControls() {
     yNameInput.addEventListener('change', (e) => {
       barChart.config.options.yAxisName = e.target.value;
       barChart.render();
+    });
+  }
+}
+
+// Setup Line Dataset Management
+function setupLineDatasetManagement() {
+  // Dataset source change handler
+  const sourceSelect = document.getElementById('line-dataset-source');
+  if (sourceSelect) {
+    sourceSelect.addEventListener('change', () => {
+      updateDatasetPreview('line');
+    });
+    // Initialize preview
+    updateDatasetPreview('line');
+  }
+  
+  // Add dataset button
+  const addButton = document.getElementById('line-add-dataset');
+  if (addButton) {
+    addButton.addEventListener('click', () => {
+      addDatasetToChart('line');
+    });
+  }
+}
+
+// Setup Bar Dataset Management
+function setupBarDatasetManagement() {
+  // Dataset source change handler
+  const sourceSelect = document.getElementById('bar-dataset-source');
+  if (sourceSelect) {
+    sourceSelect.addEventListener('change', () => {
+      updateDatasetPreview('bar');
+    });
+    // Initialize preview
+    updateDatasetPreview('bar');
+  }
+  
+  // Add dataset button
+  const addButton = document.getElementById('bar-add-dataset');
+  if (addButton) {
+    addButton.addEventListener('click', () => {
+      addDatasetToChart('bar');
     });
   }
 }
