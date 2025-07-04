@@ -1,8 +1,9 @@
 /**
- * Chart.js - Enhanced Base Chart Class with Multi-Renderer Support
+ * Chart.js - Enhanced Base Chart Class with Multi-Renderer Support (Updated)
  * 
  * Foundation class for all chart types in VisionCharts.
  * Handles automatic renderer selection (Canvas 2D vs WebGL) based on dataset size.
+ * NOW WITH UNIFIED COORDINATE SYSTEM for consistent rendering across all renderers.
  */
 
 import { Axis } from './Axis.js';
@@ -77,7 +78,7 @@ export class Chart {
     // Performance monitoring
     this.dataPointCount = 0;
     this.performanceThresholds = {
-      canvas: 50000, // Switch to WebGL after 50K points
+      canvas: 10000, // Switch to WebGL after 50K points
       webgl: 100000  // WebGL upper limit
     };
     
@@ -90,7 +91,7 @@ export class Chart {
     this.scaleManager = new ScaleManager();
     this.scales = { x: null, y: null };
 
-    // Coordinate system for data transformations
+    // UPDATED: Enhanced coordinate system for unified rendering
     this.coordinateSystem = null;
     this.transformedData = null; // Store transformed data for renderers
     
@@ -151,26 +152,26 @@ export class Chart {
       // Calculate data domains
       this._calculateDataDomains();
       
-      // Create scales
-      this._createScales();
+      // Choose optimal renderer first (before creating coordinate system)
+      this._selectOptimalRenderer();
       
-      // Create coordinate system
+      // UPDATED: Create coordinate system with renderer information
       this._createCoordinateSystem();
+      
+      // UPDATED: Create scales with unified coordinate system
+      this._createScales();
       
       // Create grid
       this._createGrid();
       
       // Create axes
       this._createAxes();
-
-      // Create coordinate system
-      this._createCoordinateSystem();
       
-      // Choose and initialize optimal renderer
-      await this._selectAndInitializeRenderer();
+      // Initialize the selected renderer
+      await this._initializeRenderer();
       
       this.isInitialized = true;
-      console.log('Chart initialization complete with', this.activeRenderer, 'renderer');
+      console.log('Chart initialization complete with unified coordinate system and', this.activeRenderer, 'renderer');
       
     } catch (error) {
       console.error('Chart initialization failed:', error);
@@ -305,31 +306,60 @@ export class Chart {
   }
   
   /**
-   * Create scale instances
+   * UPDATED: Create coordinate system with renderer information
+   */
+  _createCoordinateSystem() {
+    this.coordinateSystem = CoordinateSystem.createForChart(
+      this.constructor.name.toLowerCase().replace('chart', ''), // 'line', 'bar', etc.
+      {
+        x: 0,
+        y: 0,
+        width: this.config.options.width,
+        height: this.config.options.height
+      },
+      this.chartArea,
+      {
+        targetRenderer: this.activeRenderer, // Pass selected renderer
+        devicePixelRatio: window.devicePixelRatio || 1,
+        enableHighDPI: true,
+        enableCaching: true,
+        useUnifiedCoordinates: true // Enable unified coordinate system
+      }
+    );
+    
+    console.log(`CoordinateSystem created for ${this.activeRenderer} renderer with unified coordinates`);
+  }
+  
+  /**
+   * UPDATED: Create scale instances with unified coordinate system
    */
   _createScales() {
     // Determine scale types
     const xScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
     const yScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
     
-    // X Scale
+    // UPDATED: X Scale with unified coordinate system
     this.scales.x = new Scale({
       type: xScaleType,
       domain: [...this.dataDomains.x],
-      range: [this.chartArea.x, this.chartArea.x + this.chartArea.width],
+      range: [this.chartArea.x, this.chartArea.x + this.chartArea.width], // Standard left-to-right
       dataType: this.config.options.xType,
+      coordinateSystem: 'normalized', // Use unified coordinate system
+      orientation: 'horizontal',
       options: {
         nice: true,
         padding: 0.05
       }
     });
     
-    // Y Scale  
+    // UPDATED: Y Scale with unified coordinate system (NO manual inversion)
     this.scales.y = new Scale({
       type: yScaleType,
       domain: [...this.dataDomains.y],
-      range: [this.chartArea.y + this.chartArea.height, this.chartArea.y], // Inverted for Canvas/SVG
+      range: [this.chartArea.y, this.chartArea.y + this.chartArea.height], // Bottom-to-top for unified system
       dataType: this.config.options.yType,
+      coordinateSystem: 'normalized', // Use unified coordinate system
+      orientation: 'vertical',
       options: {
         nice: true,
         padding: 0.05
@@ -339,20 +369,13 @@ export class Chart {
     // Register scales with manager
     this.scaleManager.setScale('x', this.scales.x);
     this.scaleManager.setScale('y', this.scales.y);
-  }
-  
-  /**
-   * Create coordinate system for unified transformations
-   */
-  _createCoordinateSystem() {
-    this.coordinateSystem = new CoordinateSystem({
-      chartArea: this.chartArea,
-      canvasSize: {
-        width: this.config.options.width,
-        height: this.config.options.height
-      },
-      devicePixelRatio: window.devicePixelRatio || 1
-    });
+    
+    // UPDATED: Set scales in coordinate system for transformation
+    if (this.coordinateSystem) {
+      this.coordinateSystem.setScales(this.scales);
+    }
+    
+    console.log('Scales created with unified coordinate system');
   }
   
   /**
@@ -410,63 +433,18 @@ export class Chart {
       }
     });
   }
-
-
-  /** 
-   * Create coordinate system for unified transformations
-    */
-  _createCoordinateSystem() {
-  if (!this.scales.x || !this.scales.y) {
-    console.warn('Scales not created before coordinate system');
-    return;
-  }
-  
-  this.coordinateSystem = CoordinateSystem.createForChart('line', // or 'bar'
-    this.config.options.width,
-    this.config.options.height,
-    this.chartArea,
-    {
-      devicePixelRatio: window.devicePixelRatio || 1,
-      enableHighDPI: true,
-      enableCaching: true
-    }
-  );
-  
-  // Set scales for coordinate transformation
-  this.coordinateSystem.setScales(this.scales);
-  this.coordinateSystem.setViewport({
-    x: 0,
-    y: 0,
-    width: this.config.options.width,
-    height: this.config.options.height
-  });
-  this.coordinateSystem.setChartArea(this.chartArea);
-  
-  console.log('CoordinateSystem created and configured');
-}
-
-  
-  /**
-   * Select and initialize optimal renderer based on data size and capabilities
-   */
-  async _selectAndInitializeRenderer() {
-    // Check for forced renderer
-    if (this.config.options.forceRenderer) {
-      this.activeRenderer = this.config.options.forceRenderer;
-      console.log(`Using forced renderer: ${this.activeRenderer}`);
-    } else {
-      // Auto-select based on data size and capabilities
-      this._selectOptimalRenderer();
-    }
-    
-    // Initialize the selected renderer
-    await this._initializeRenderer();
-  }
   
   /**
    * Select optimal renderer based on data size and browser capabilities
    */
   _selectOptimalRenderer() {
+    // Check for forced renderer
+    if (this.config.options.forceRenderer) {
+      this.activeRenderer = this.config.options.forceRenderer;
+      console.log(`Using forced renderer: ${this.activeRenderer}`);
+      return;
+    }
+    
     const dataPoints = this.dataPointCount;
     
     // Check WebGL support first
@@ -514,7 +492,12 @@ export class Chart {
         height: this.config.options.height
       });
       
-      console.log(`${this.activeRenderer} renderer initialized successfully`);
+      // UPDATED: Inform coordinate system about active renderer
+      if (this.coordinateSystem) {
+        this.coordinateSystem.setTargetRenderer(this.activeRenderer);
+      }
+      
+      console.log(`${this.activeRenderer} renderer initialized with unified coordinate system`);
       
     } catch (error) {
       console.error(`Failed to initialize ${this.activeRenderer} renderer:`, error);
@@ -528,6 +511,11 @@ export class Chart {
           width: this.config.options.width,
           height: this.config.options.height
         });
+        
+        // Update coordinate system with fallback renderer
+        if (this.coordinateSystem) {
+          this.coordinateSystem.setTargetRenderer(this.activeRenderer);
+        }
       } else {
         throw error;
       }
@@ -604,7 +592,7 @@ export class Chart {
   }
   
   /**
-   * Preprocess data for rendering using coordinate system and path generator
+   * UPDATED: Preprocess data for rendering using unified coordinate system
    */
   async _preprocessDataForRenderer() {
     if (!Array.isArray(this.config.data) || !this.coordinateSystem) {
@@ -612,14 +600,14 @@ export class Chart {
     }
 
     try {
-      console.log('Transforming coordinates with CoordinateSystem...');
+      console.log('Transforming coordinates with UNIFIED CoordinateSystem...');
       
-      // Step 1: Use CoordinateSystem to transform data to pixel coordinates
+      // Step 1: Use CoordinateSystem to transform data to UNIFIED pixel coordinates
       this.config.data = await this.coordinateSystem.transformDatasets(this.config.data, {
         strictValidation: false
       });
 
-      console.log('Data transformed for', this.activeRenderer, 'renderer');
+      console.log('Data transformed to UNIFIED coordinates for', this.activeRenderer, 'renderer');
 
       // Step 2: Use PathGenerator to create standardized rendering paths
       console.log('Generating standardized paths with PathGenerator...');
@@ -629,7 +617,7 @@ export class Chart {
         strokeWidth: this.config.options.strokeWidth || 2
       });
 
-      console.log('Standardized paths generated for', this.activeRenderer, 'renderer');
+      console.log('Standardized paths generated from UNIFIED coordinates for', this.activeRenderer, 'renderer');
       
     } catch (error) {
       console.error('Error in preprocessing data for renderer:', error);
@@ -656,15 +644,16 @@ export class Chart {
           height: this.config.options.height
         });
         this.coordinateSystem.setChartArea(this.chartArea);
+        this.coordinateSystem.setTargetRenderer(this.activeRenderer);
       }
       
       // Clear renderer
       this.rendererInstance.clear();
       
-      // Transform data for the active renderer
+      // Transform data using unified coordinate system
       await this._preprocessDataForRenderer();
       
-      // HYBRID RENDERING ARCHITECTURE:
+      // HYBRID RENDERING ARCHITECTURE with UNIFIED COORDINATES:
       // 1. Grid: Always Canvas 2D (simple, reliable) - use separate canvas for WebGL
       if (this.grid && this.config.options.showGrid) {
         const ctx = this.activeRenderer === 'webgl' 
@@ -685,10 +674,10 @@ export class Chart {
       // 3. Axes: Always SVG (crisp text, vector graphics)
       this._renderAxes();
       
-      // 4. Data: Selected renderer using transformed data
+      // 4. Data: Selected renderer using UNIFIED coordinates
       await this._renderChartData();
       
-      console.log(`Chart rendered successfully using ${this.activeRenderer} renderer`);
+      console.log(`Chart rendered successfully using ${this.activeRenderer} renderer with unified coordinates`);
       
     } catch (error) {
       console.error('Error rendering chart:', error);
@@ -740,11 +729,6 @@ export class Chart {
     await this._processData();
     
     this._calculateDataDomains();
-    this._createScales();
-    this._createGrid();
-    
-    // NEW: Recreate coordinate system with new scales
-    this._createCoordinateSystem();
     
     // Check if we need to switch renderers due to data size change
     const newOptimalRenderer = this._determineOptimalRenderer();
@@ -760,6 +744,15 @@ export class Chart {
       this.activeRenderer = newOptimalRenderer;
       await this._initializeRenderer();
     }
+    
+    // UPDATED: Update coordinate system with new renderer if changed
+    if (this.coordinateSystem) {
+      this.coordinateSystem.setTargetRenderer(this.activeRenderer);
+    }
+    
+    // UPDATED: Recreate scales with unified coordinate system
+    this._createScales();
+    this._createGrid();
     
     // Update axes with new scales
     if (this.axes.x && this.axes.y) {
@@ -783,7 +776,7 @@ export class Chart {
     
     await this.render();
     
-    console.log(`Chart updated: ${oldDataPointCount} → ${this.dataPointCount} points`);
+    console.log(`Chart updated with unified coordinates: ${oldDataPointCount} → ${this.dataPointCount} points`);
   }
   
   /**
@@ -813,7 +806,8 @@ export class Chart {
       thresholds: this.performanceThresholds,
       rendererCapabilities: this.rendererInstance ? this.rendererInstance.getPerformanceProfile() : null,
       webglSupported: WebGLRenderer.isSupported(),
-      webglCapabilities: WebGLRenderer.getCapabilities()
+      webglCapabilities: WebGLRenderer.getCapabilities(),
+      coordinateSystem: this.coordinateSystem ? this.coordinateSystem.getCoordinateInfo() : null
     };
   }
   
@@ -834,7 +828,7 @@ export class Chart {
       return;
     }
     
-    console.log(`Manually switching to ${rendererType} renderer`);
+    console.log(`Manually switching to ${rendererType} renderer with unified coordinates`);
     
     // Destroy current renderer
     if (this.rendererInstance) {
@@ -844,6 +838,11 @@ export class Chart {
     // Set new renderer
     this.activeRenderer = rendererType;
     this.config.options.forceRenderer = rendererType;
+    
+    // Update coordinate system
+    if (this.coordinateSystem) {
+      this.coordinateSystem.setTargetRenderer(rendererType);
+    }
     
     // Initialize new renderer
     await this._initializeRenderer();
@@ -943,6 +942,10 @@ export class Chart {
     if (this.rendererInstance) {
       this.rendererInstance.destroy();
       this.rendererInstance = null;
+    }
+    
+    if (this.coordinateSystem) {
+      this.coordinateSystem.clearCache();
     }
     
     if (this.container) {

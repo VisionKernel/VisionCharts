@@ -1,14 +1,14 @@
 /**
- * CoordinateSystem - Multi-Renderer Coordinate Normalization
+ * CoordinateSystem - Multi-Renderer Coordinate Normalization (Updated)
  * 
  * Provides unified coordinate transformation and normalization across
  * SVG, Canvas, and WebGL rendering backends, ensuring consistent
  * positioning, scaling, and event handling.
  * 
  * Key Features:
- * - Unified coordinate transformation for all renderers
- * - Canvas Y-down vs Chart Y-up coordinate system handling
- * - Viewport and clipping transformations
+ * - RENDERER-AGNOSTIC coordinate transformation for all renderers
+ * - Unified coordinate system (mathematical: Y-up, origin bottom-left)
+ * - Automatic renderer-specific coordinate conversion
  * - High DPI and device pixel ratio support
  * - Event coordinate normalization
  * - Batch coordinate processing for performance
@@ -17,9 +17,12 @@
 export class CoordinateSystem {
   constructor(config = {}) {
     this.config = {
-      // Coordinate system settings
-      coordinateOrigin: 'bottom-left', // 'top-left', 'bottom-left', 'center'
-      flipY: true, // Flip Y axis for chart coordinates (bottom = 0)
+      // NEW: Target renderer for coordinate system optimization
+      targetRenderer: config.targetRenderer || 'auto', // 'canvas', 'webgl', 'auto'
+      
+      // Coordinate system settings (now renderer-agnostic)
+      coordinateOrigin: 'bottom-left', // Always bottom-left for mathematical consistency
+      useUnifiedCoordinates: true, // NEW: Use unified coordinate system
       
       // High DPI settings
       devicePixelRatio: window.devicePixelRatio || 1,
@@ -64,6 +67,25 @@ export class CoordinateSystem {
     this.coordinateCache = new Map();
     this.transformedDatasets = new Map();
     
+    // NEW: Renderer-specific coordinate systems
+    this.rendererCoordinateSystems = {
+      canvas: {
+        origin: 'top-left',
+        yDirection: 'down',
+        requiresFlip: true
+      },
+      webgl: {
+        origin: 'bottom-left', 
+        yDirection: 'up',
+        requiresFlip: false
+      },
+      svg: {
+        origin: 'top-left',
+        yDirection: 'down', 
+        requiresFlip: true
+      }
+    };
+    
     // Performance monitoring
     this.transformStats = {
       totalTransformations: 0,
@@ -79,7 +101,36 @@ export class CoordinateSystem {
    */
   setScales(scales) {
     this.scales = scales;
+    
+    // NEW: Configure scales for unified coordinate system
+    if (this.config.useUnifiedCoordinates) {
+      this._configureScalesForUnifiedCoordinates();
+    }
+    
     this._clearCache();
+    return this;
+  }
+  
+  /**
+   * NEW: Configure scales for unified coordinate system
+   * @private
+   */
+  _configureScalesForUnifiedCoordinates() {
+    if (this.scales.x) {
+      this.scales.x.setCoordinateSystem('normalized', 'horizontal');
+    }
+    if (this.scales.y) {
+      this.scales.y.setCoordinateSystem('normalized', 'vertical');
+    }
+  }
+  
+  /**
+   * NEW: Set target renderer for coordinate optimization
+   * @param {string} renderer - 'canvas', 'webgl', or 'auto'
+   */
+  setTargetRenderer(renderer) {
+    this.config.targetRenderer = renderer;
+    this._clearCache(); // Clear cache since coordinate transformations may change
     return this;
   }
   
@@ -104,10 +155,10 @@ export class CoordinateSystem {
   }
   
   /**
-   * Transform datasets from data coordinates to pixel coordinates
+   * Transform datasets from data coordinates to UNIFIED pixel coordinates
    * @param {Array} datasets - Array of datasets to transform
    * @param {Object} options - Transformation options
-   * @returns {Array} Datasets with pixel coordinates
+   * @returns {Array} Datasets with UNIFIED pixel coordinates
    */
   async transformDatasets(datasets, options = {}) {
     if (!Array.isArray(datasets)) {
@@ -124,7 +175,7 @@ export class CoordinateSystem {
     try {
       for (let i = 0; i < datasets.length; i++) {
         const dataset = datasets[i];
-        console.log(`Transforming coordinates for dataset ${i + 1}/${datasets.length}: ${dataset.name || dataset.id || 'Unknown'}`);
+        console.log(`CoordinateSystem: Transforming dataset ${i + 1}/${datasets.length}: ${dataset.name || dataset.id || 'Unknown'}`);
         
         const transformedDataset = await this.transformDataset(dataset, options);
         transformedDatasets.push(transformedDataset);
@@ -133,7 +184,7 @@ export class CoordinateSystem {
       const transformTime = performance.now() - startTime;
       this._updateTransformStats(transformTime, datasets.length);
       
-      console.log(`CoordinateSystem: Transformed ${transformedDatasets.length} datasets in ${transformTime.toFixed(2)}ms`);
+      console.log(`CoordinateSystem: Transformed ${transformedDatasets.length} datasets to UNIFIED coordinates in ${transformTime.toFixed(2)}ms`);
       return transformedDatasets;
       
     } catch (error) {
@@ -143,10 +194,10 @@ export class CoordinateSystem {
   }
   
   /**
-   * Transform a single dataset
+   * Transform a single dataset to UNIFIED coordinate system
    * @param {Object} dataset - Dataset to transform
    * @param {Object} options - Transformation options
-   * @returns {Object} Dataset with pixel coordinates
+   * @returns {Object} Dataset with UNIFIED pixel coordinates
    */
   async transformDataset(dataset, options = {}) {
     if (!dataset || !dataset.data || !Array.isArray(dataset.data)) {
@@ -164,7 +215,7 @@ export class CoordinateSystem {
     this.transformStats.cacheMisses++;
     
     try {
-      // Transform data points
+      // Transform data points to UNIFIED coordinate system
       const transformedData = await this._transformDataPoints(dataset.data, options);
       
       // Create transformed dataset
@@ -172,6 +223,7 @@ export class CoordinateSystem {
         ...dataset,
         data: transformedData,
         coordinatesTransformed: true,
+        coordinateSystem: 'unified',
         transformedAt: Date.now(),
         originalDataCount: dataset.data.length,
         transformedDataCount: transformedData.length
@@ -182,7 +234,7 @@ export class CoordinateSystem {
         this.coordinateCache.set(cacheKey, transformedDataset);
       }
       
-      console.log(`Dataset transformed: ${dataset.data.length} → ${transformedData.length} points with pixel coordinates`);
+      console.log(`Dataset transformed to UNIFIED coordinates: ${dataset.data.length} → ${transformedData.length} points`);
       
       return transformedDataset;
       
@@ -193,7 +245,7 @@ export class CoordinateSystem {
   }
   
   /**
-   * Transform data points to pixel coordinates
+   * Transform data points to UNIFIED pixel coordinates
    * @private
    */
   async _transformDataPoints(data, options) {
@@ -215,34 +267,45 @@ export class CoordinateSystem {
           continue;
         }
         
-        // Transform to pixel coordinates
-        const pixelCoords = this.dataToPixel(dataCoords.x, dataCoords.y);
+        // Transform to UNIFIED pixel coordinates
+        const unifiedCoords = this.dataToUnified(dataCoords.x, dataCoords.y);
         
-        if (pixelCoords.x == null || pixelCoords.y == null) {
+        if (unifiedCoords.x == null || unifiedCoords.y == null) {
           if (options.strictValidation) {
-            throw new Error(`Invalid pixel coordinates at point ${i}`);
+            throw new Error(`Invalid unified coordinates at point ${i}`);
           }
-          console.warn(`Skipping point ${i} due to invalid pixel coordinates`);
+          console.warn(`Skipping point ${i} due to invalid unified coordinates`);
           continue;
         }
         
-        // Create transformed point
+        // Create transformed point with UNIFIED coordinates
         const transformedPoint = {
           ...point,
           // Original data coordinates
           dataX: dataCoords.x,
           dataY: dataCoords.y,
-          // Pixel coordinates for rendering
-          screenX: pixelCoords.x,
-          screenY: pixelCoords.y,
-          pixelX: pixelCoords.x, // Alias for compatibility
-          pixelY: pixelCoords.y, // Alias for compatibility
+          
+          // UNIFIED pixel coordinates (mathematical coordinate system)
+          // These are renderer-agnostic and always use bottom-left origin, Y-up
+          unifiedX: unifiedCoords.x,
+          unifiedY: unifiedCoords.y,
+          
+          // Aliases for backward compatibility and renderer use
+          screenX: unifiedCoords.x,
+          screenY: unifiedCoords.y,
+          pixelX: unifiedCoords.x,
+          pixelY: unifiedCoords.y,
+          
           // Clipping information
-          inBounds: this._isPointInBounds(pixelCoords.x, pixelCoords.y),
+          inBounds: this._isPointInBounds(unifiedCoords.x, unifiedCoords.y),
+          
+          // Coordinate system metadata
+          coordinateSystem: 'unified',
+          
           // High DPI coordinates if needed
           ...(this.config.enableHighDPI && this.config.devicePixelRatio > 1 ? {
-            hiDPIX: pixelCoords.x * this.config.devicePixelRatio,
-            hiDPIY: pixelCoords.y * this.config.devicePixelRatio
+            hiDPIX: unifiedCoords.x * this.config.devicePixelRatio,
+            hiDPIY: unifiedCoords.y * this.config.devicePixelRatio
           } : {})
         };
         
@@ -301,28 +364,29 @@ export class CoordinateSystem {
   }
   
   /**
-   * Transform data coordinates to pixel coordinates
+   * Transform data coordinates to UNIFIED pixel coordinates
    * @param {number} dataX - Data X coordinate
    * @param {number} dataY - Data Y coordinate
-   * @returns {Object} { x: pixelX, y: pixelY }
+   * @returns {Object} { x: unifiedX, y: unifiedY }
    */
-  dataToPixel(dataX, dataY) {
+  dataToUnified(dataX, dataY) {
     if (!this.scales.x || !this.scales.y) {
       throw new Error('Scales not available for coordinate transformation');
     }
     
     try {
-      // Use scales to transform data to pixel coordinates
-      let pixelX = this.scales.x.scale(dataX);
-      let pixelY = this.scales.y.scale(dataY);
+      // Use scales to transform data to UNIFIED pixel coordinates
+      // Scales are now configured for unified coordinate system
+      let unifiedX = this.scales.x.scale(dataX);
+      let unifiedY = this.scales.y.scale(dataY);
       
       // Handle invalid transformations
-      if (!isFinite(pixelX) || !isFinite(pixelY)) {
+      if (!isFinite(unifiedX) || !isFinite(unifiedY)) {
         return { x: null, y: null };
       }
       
-      // Apply coordinate system transformations
-      const transformedCoords = this._applyCoordinateTransforms(pixelX, pixelY);
+      // Apply any additional coordinate system transformations
+      const transformedCoords = this._applyUnifiedCoordinateTransforms(unifiedX, unifiedY);
       
       return {
         x: transformedCoords.x,
@@ -330,54 +394,136 @@ export class CoordinateSystem {
       };
       
     } catch (error) {
-      console.error('Error in dataToPixel transformation:', error);
+      console.error('Error in dataToUnified transformation:', error);
       return { x: null, y: null };
     }
   }
   
   /**
-   * Transform pixel coordinates to data coordinates (inverse)
-   * @param {number} pixelX - Pixel X coordinate
-   * @param {number} pixelY - Pixel Y coordinate
+   * NEW: Convert UNIFIED coordinates to renderer-specific coordinates
+   * @param {number} unifiedX - Unified X coordinate
+   * @param {number} unifiedY - Unified Y coordinate  
+   * @param {string} targetRenderer - Target renderer ('canvas', 'webgl', 'svg')
+   * @returns {Object} { x: rendererX, y: rendererY }
+   */
+  unifiedToRenderer(unifiedX, unifiedY, targetRenderer) {
+    const rendererSystem = this.rendererCoordinateSystems[targetRenderer];
+    
+    if (!rendererSystem) {
+      console.warn(`Unknown renderer: ${targetRenderer}, using unified coordinates`);
+      return { x: unifiedX, y: unifiedY };
+    }
+    
+    let rendererX = unifiedX;
+    let rendererY = unifiedY;
+    
+    // Handle Y-axis flipping for top-down coordinate systems (Canvas, SVG)
+    if (rendererSystem.requiresFlip) {
+      // Convert from bottom-up (unified) to top-down (canvas/svg)
+      const chartArea = this.config.chartArea;
+      const chartHeight = chartArea.height;
+      const chartTop = chartArea.y;
+      
+      // Flip Y coordinate: unified Y=0 (bottom) becomes renderer Y=chartHeight (bottom in canvas)
+      rendererY = chartTop + chartHeight - (unifiedY - chartTop);
+    }
+    
+    return {
+      x: rendererX,
+      y: rendererY,
+      coordinateSystem: targetRenderer
+    };
+  }
+  
+  /**
+   * NEW: Convert renderer-specific coordinates to UNIFIED coordinates
+   * @param {number} rendererX - Renderer-specific X coordinate
+   * @param {number} rendererY - Renderer-specific Y coordinate
+   * @param {string} sourceRenderer - Source renderer ('canvas', 'webgl', 'svg')
+   * @returns {Object} { x: unifiedX, y: unifiedY }
+   */
+  rendererToUnified(rendererX, rendererY, sourceRenderer) {
+    const rendererSystem = this.rendererCoordinateSystems[sourceRenderer];
+    
+    if (!rendererSystem) {
+      console.warn(`Unknown renderer: ${sourceRenderer}, using coordinates as-is`);
+      return { x: rendererX, y: rendererY };
+    }
+    
+    let unifiedX = rendererX;
+    let unifiedY = rendererY;
+    
+    // Handle Y-axis flipping for top-down coordinate systems (Canvas, SVG)
+    if (rendererSystem.requiresFlip) {
+      // Convert from top-down (canvas/svg) to bottom-up (unified)
+      const chartArea = this.config.chartArea;
+      const chartHeight = chartArea.height;
+      const chartTop = chartArea.y;
+      
+      // Flip Y coordinate: renderer Y=0 (top) becomes unified Y=chartHeight (top in unified)
+      unifiedY = chartTop + chartHeight - (rendererY - chartTop);
+    }
+    
+    return {
+      x: unifiedX,
+      y: unifiedY,
+      coordinateSystem: 'unified'
+    };
+  }
+  
+  /**
+   * Transform UNIFIED pixel coordinates to data coordinates (inverse)
+   * @param {number} unifiedX - Unified X coordinate
+   * @param {number} unifiedY - Unified Y coordinate
    * @returns {Object} { x: dataX, y: dataY }
    */
-  pixelToData(pixelX, pixelY) {
+  unifiedToData(unifiedX, unifiedY) {
     if (!this.scales.x || !this.scales.y) {
       throw new Error('Scales not available for coordinate transformation');
     }
     
     try {
       // Reverse coordinate system transformations
-      const originalCoords = this._reverseCoordinateTransforms(pixelX, pixelY);
+      const originalCoords = this._reverseUnifiedCoordinateTransforms(unifiedX, unifiedY);
       
-      // Use scales to transform pixel to data coordinates
+      // Use scales to transform unified pixel to data coordinates
       const dataX = this.scales.x.invert(originalCoords.x);
       const dataY = this.scales.y.invert(originalCoords.y);
       
       return { x: dataX, y: dataY };
       
     } catch (error) {
-      console.error('Error in pixelToData transformation:', error);
+      console.error('Error in unifiedToData transformation:', error);
       return { x: null, y: null };
     }
   }
   
   /**
-   * Apply coordinate system transformations
+   * Legacy method for backward compatibility
+   * Transform data coordinates to pixel coordinates
+   */
+  dataToPixel(dataX, dataY) {
+    return this.dataToUnified(dataX, dataY);
+  }
+  
+  /**
+   * Legacy method for backward compatibility  
+   * Transform pixel coordinates to data coordinates
+   */
+  pixelToData(pixelX, pixelY) {
+    return this.unifiedToData(pixelX, pixelY);
+  }
+  
+  /**
+   * Apply unified coordinate system transformations
    * @private
    */
-  _applyCoordinateTransforms(x, y) {
+  _applyUnifiedCoordinateTransforms(x, y) {
     let transformedX = x;
     let transformedY = y;
     
-    // Handle coordinate origin and Y-axis flipping
-    if (this.config.coordinateOrigin === 'bottom-left' && this.config.flipY) {
-      // Y coordinates are already flipped by the scale (range is inverted)
-      // No additional transformation needed
-    } else if (this.config.coordinateOrigin === 'top-left') {
-      // Standard canvas/SVG coordinates (Y increases downward)
-      // Scale should handle this with non-inverted range
-    }
+    // In unified coordinate system, coordinates are already in bottom-left, Y-up format
+    // No additional flipping needed here since scales handle the coordinate conversion
     
     // Apply custom transforms if enabled
     if (this.config.enableTransforms) {
@@ -404,10 +550,10 @@ export class CoordinateSystem {
   }
   
   /**
-   * Reverse coordinate system transformations
+   * Reverse unified coordinate system transformations
    * @private
    */
-  _reverseCoordinateTransforms(x, y) {
+  _reverseUnifiedCoordinateTransforms(x, y) {
     let originalX = x;
     let originalY = y;
     
@@ -452,16 +598,20 @@ export class CoordinateSystem {
    * Transform event coordinates to data coordinates
    * @param {MouseEvent|TouchEvent} event - DOM event
    * @param {HTMLElement} element - Target element
+   * @param {string} sourceRenderer - Source renderer for event coordinates
    * @returns {Object} { x: dataX, y: dataY }
    */
-  eventToData(event, element) {
+  eventToData(event, element, sourceRenderer = 'canvas') {
     // Get pixel coordinates relative to element
     const rect = element.getBoundingClientRect();
-    const pixelX = event.clientX - rect.left;
-    const pixelY = event.clientY - rect.top;
+    const rendererX = event.clientX - rect.left;
+    const rendererY = event.clientY - rect.top;
     
-    // Transform to data coordinates
-    return this.pixelToData(pixelX, pixelY);
+    // Convert renderer coordinates to unified coordinates
+    const unifiedCoords = this.rendererToUnified(rendererX, rendererY, sourceRenderer);
+    
+    // Transform unified coordinates to data coordinates
+    return this.unifiedToData(unifiedCoords.x, unifiedCoords.y);
   }
   
   /**
@@ -469,18 +619,22 @@ export class CoordinateSystem {
    * @param {number} dataX - Data X coordinate  
    * @param {number} dataY - Data Y coordinate
    * @param {HTMLElement} element - Target element
+   * @param {string} targetRenderer - Target renderer for event coordinates
    * @returns {Object} { x: eventX, y: eventY }
    */
-  dataToEvent(dataX, dataY, element) {
-    // Transform to pixel coordinates
-    const pixelCoords = this.dataToPixel(dataX, dataY);
+  dataToEvent(dataX, dataY, element, targetRenderer = 'canvas') {
+    // Transform to unified coordinates
+    const unifiedCoords = this.dataToUnified(dataX, dataY);
+    
+    // Convert unified coordinates to renderer coordinates
+    const rendererCoords = this.unifiedToRenderer(unifiedCoords.x, unifiedCoords.y, targetRenderer);
     
     // Convert to event coordinates (relative to viewport)
     const rect = element.getBoundingClientRect();
     
     return {
-      x: pixelCoords.x + rect.left,
-      y: pixelCoords.y + rect.top
+      x: rendererCoords.x + rect.left,
+      y: rendererCoords.y + rect.top
     };
   }
   
@@ -513,20 +667,25 @@ export class CoordinateSystem {
   getCoordinateInfo() {
     return {
       config: this.config,
+      coordinateSystem: 'unified',
+      targetRenderer: this.config.targetRenderer,
       scales: {
         x: this.scales.x ? {
           domain: this.scales.x.domain,
           range: this.scales.x.range,
-          type: this.scales.x.type
+          type: this.scales.x.type,
+          coordinateSystem: this.scales.x.coordinateSystem
         } : null,
         y: this.scales.y ? {
           domain: this.scales.y.domain,
           range: this.scales.y.range,
-          type: this.scales.y.type
+          type: this.scales.y.type,
+          coordinateSystem: this.scales.y.coordinateSystem
         } : null
       },
       transforms: this.transforms,
-      performanceStats: this.transformStats
+      performanceStats: this.transformStats,
+      rendererCoordinateSystems: this.rendererCoordinateSystems
     };
   }
   
@@ -556,12 +715,14 @@ export class CoordinateSystem {
       x: this.scales.x ? {
         domain: this.scales.x.domain,
         range: this.scales.x.range,
-        type: this.scales.x.type
+        type: this.scales.x.type,
+        coordinateSystem: this.scales.x.coordinateSystem
       } : null,
       y: this.scales.y ? {
         domain: this.scales.y.domain,
         range: this.scales.y.range,
-        type: this.scales.y.type
+        type: this.scales.y.type,
+        coordinateSystem: this.scales.y.coordinateSystem
       } : null
     };
     
@@ -572,7 +733,8 @@ export class CoordinateSystem {
       transforms: this.transforms,
       config: {
         coordinateOrigin: this.config.coordinateOrigin,
-        flipY: this.config.flipY,
+        useUnifiedCoordinates: this.config.useUnifiedCoordinates,
+        targetRenderer: this.config.targetRenderer,
         viewport: this.config.viewport,
         chartArea: this.config.chartArea
       },
@@ -638,7 +800,8 @@ export class CoordinateSystem {
       viewport,
       chartArea,
       coordinateOrigin: 'bottom-left',
-      flipY: true,
+      useUnifiedCoordinates: true,
+      targetRenderer: 'auto',
       ...options
     };
     

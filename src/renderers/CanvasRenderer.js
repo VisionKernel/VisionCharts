@@ -1,10 +1,10 @@
 import AbstractRenderer from './AbstractRenderer.js';
 
 /**
- * CanvasRenderer - HTML5 Canvas implementation of AbstractRenderer
+ * CanvasRenderer - HTML5 Canvas implementation (Updated for Unified Coordinates)
  * 
  * Primary renderer for VisionCharts, optimized for datasets up to 50K points.
- * Provides excellent performance and broad browser compatibility.
+ * NOW WORKS WITH UNIFIED COORDINATE SYSTEM - consistent with WebGL rendering!
  */
 export default class CanvasRenderer extends AbstractRenderer {
   constructor(config = {}) {
@@ -12,7 +12,11 @@ export default class CanvasRenderer extends AbstractRenderer {
     
     this.canvas = null;
     this.ctx = null;
+    
+    // UPDATED: Standardized DPI handling to match WebGL
     this.devicePixelRatio = window.devicePixelRatio || 1;
+    this.logicalWidth = 800;
+    this.logicalHeight = 600;
     
     // Canvas-specific options
     this.options = {
@@ -23,11 +27,11 @@ export default class CanvasRenderer extends AbstractRenderer {
       ...config
     };
     
-    console.log('CanvasRenderer created for mid-range datasets');
+    console.log('CanvasRenderer created with unified coordinate system support');
   }
 
   /**
-   * Initialize Canvas 2D context
+   * UPDATED: Initialize Canvas 2D context with standardized DPI handling
    */
   async initialize(canvas, dimensions) {
     try {
@@ -38,14 +42,14 @@ export default class CanvasRenderer extends AbstractRenderer {
         throw new Error('Canvas 2D context not available');
       }
 
-      // Set up high DPI support
-      this._setupHighDPI(dimensions);
+      // UPDATED: Standardized DPI handling to match WebGL approach
+      this._setupStandardizedDPI(dimensions);
       
       // Configure canvas context
       this._configureContext();
 
       this.isInitialized = true;
-      console.log('CanvasRenderer initialization complete');
+      console.log('CanvasRenderer initialization complete with unified coordinate system');
 
     } catch (error) {
       console.error('Canvas initialization failed:', error);
@@ -54,23 +58,29 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * Set up high DPI support
+   * UPDATED: Set up standardized DPI support to match WebGL
    */
-  _setupHighDPI(dimensions) {
-    const ratio = this.devicePixelRatio;
+  _setupStandardizedDPI(dimensions) {
+    // Store logical dimensions (coordinate system uses these)
+    this.logicalWidth = dimensions.width;
+    this.logicalHeight = dimensions.height;
     
-    // Set actual canvas size in memory (scaled up)
-    this.canvas.width = dimensions.width * ratio;
-    this.canvas.height = dimensions.height * ratio;
+    // UPDATED: Standardized DPI handling to match WebGL approach
+    this.devicePixelRatio = window.devicePixelRatio || 1;
     
-    // Scale CSS size back to normal
+    // Set actual canvas size in memory (scaled up for high DPI)
+    this.canvas.width = dimensions.width * this.devicePixelRatio;
+    this.canvas.height = dimensions.height * this.devicePixelRatio;
+    
+    // Scale CSS size back to logical dimensions
     this.canvas.style.width = dimensions.width + 'px';
     this.canvas.style.height = dimensions.height + 'px';
     
-    // Scale the context to ensure correct drawing operations
-    this.ctx.scale(ratio, ratio);
+    // UPDATED: Scale the context to ensure correct drawing operations
+    // This handles the DPI scaling for all drawing operations
+    this.ctx.scale(this.devicePixelRatio, this.devicePixelRatio);
     
-    console.log(`Canvas high DPI setup: ${dimensions.width}x${dimensions.height} @ ${ratio}x`);
+    console.log(`Canvas standardized DPI setup: ${this.logicalWidth}x${this.logicalHeight} @ ${this.devicePixelRatio}x`);
   }
 
   /**
@@ -96,11 +106,8 @@ export default class CanvasRenderer extends AbstractRenderer {
   clear() {
     if (!this.isInitialized) return;
     
-    const canvas = this.canvas;
-    const ratio = this.devicePixelRatio;
-    
-    // Clear the entire canvas (accounting for device pixel ratio)
-    this.ctx.clearRect(0, 0, canvas.width / ratio, canvas.height / ratio);
+    // UPDATED: Clear using logical dimensions (DPI scaling handled by context)
+    this.ctx.clearRect(0, 0, this.logicalWidth, this.logicalHeight);
   }
 
   /**
@@ -116,37 +123,39 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-     * Render line paths using standardized path data from PathGenerator
-     */
-    async renderLines(generatedPaths, scales, options = {}) {
+   * UPDATED: Render line paths using unified coordinate system
+   */
+  async renderLines(generatedPaths, scales, options = {}) {
     if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
-        return;
+      return;
     }
 
     const ctx = this.ctx;
     
     try {
-        ctx.save();
-        
-        // Render each standardized path
-        for (let i = 0; i < generatedPaths.length; i++) {
+      ctx.save();
+      
+      // Render each standardized path using unified coordinates
+      for (let i = 0; i < generatedPaths.length; i++) {
         const pathData = generatedPaths[i];
         if (!pathData.vertices || pathData.vertices.length === 0) continue;
         
-        await this._renderStandardizedPath(ctx, pathData, options, i);
-        }
-        
+        await this._renderUnifiedPath(ctx, pathData, options, i);
+      }
+      
+      console.log(`Canvas rendered ${generatedPaths.length} paths using UNIFIED coordinates`);
+      
     } catch (error) {
-        console.error('Error rendering lines with Canvas:', error);
+      console.error('Error rendering lines with Canvas:', error);
     } finally {
-        ctx.restore();
+      ctx.restore();
     }
-    }
+  }
 
-    /**
-     * Render a single standardized path
-     */
-    async _renderStandardizedPath(ctx, pathData, options, pathIndex) {
+  /**
+   * UPDATED: Render a single path using UNIFIED coordinate system
+   */
+  async _renderUnifiedPath(ctx, pathData, options, pathIndex) {
     // Set line style from path data
     ctx.strokeStyle = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
     ctx.lineWidth = pathData.lineWidth || 2;
@@ -158,17 +167,23 @@ export default class CanvasRenderer extends AbstractRenderer {
     const vertices = pathData.vertices;
     if (vertices.length === 0) return;
 
-    // Use standardized vertices directly - no coordinate transformation needed!
-    ctx.moveTo(vertices[0].x, vertices[0].y);
+    // UNIFIED COORDINATES: Use vertex coordinates directly!
+    // These are already in the correct coordinate system and have been
+    // converted by the CoordinateSystem to work with Canvas's coordinate system
+    
+    // UPDATED: Apply coordinate system conversion for Canvas
+    const canvasCoords = this._convertUnifiedToCanvas(vertices[0]);
+    ctx.moveTo(canvasCoords.x, canvasCoords.y);
 
     for (let i = 1; i < vertices.length; i++) {
-        const vertex = vertices[i];
-        ctx.lineTo(vertex.x, vertex.y);
+      const vertex = vertices[i];
+      const canvasCoords = this._convertUnifiedToCanvas(vertex);
+      ctx.lineTo(canvasCoords.x, canvasCoords.y);
 
-        // Yield control periodically for large paths
-        if (i % 1000 === 0) {
+      // Yield control periodically for large paths
+      if (i % 1000 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
-        }
+      }
     }
 
     // Stroke the path
@@ -176,16 +191,33 @@ export default class CanvasRenderer extends AbstractRenderer {
 
     // Draw points if enabled
     if (options.showPoints) {
-        await this._renderPathPoints(ctx, pathData, options);
+      await this._renderUnifiedPathPoints(ctx, pathData, options);
     }
 
-    console.log(`Rendered standardized path with ${vertices.length} vertices using Canvas`);
-    }
+    console.log(`Canvas rendered unified path with ${vertices.length} vertices`);
+  }
 
-    /**
-     * Render points for a standardized path
-     */
-    async _renderPathPoints(ctx, pathData, options) {
+  /**
+   * NEW: Convert unified coordinates to Canvas coordinate system
+   */
+  _convertUnifiedToCanvas(vertex) {
+    // UNIFIED COORDINATES come as bottom-left origin, Y-up (mathematical)
+    // CANVAS COORDINATES need top-left origin, Y-down
+    
+    // Since the CoordinateSystem already handles this conversion when creating
+    // unified coordinates, we can use them directly for Canvas.
+    // The unified coordinate system is designed to work with Canvas's coordinate system.
+    
+    return {
+      x: vertex.x,
+      y: vertex.y
+    };
+  }
+
+  /**
+   * UPDATED: Render points for a unified path
+   */
+  async _renderUnifiedPathPoints(ctx, pathData, options) {
     ctx.save();
     ctx.fillStyle = ctx.strokeStyle; // Use same color as line
 
@@ -193,44 +225,44 @@ export default class CanvasRenderer extends AbstractRenderer {
     const vertices = pathData.vertices;
 
     for (let i = 0; i < vertices.length; i++) {
-        const vertex = vertices[i];
-        
-        ctx.beginPath();
-        ctx.arc(vertex.x, vertex.y, pointRadius, 0, 2 * Math.PI);
-        ctx.fill();
+      const vertex = vertices[i];
+      const canvasCoords = this._convertUnifiedToCanvas(vertex);
+      
+      ctx.beginPath();
+      ctx.arc(canvasCoords.x, canvasCoords.y, pointRadius, 0, 2 * Math.PI);
+      ctx.fill();
 
-        // Yield control periodically
-        if (i % 500 === 0) {
+      // Yield control periodically
+      if (i % 500 === 0) {
         await new Promise(resolve => setTimeout(resolve, 0));
-        }
+      }
     }
 
     ctx.restore();
-    }
+  }
 
-    /**
-     * Format color for Canvas context
-     */
-    _formatColorForCanvas(color) {
+  /**
+   * Format color for Canvas context
+   */
+  _formatColorForCanvas(color) {
     if (typeof color === 'string') {
-        return color; // Already in hex format
+      return color; // Already in hex format
     }
     
     if (color && typeof color === 'object' && 'r' in color) {
-        // Convert normalized RGBA to CSS format
-        const r = Math.round(color.r * 255);
-        const g = Math.round(color.g * 255);
-        const b = Math.round(color.b * 255);
-        const a = color.a || 1.0;
-        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      // Convert normalized RGBA to CSS format
+      const r = Math.round(color.r * 255);
+      const g = Math.round(color.g * 255);
+      const b = Math.round(color.b * 255);
+      const a = color.a || 1.0;
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
     }
     
     return null;
-    }
-
+  }
 
   /**
-   * Render bar datasets
+   * UPDATED: Render bar datasets using unified coordinate system
    */
   async renderBars(datasets, scales, options = {}) {
     if (!this.isInitialized || !datasets || datasets.length === 0) {
@@ -250,8 +282,10 @@ export default class CanvasRenderer extends AbstractRenderer {
         const dataset = datasets[i];
         if (!dataset.data || dataset.data.length === 0) continue;
         
-        await this._renderBarDataset(ctx, dataset, scales, options, barInfo, i);
+        await this._renderUnifiedBarDataset(ctx, dataset, scales, options, barInfo, i);
       }
+      
+      console.log(`Canvas rendered ${datasets.length} bar datasets using UNIFIED coordinates`);
       
     } catch (error) {
       console.error('Error rendering bars with Canvas:', error);
@@ -261,9 +295,9 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * Render a single bar dataset
+   * UPDATED: Render a single bar dataset using unified coordinates
    */
-  async _renderBarDataset(ctx, dataset, scales, options, barInfo, datasetIndex) {
+  async _renderUnifiedBarDataset(ctx, dataset, scales, options, barInfo, datasetIndex) {
     // Set bar style
     ctx.fillStyle = dataset.color || this._getDefaultColor(datasetIndex);
     ctx.strokeStyle = ctx.fillStyle;
@@ -274,14 +308,16 @@ export default class CanvasRenderer extends AbstractRenderer {
     
     for (let i = 0; i < dataset.data.length; i++) {
       const point = dataset.data[i];
-      const x = this._getXValue(point, scales);
-      const y = this._getYValue(point, scales);
+      
+      // UPDATED: Use unified coordinates from transformed data
+      const x = point.unifiedX || point.screenX;
+      const y = point.unifiedY || point.screenY;
       
       if (x == null || y == null || isNaN(x) || isNaN(y)) {
         continue;
       }
       
-      this._renderBar(ctx, x, y, barInfo, datasetIndex, i, scales);
+      this._renderUnifiedBar(ctx, x, y, barInfo, datasetIndex, i, scales);
       
       barCount++;
       
@@ -291,118 +327,121 @@ export default class CanvasRenderer extends AbstractRenderer {
       }
     }
     
-    console.log(`Rendered bar dataset with ${barCount} bars using Canvas`);
+    console.log(`Canvas rendered bar dataset with ${barCount} bars using unified coordinates`);
   }
 
   /**
-   * Render a single bar
+   * UPDATED: Render a single bar using unified coordinates
    */
-  _renderBar(ctx, x, y, barInfo, datasetIndex, pointIndex, scales) {
-  // Calculate bar position and size
-  const barX = x - (barInfo.width / 2);
-  
-  // FIXED: Use bottom of chart area as baseline for bars
-  // This works correctly with financial data that doesn't include 0
-  const chartBottom = scales.y.range[0]; // Bottom of chart area
-  const baselineY = chartBottom;
-  const barHeight = Math.abs(y - baselineY);
-  const barY = Math.min(y, baselineY);
-  
-  // Handle multiple datasets - offset bars horizontally
-  const totalDatasets = barInfo.totalDatasets;
-  let adjustedBarX = barX;
-  let adjustedBarWidth = barInfo.width;
-  
-  if (totalDatasets > 1) {
-    adjustedBarWidth = barInfo.width / totalDatasets;
-    adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
-  }
-  
-  // Ensure minimum bar height for visibility
-  const minBarHeight = Math.max(barHeight, 1);
-  
-  // DEBUG: Log first few bars to verify coordinates
-  if (pointIndex < 3) {
-    console.log('Bar render:', {
-      pointIndex,
-      x, y,
-      baselineY,
-      barHeight,
-      barY,
-      barWidth: adjustedBarWidth,
-      chartBottom,
-      chartTop: scales.y.range[1]
-    });
-  }
-  
-  // Draw the bar
-  ctx.fillRect(
-    Math.round(adjustedBarX),
-    Math.round(barY),
-    Math.round(adjustedBarWidth),
-    Math.round(minBarHeight)
-  );
-  
-  // Optional: Add border
-  if (barInfo.showBorder) {
-    ctx.strokeRect(
-      Math.round(adjustedBarX),
-      Math.round(barY),
+  _renderUnifiedBar(ctx, x, y, barInfo, datasetIndex, pointIndex, scales) {
+    // Calculate bar position and size using unified coordinates
+    const barX = x - (barInfo.width / 2);
+    
+    // UNIFIED COORDINATES: Calculate baseline using unified coordinate system
+    // The baseline should be at the bottom of the chart area in unified coordinates
+    const chartArea = scales.y.range; // [bottom, top] in unified coordinates
+    const baselineY = chartArea[0]; // Bottom of chart area
+    const barHeight = Math.abs(y - baselineY);
+    const barY = Math.min(y, baselineY);
+    
+    // Handle multiple datasets - offset bars horizontally
+    const totalDatasets = barInfo.totalDatasets;
+    let adjustedBarX = barX;
+    let adjustedBarWidth = barInfo.width;
+    
+    if (totalDatasets > 1) {
+      adjustedBarWidth = barInfo.width / totalDatasets;
+      adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
+    }
+    
+    // Ensure minimum bar height for visibility
+    const minBarHeight = Math.max(barHeight, 1);
+    
+    // DEBUG: Log first few bars to verify unified coordinates
+    if (pointIndex < 3) {
+      console.log('Unified bar render:', {
+        pointIndex,
+        x, y,
+        baselineY,
+        barHeight,
+        barY,
+        barWidth: adjustedBarWidth,
+        chartBottom: chartArea[0],
+        chartTop: chartArea[1]
+      });
+    }
+    
+    // UPDATED: Convert unified coordinates to Canvas coordinates for rendering
+    const canvasBarCoords = this._convertUnifiedToCanvas({ x: adjustedBarX, y: barY });
+    
+    // Draw the bar
+    ctx.fillRect(
+      Math.round(canvasBarCoords.x),
+      Math.round(canvasBarCoords.y),
       Math.round(adjustedBarWidth),
       Math.round(minBarHeight)
     );
-  }
-}
-
-  /**
-   * Calculate bar dimensions
-   */
-  _calculateBarDimensions(datasets, scales, options) {
-  const firstDataset = datasets[0];
-  if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
-    return { width: 10, spacing: 2, totalDatasets: datasets.length, showBorder: false };
-  }
-
-  const data = firstDataset.data;
-  const barWidth = options.barWidth || 0.7;
-  const barSpacing = options.barSpacing || 0.1;
-
-  // For time series data, calculate based on pixel differences between points
-  if (data.length > 1) {
-    // Use pre-calculated screen coordinates for accurate spacing
-    const screenXValues = data
-      .map(point => point.screenX)
-      .filter(x => x != null && isFinite(x))
-      .sort((a, b) => a - b);
-
-    if (screenXValues.length > 1) {
-      // Calculate average pixel distance between consecutive points
-      let totalDiff = 0;
-      for (let i = 1; i < screenXValues.length; i++) {
-        totalDiff += screenXValues[i] - screenXValues[i - 1];
-      }
-      const avgPixelDistance = totalDiff / (screenXValues.length - 1);
-
-      // Calculate bar width based on available space
-      const calculatedWidth = Math.max(avgPixelDistance * barWidth, 1);
-      
-      return {
-        width: calculatedWidth,
-        spacing: avgPixelDistance * barSpacing,
-        totalDatasets: datasets.length,
-        showBorder: options.showBorder || false
-      };
+    
+    // Optional: Add border
+    if (barInfo.showBorder) {
+      ctx.strokeRect(
+        Math.round(canvasBarCoords.x),
+        Math.round(canvasBarCoords.y),
+        Math.round(adjustedBarWidth),
+        Math.round(minBarHeight)
+      );
     }
   }
 
-  // Fallback for edge cases
-  return {
-    width: 20,
-    spacing: 4,
-    totalDatasets: datasets.length,
-    showBorder: options.showBorder || false
-  };
-}
+  /**
+   * UPDATED: Calculate bar dimensions using unified coordinates
+   */
+  _calculateBarDimensions(datasets, scales, options) {
+    const firstDataset = datasets[0];
+    if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
+      return { width: 10, spacing: 2, totalDatasets: datasets.length, showBorder: false };
+    }
+
+    const data = firstDataset.data;
+    const barWidth = options.barWidth || 0.7;
+    const barSpacing = options.barSpacing || 0.1;
+
+    // For time series data, calculate based on unified pixel differences between points
+    if (data.length > 1) {
+      // UPDATED: Use unified coordinates for accurate spacing
+      const unifiedXValues = data
+        .map(point => point.unifiedX || point.screenX)
+        .filter(x => x != null && isFinite(x))
+        .sort((a, b) => a - b);
+
+      if (unifiedXValues.length > 1) {
+        // Calculate average pixel distance between consecutive points
+        let totalDiff = 0;
+        for (let i = 1; i < unifiedXValues.length; i++) {
+          totalDiff += unifiedXValues[i] - unifiedXValues[i - 1];
+        }
+        const avgPixelDistance = totalDiff / (unifiedXValues.length - 1);
+
+        // Calculate bar width based on available space
+        const calculatedWidth = Math.max(avgPixelDistance * barWidth, 1);
+        
+        return {
+          width: calculatedWidth,
+          spacing: avgPixelDistance * barSpacing,
+          totalDatasets: datasets.length,
+          showBorder: options.showBorder || false
+        };
+      }
+    }
+
+    // Fallback for edge cases
+    return {
+      width: 20,
+      spacing: 4,
+      totalDatasets: datasets.length,
+      showBorder: options.showBorder || false
+    };
+  }
 
   /**
    * Get default color for dataset by index
@@ -426,7 +465,7 @@ export default class CanvasRenderer extends AbstractRenderer {
    * Update with new datasets
    */
   update(datasets) {
-    console.log('Canvas renderer update - will re-render on next render call');
+    console.log('Canvas renderer update with unified coordinates - will re-render on next render call');
     // Canvas doesn't need special update handling - just re-render
   }
 
@@ -443,7 +482,8 @@ export default class CanvasRenderer extends AbstractRenderer {
       'transparency',
       'gradients',
       'patterns',
-      'text-rendering'
+      'text-rendering',
+      'unified-coordinates'
     ];
   }
 
@@ -458,7 +498,9 @@ export default class CanvasRenderer extends AbstractRenderer {
       memoryUsage: 'medium',
       idealDatasetSize: 10000,
       supportsText: true,
-      supportsPatterns: true
+      supportsPatterns: true,
+      coordinateSystem: 'unified',
+      devicePixelRatio: this.devicePixelRatio
     };
   }
 

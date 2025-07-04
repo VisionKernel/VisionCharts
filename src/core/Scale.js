@@ -1,8 +1,8 @@
 /**
- * Scale.js - Unified Scaling System
+ * Scale.js - Unified Scaling System (Updated for Renderer Agnostic Coordinates)
  * 
  * Provides consistent data-to-pixel mapping for both axes and chart rendering.
- * Supports linear, logarithmic, and time scales.
+ * Supports linear, logarithmic, and time scales with renderer-agnostic coordinate system.
  */
 
 export class Scale {
@@ -11,6 +11,10 @@ export class Scale {
     this.domain = config.domain || [0, 1]; // [min, max] data values
     this.range = config.range || [0, 100]; // [min, max] pixel values
     this.dataType = config.dataType || 'number'; // 'number', 'time', 'category'
+    
+    // NEW: Coordinate system configuration
+    this.coordinateSystem = config.coordinateSystem || 'normalized'; // 'normalized', 'canvas', 'webgl'
+    this.orientation = config.orientation || 'horizontal'; // 'horizontal' for x-axis, 'vertical' for y-axis
     
     // Options
     this.options = {
@@ -42,6 +46,7 @@ export class Scale {
   
   /**
    * Scale a data value to pixel position (forward transform)
+   * NOW RENDERER-AGNOSTIC: Always produces consistent output regardless of target renderer
    */
   scale(value) {
     if (value == null || isNaN(value)) {
@@ -72,8 +77,29 @@ export class Scale {
       normalizedValue = Math.max(0, Math.min(1, normalizedValue));
     }
     
-    // Convert to pixel range
-    return this.range[0] + normalizedValue * this._rangeExtent;
+    // Convert to pixel range using RENDERER-AGNOSTIC coordinate system
+    return this._convertToPixelRange(normalizedValue);
+  }
+  
+  /**
+   * Convert normalized value to pixel range (renderer-agnostic)
+   * This replaces the old direct range conversion
+   */
+  _convertToPixelRange(normalizedValue) {
+    if (this.coordinateSystem === 'normalized') {
+      // For normalized coordinate system, always use bottom-up for Y-axis
+      // This ensures consistent behavior regardless of renderer
+      if (this.orientation === 'vertical') {
+        // Y-axis: 0 at bottom, 1 at top (mathematical coordinate system)
+        return this.range[0] + (1 - normalizedValue) * this._rangeExtent;
+      } else {
+        // X-axis: 0 at left, 1 at right (standard left-to-right)
+        return this.range[0] + normalizedValue * this._rangeExtent;
+      }
+    } else {
+      // Legacy behavior for backward compatibility
+      return this.range[0] + normalizedValue * this._rangeExtent;
+    }
   }
   
   /**
@@ -84,8 +110,8 @@ export class Scale {
       return null;
     }
     
-    // Convert pixel to normalized value (0-1)
-    const normalizedValue = (pixel - this.range[0]) / this._rangeExtent;
+    // Convert pixel to normalized value (0-1) using renderer-agnostic system
+    const normalizedValue = this._convertFromPixelRange(pixel);
     
     // Clamp if requested
     const clampedValue = this.options.clamp ? 
@@ -107,6 +133,25 @@ export class Scale {
   }
   
   /**
+   * Convert pixel range to normalized value (renderer-agnostic)
+   */
+  _convertFromPixelRange(pixel) {
+    if (this.coordinateSystem === 'normalized') {
+      if (this.orientation === 'vertical') {
+        // Y-axis: Reverse the transformation applied in _convertToPixelRange
+        const rawNormalized = (pixel - this.range[0]) / this._rangeExtent;
+        return 1 - rawNormalized; // Flip back to mathematical coordinate system
+      } else {
+        // X-axis: Standard left-to-right
+        return (pixel - this.range[0]) / this._rangeExtent;
+      }
+    } else {
+      // Legacy behavior
+      return (pixel - this.range[0]) / this._rangeExtent;
+    }
+  }
+  
+  /**
    * Update the domain (data range)
    */
   setDomain(newDomain) {
@@ -121,6 +166,17 @@ export class Scale {
   setRange(newRange) {
     this.range = [...newRange];
     this._updateInternalState();
+    return this;
+  }
+  
+  /**
+   * NEW: Set coordinate system and orientation
+   */
+  setCoordinateSystem(coordinateSystem, orientation) {
+    this.coordinateSystem = coordinateSystem;
+    if (orientation) {
+      this.orientation = orientation;
+    }
     return this;
   }
   
@@ -153,13 +209,15 @@ export class Scale {
       domain: [...this.domain],
       range: [...this.range],
       dataType: this.dataType,
+      coordinateSystem: this.coordinateSystem,
+      orientation: this.orientation,
       options: { ...this.options },
       ...newConfig
     });
   }
   
   // ========================================================================
-  // PRIVATE SCALING METHODS
+  // PRIVATE SCALING METHODS (unchanged)
   // ========================================================================
   
   /**
@@ -222,7 +280,7 @@ export class Scale {
   }
   
   // ========================================================================
-  // TICK GENERATION
+  // TICK GENERATION (unchanged)
   // ========================================================================
   
   /**
@@ -400,13 +458,14 @@ export class Scale {
 }
 
 /**
- * Utility function to create scales
+ * Utility function to create renderer-agnostic scales
  */
 export function createScale(type, domain, range, options = {}) {
   return new Scale({
     type,
     domain,
     range,
+    coordinateSystem: 'normalized', // Default to normalized coordinate system
     ...options
   });
 }

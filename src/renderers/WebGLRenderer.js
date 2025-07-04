@@ -1,10 +1,10 @@
 import AbstractRenderer from './AbstractRenderer.js';
 
 /**
- * WebGLRenderer - High-performance WebGL implementation of AbstractRenderer
+ * WebGLRenderer - High-performance WebGL implementation (Updated for Unified Coordinates)
  * 
  * Optimized for large datasets (50K+ points) with GPU acceleration.
- * Handles massive financial datasets while maintaining 60fps performance.
+ * NOW WORKS WITH UNIFIED COORDINATE SYSTEM - no more coordinate system inconsistencies!
  */
 export default class WebGLRenderer extends AbstractRenderer {
   constructor(config = {}) {
@@ -23,150 +23,176 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.currentProgram = null;
     this.viewport = { x: 0, y: 0, width: 800, height: 600 };
     
-    // Shader sources
-    this.shaderSources = {
-  line: {
-    vertex: `
-      precision highp float;
-      
-      attribute vec2 a_position;
-      attribute vec4 a_color;
-      
-      uniform vec2 u_resolution;
-      
-      varying vec4 v_color;
-      
-      void main() {
-        // Use high precision for coordinate transformation
-        // a_position comes as screen coordinates (pixels)
-        
-        // Convert pixels to 0-1 range with high precision
-        vec2 normalized = a_position / u_resolution;
-        
-        // Convert to -1 to +1 clip space
-        vec2 clipSpace = (normalized * 2.0) - 1.0;
-        
-        // Flip Y axis (WebGL has Y up, Canvas has Y down)
-        clipSpace.y = -clipSpace.y;
-        
-        // Apply pixel-perfect positioning
-        gl_Position = vec4(clipSpace, 0.0, 1.0);
-        v_color = a_color;
-      }
-    `,
-    fragment: `
-      precision mediump float;
-      varying vec4 v_color;
-      
-      void main() {
-        gl_FragColor = v_color;
-      }
-    `
-  },
-  
-  point: {
-    vertex: `
-      precision highp float;
-      
-      attribute vec2 a_position;
-      attribute vec4 a_color;
-      attribute float a_size;
-      
-      uniform vec2 u_resolution;
-      
-      varying vec4 v_color;
-      
-      void main() {
-        // High precision coordinate transformation
-        vec2 normalized = a_position / u_resolution;
-        vec2 clipSpace = (normalized * 2.0) - 1.0;
-        clipSpace.y = -clipSpace.y;
-        
-        gl_Position = vec4(clipSpace, 0.0, 1.0);
-        gl_PointSize = a_size;
-        v_color = a_color;
-      }
-    `,
-    fragment: `
-      precision mediump float;
-      varying vec4 v_color;
-      
-      void main() {
-        // Create circular points
-        vec2 center = vec2(0.5, 0.5);
-        float dist = distance(gl_PointCoord, center);
-        if (dist > 0.5) discard;
-        
-        gl_FragColor = v_color;
-      }
-    `
-  }
-};
-    console.log('WebGLRenderer created for high-performance rendering');
-  }
-
-  /**
-   * Initialize WebGL context and shaders
-   */
-  async initialize(canvas, dimensions) {
-  try {
-    this.canvas = canvas;
+    // UPDATED: Device pixel ratio handling to match Canvas
     this.devicePixelRatio = window.devicePixelRatio || 1;
     
-    // Store logical dimensions (what coordinate system uses)
-    this.logicalWidth = dimensions.width;
-    this.logicalHeight = dimensions.height;
+    // UPDATED: Canvas and logical dimensions 
+    this.logicalWidth = 800;
+    this.logicalHeight = 600;
+    this.canvasWidth = 800;
+    this.canvasHeight = 600;
     
-    this.viewport = {
-      x: 0,
-      y: 0,
-      width: this.logicalWidth,   
-      height: this.logicalHeight  
+    // UPDATED: Shader sources for unified coordinate system
+    this.shaderSources = {
+      line: {
+        vertex: `
+          precision highp float;
+          
+          attribute vec2 a_position;
+          attribute vec4 a_color;
+          
+          uniform vec2 u_resolution;
+          
+          varying vec4 v_color;
+          
+          void main() {
+            // UNIFIED COORDINATE SYSTEM:
+            // a_position comes as unified coordinates (bottom-left origin, Y-up)
+            // u_resolution is logical canvas dimensions
+            
+            // Convert pixels to 0-1 range with high precision
+            vec2 normalized = a_position / u_resolution;
+            
+            // Convert to -1 to +1 clip space
+            vec2 clipSpace = (normalized * 2.0) - 1.0;
+            
+            // REMOVED: No longer flip Y axis here since unified coordinates 
+            // already provide consistent bottom-up coordinate system
+            // clipSpace.y = -clipSpace.y; // REMOVED
+            
+            // Apply pixel-perfect positioning
+            gl_Position = vec4(clipSpace, 0.0, 1.0);
+            v_color = a_color;
+          }
+        `,
+        fragment: `
+          precision mediump float;
+          varying vec4 v_color;
+          
+          void main() {
+            gl_FragColor = v_color;
+          }
+        `
+      },
+      
+      point: {
+        vertex: `
+          precision highp float;
+          
+          attribute vec2 a_position;
+          attribute vec4 a_color;
+          attribute float a_size;
+          
+          uniform vec2 u_resolution;
+          
+          varying vec4 v_color;
+          
+          void main() {
+            // UNIFIED COORDINATE SYSTEM: Same as line vertex shader
+            vec2 normalized = a_position / u_resolution;
+            vec2 clipSpace = (normalized * 2.0) - 1.0;
+            // No Y-axis flipping needed with unified coordinates
+            
+            gl_Position = vec4(clipSpace, 0.0, 1.0);
+            gl_PointSize = a_size;
+            v_color = a_color;
+          }
+        `,
+        fragment: `
+          precision mediump float;
+          varying vec4 v_color;
+          
+          void main() {
+            // Create circular points
+            vec2 center = vec2(0.5, 0.5);
+            float dist = distance(gl_PointCoord, center);
+            if (dist > 0.5) discard;
+            
+            gl_FragColor = v_color;
+          }
+        `
+      }
     };
-
-    // Get WebGL context with anti-aliasing to match Canvas
-    const contextAttributes = {
-      antialias: true,
-      premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
-      alpha: true
-    };
     
-    this.gl = canvas.getContext('webgl2', contextAttributes) || 
-              canvas.getContext('webgl', contextAttributes);
-    
-    if (!this.gl) {
-      throw new Error('WebGL not supported');
-    }
-
-    console.log('WebGL context initialized with anti-aliasing');
-
-    // Set up WebGL state
-    this._setupWebGLState();
-
-    // Compile shaders
-    await this._compileShaders();
-
-    // Create buffers
-    this._createBuffers();
-
-    this.isInitialized = true;
-    console.log('WebGLRenderer initialization complete');
-
-  } catch (error) {
-    console.error('WebGL initialization failed:', error);
-    throw error;
+    console.log('WebGLRenderer created with unified coordinate system support');
   }
-}
 
   /**
-   * Set up initial WebGL state
+   * UPDATED: Initialize WebGL context with standardized DPI handling
+   */
+  async initialize(canvas, dimensions) {
+    try {
+      this.canvas = canvas;
+      
+      // UPDATED: Standardized DPI handling to match Canvas renderer
+      this.devicePixelRatio = window.devicePixelRatio || 1;
+      
+      // Store logical dimensions (coordinate system uses these)
+      this.logicalWidth = dimensions.width;
+      this.logicalHeight = dimensions.height;
+      
+      // UPDATED: Set actual canvas size in memory (scaled up for high DPI)
+      this.canvasWidth = dimensions.width * this.devicePixelRatio;
+      this.canvasHeight = dimensions.height * this.devicePixelRatio;
+      
+      // Set canvas dimensions to match Canvas renderer approach
+      this.canvas.width = this.canvasWidth;
+      this.canvas.height = this.canvasHeight;
+      
+      // Scale CSS size back to logical dimensions
+      this.canvas.style.width = this.logicalWidth + 'px';
+      this.canvas.style.height = this.logicalHeight + 'px';
+      
+      this.viewport = {
+        x: 0,
+        y: 0,
+        width: this.logicalWidth,   
+        height: this.logicalHeight  
+      };
+
+      // Get WebGL context with anti-aliasing to match Canvas
+      const contextAttributes = {
+        antialias: true,
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: false,
+        alpha: true
+      };
+      
+      this.gl = canvas.getContext('webgl2', contextAttributes) || 
+                canvas.getContext('webgl', contextAttributes);
+      
+      if (!this.gl) {
+        throw new Error('WebGL not supported');
+      }
+
+      console.log(`WebGL context initialized with unified coordinates and DPI handling: ${this.logicalWidth}x${this.logicalHeight} @ ${this.devicePixelRatio}x`);
+
+      // Set up WebGL state
+      this._setupWebGLState();
+
+      // Compile shaders
+      await this._compileShaders();
+
+      // Create buffers
+      this._createBuffers();
+
+      this.isInitialized = true;
+      console.log('WebGLRenderer initialization complete with unified coordinate system');
+
+    } catch (error) {
+      console.error('WebGL initialization failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * UPDATED: Set up initial WebGL state with proper viewport
    */
   _setupWebGLState() {
     const gl = this.gl;
 
-    // Set viewport to actual canvas size (includes device pixel ratio)
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    // UPDATED: Set viewport to physical canvas size (includes device pixel ratio)
+    gl.viewport(0, 0, this.canvasWidth, this.canvasHeight);
     
     // Enable blending for transparency
     gl.enable(gl.BLEND);
@@ -174,7 +200,7 @@ export default class WebGLRenderer extends AbstractRenderer {
 
     // Set clear color
     gl.clearColor(0.0, 0.0, 0.0, 0.0); // Transparent
-    }
+  }
 
   /**
    * Compile all shader programs
@@ -183,7 +209,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     for (const [name, sources] of Object.entries(this.shaderSources)) {
       const program = this._createShaderProgram(sources.vertex, sources.fragment);
       this.programs.set(name, program);
-      console.log(`Shader program '${name}' compiled successfully`);
+      console.log(`Shader program '${name}' compiled for unified coordinates`);
     }
   }
 
@@ -268,7 +294,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     // Size buffer (for points)
     this.buffers.set('size', gl.createBuffer());
 
-    console.log('WebGL buffers created');
+    console.log('WebGL buffers created for unified coordinate system');
   }
 
   /**
@@ -287,173 +313,128 @@ export default class WebGLRenderer extends AbstractRenderer {
   setViewport(viewport) {
     this.viewport = { ...viewport };
     
-    if (this.isInitialized) {
-      this.gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+    // Note: WebGL viewport is set during initialization and doesn't need to change
+    // since clipping is handled at the coordinate level
+  }
+
+  /**
+   * UPDATED: Render line paths using unified coordinate system
+   */
+  async renderLines(generatedPaths, scales, options = {}) {
+    if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
+      return;
+    }
+
+    const gl = this.gl;
+    const program = this.programs.get('line');
+    
+    if (!program) {
+      console.error('Line shader program not found');
+      return;
+    }
+
+    try {
+      // Use line shader program
+      gl.useProgram(program);
+      this.currentProgram = program;
+
+      // UPDATED: Set uniforms with logical canvas dimensions
+      this._setUniforms(program, scales);
+
+      // Render each standardized path using unified coordinates
+      for (const pathData of generatedPaths) {
+        if (!pathData.vertices || pathData.vertices.length === 0) continue;
+
+        await this._renderUnifiedPath(pathData, options);
+      }
+
+      console.log(`WebGL rendered ${generatedPaths.length} paths using UNIFIED coordinates`);
+
+    } catch (error) {
+      console.error('Error rendering lines with WebGL:', error);
     }
   }
 
   /**
- * Render line paths using standardized path data from PathGenerator
- */
-async renderLines(generatedPaths, scales, options = {}) {
-  if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
-    return;
-  }
+   * UPDATED: Render a single path using UNIFIED coordinate system
+   */
+  async _renderUnifiedPath(pathData, options) {
+    const gl = this.gl;
+    const program = this.currentProgram;
 
-  const gl = this.gl;
-  const program = this.programs.get('line');
-  
-  if (!program) {
-    console.error('Line shader program not found');
-    return;
-  }
-
-  try {
-    // Use line shader program
-    gl.useProgram(program);
-    this.currentProgram = program;
-
-    // Set uniforms
-    this._setUniforms(program, scales);
-
-    // Render each standardized path
-    for (const pathData of generatedPaths) {
-      if (!pathData.vertices || pathData.vertices.length === 0) continue;
-
-      await this._renderStandardizedPath(pathData, options);
-    }
-
-  } catch (error) {
-    console.error('Error rendering lines with WebGL:', error);
-  }
-}
-
-/**
- * Render a single standardized path using WebGL
- */
-async _renderStandardizedPath(pathData, options) {
-  const gl = this.gl;
-  const program = this.currentProgram;
-
-  // Convert standardized path data to WebGL format
-  const webglData = this._convertPathToWebGLData(pathData);
-  
-  if (webglData.positions.length === 0) return;
-
-  // Set line width to match Canvas exactly
-  const lineWidth = pathData.lineWidth || 2;
-  gl.lineWidth(lineWidth);
-
-  // Upload position data - use standardized vertices directly!
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(webglData.positions), gl.STATIC_DRAW);
-  
-  // Enable position attribute
-  const positionLocation = program.attributes.a_position;
-  gl.enableVertexAttribArray(positionLocation);
-  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-  // Upload color data
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(webglData.colors), gl.STATIC_DRAW);
-  
-  // Enable color attribute
-  const colorLocation = program.attributes.a_color;
-  gl.enableVertexAttribArray(colorLocation);
-  gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
-
-  // Render as line strip
-  const vertexCount = webglData.positions.length / 2;
-  
-  if (vertexCount > this.maxVertices) {
-    // Render in batches for very large datasets
-    await this._renderInBatches(vertexCount, gl.LINE_STRIP);
-  } else {
-    gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
-  }
-  
-  console.log(`WebGL rendered standardized path with ${vertexCount} vertices and line width ${lineWidth}`);
-}
-
-/**
- * Convert standardized path data to WebGL vertex format
- */
-_convertPathToWebGLData(pathData) {
-  const positions = [];
-  const colors = [];
-
-  const vertices = pathData.vertices;
-  const pathColors = pathData.colors;
-
-  for (let i = 0; i < vertices.length; i++) {
-    const vertex = vertices[i];
+    // UPDATED: Convert unified path data to WebGL format
+    const webglData = this._convertUnifiedPathToWebGL(pathData);
     
-    // Use standardized pixel coordinates directly!
-    if (vertex.x != null && vertex.y != null && isFinite(vertex.x) && isFinite(vertex.y)) {
-      // Add position (screen coordinates in pixels)
-      positions.push(vertex.x, vertex.y);
+    if (webglData.positions.length === 0) return;
 
-      // Add color - use path color or default
-      let color;
-      if (pathColors && pathColors[i]) {
-        color = pathColors[i];
-      } else {
-        color = this._parseColor(pathData.color || '#1468a8');
-      }
-      
-      colors.push(color.r, color.g, color.b, color.a);
+    // Set line width to match Canvas exactly
+    const lineWidth = pathData.lineWidth || 2;
+    gl.lineWidth(lineWidth);
+
+    // Upload position data - UNIFIED coordinates used directly!
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(webglData.positions), gl.STATIC_DRAW);
+    
+    // Enable position attribute
+    const positionLocation = program.attributes.a_position;
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    // Upload color data
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(webglData.colors), gl.STATIC_DRAW);
+    
+    // Enable color attribute
+    const colorLocation = program.attributes.a_color;
+    gl.enableVertexAttribArray(colorLocation);
+    gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
+
+    // Render as line strip
+    const vertexCount = webglData.positions.length / 2;
+    
+    if (vertexCount > this.maxVertices) {
+      // Render in batches for very large datasets
+      await this._renderInBatches(vertexCount, gl.LINE_STRIP);
+    } else {
+      gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
     }
+    
+    console.log(`WebGL rendered unified path with ${vertexCount} vertices using line width ${lineWidth}`);
   }
 
-  return { positions, colors };
-}
+  /**
+   * UPDATED: Convert unified path data to WebGL vertex format
+   */
+  _convertUnifiedPathToWebGL(pathData) {
+    const positions = [];
+    const colors = [];
 
- /**
- * Render a single line dataset
- */
-async _renderLineDataset(dataset, scales, options) {
-  const gl = this.gl;
-  const program = this.currentProgram;
+    const vertices = pathData.vertices;
+    const pathColors = pathData.colors;
 
-  // Convert data to vertices
-  const vertices = this._convertDataToVertices(dataset.data, scales);
-  
-  if (vertices.positions.length === 0) return;
+    for (let i = 0; i < vertices.length; i++) {
+      const vertex = vertices[i];
+      
+      // UNIFIED COORDINATES: Use vertex coordinates directly!
+      // These are already in the correct coordinate system (bottom-left, Y-up)
+      if (vertex.x != null && vertex.y != null && isFinite(vertex.x) && isFinite(vertex.y)) {
+        // Add position (unified coordinates in pixels)
+        positions.push(vertex.x, vertex.y);
 
-  // Set line width to match Canvas exactly
-  const lineWidth = dataset.width || options.strokeWidth || 2;
-  gl.lineWidth(lineWidth);
+        // Add color - use path color or default
+        let color;
+        if (pathColors && pathColors[i]) {
+          color = pathColors[i];
+        } else {
+          color = this._parseColor(pathData.color || '#1468a8');
+        }
+        
+        colors.push(color.r, color.g, color.b, color.a);
+      }
+    }
 
-  // Upload position data
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices.positions), gl.STATIC_DRAW);
-  
-  // Enable position attribute
-  const positionLocation = program.attributes.a_position;
-  gl.enableVertexAttribArray(positionLocation);
-  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-  // Upload color data
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices.colors), gl.STATIC_DRAW);
-  
-  // Enable color attribute
-  const colorLocation = program.attributes.a_color;
-  gl.enableVertexAttribArray(colorLocation);
-  gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
-
-  // Render as line strip
-  const vertexCount = vertices.positions.length / 2;
-  
-  if (vertexCount > this.maxVertices) {
-    // Render in batches for very large datasets
-    await this._renderInBatches(vertexCount, gl.LINE_STRIP);
-  } else {
-    gl.drawArrays(gl.LINE_STRIP, 0, vertexCount);
+    return { positions, colors };
   }
-  
-  console.log(`WebGL rendered ${vertexCount} vertices with line width ${lineWidth}`);
-}
 
   /**
    * Render bars (simplified implementation for large datasets)
@@ -468,16 +449,17 @@ async _renderLineDataset(dataset, scales, options) {
   }
 
   /**
- * Set shader uniforms
- */
-_setUniforms(program, scales) {
-  const gl = this.gl;
+   * UPDATED: Set shader uniforms with logical canvas dimensions
+   */
+  _setUniforms(program, scales) {
+    const gl = this.gl;
 
-  // Pass logical canvas resolution (not physical resolution)
-  if (program.uniforms.u_resolution) {
-    gl.uniform2f(program.uniforms.u_resolution, this.logicalWidth, this.logicalHeight);
+    // UPDATED: Pass logical canvas resolution (coordinate system dimensions)
+    // This ensures consistent coordinate transformation between Canvas and WebGL
+    if (program.uniforms.u_resolution) {
+      gl.uniform2f(program.uniforms.u_resolution, this.logicalWidth, this.logicalHeight);
+    }
   }
-}
 
   /**
    * Render large datasets in batches
@@ -522,7 +504,7 @@ _setUniforms(program, scales) {
   update(datasets) {
     // For WebGL, we can optimize by only updating changed buffers
     // This is a simplified implementation
-    console.log('WebGL renderer update - will re-render on next render call');
+    console.log('WebGL renderer update with unified coordinates - will re-render on next render call');
   }
 
   /**
@@ -535,7 +517,8 @@ _setUniforms(program, scales) {
       'large-datasets',
       'gpu-acceleration',
       'batched-rendering',
-      'hardware-blending'
+      'hardware-blending',
+      'unified-coordinates'
     ];
   }
 
@@ -549,7 +532,9 @@ _setUniforms(program, scales) {
       gpuAccelerated: true,
       memoryUsage: 'high',
       idealDatasetSize: 50000,
-      batchSize: this.batchSize
+      batchSize: this.batchSize,
+      coordinateSystem: 'unified',
+      devicePixelRatio: this.devicePixelRatio
     };
   }
 

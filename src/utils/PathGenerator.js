@@ -1,10 +1,10 @@
 /**
- * PathGenerator - Enhanced multi-renderer path generation utility
+ * PathGenerator - Enhanced multi-renderer path generation utility (Updated)
  * 
  * Handles line and area path generation for Canvas and WebGL renderers
  * with various interpolation methods and performance optimizations.
  * 
- * Takes pixel coordinates from CoordinateSystem and generates standardized
+ * NOW WORKS WITH UNIFIED COORDINATE SYSTEM - generates standardized
  * rendering primitives that both Canvas and WebGL can consume identically.
  */
 
@@ -14,6 +14,9 @@ export class PathGenerator {
       // Curve interpolation options
       curve: 'linear', // 'linear', 'step', 'cardinal', 'monotone'
       
+      // NEW: Renderer awareness for coordinate system optimization
+      targetRenderer: 'auto', // 'canvas', 'webgl', 'auto'
+      
       // Performance options
       batchSize: 1000,
       enableOptimization: true,
@@ -22,13 +25,18 @@ export class PathGenerator {
       smoothing: 0.5, // For cardinal/monotone curves
       tension: 0.4,   // For cardinal curves
       
+      // NEW: Coordinate system validation
+      enableCoordinateValidation: true,
+      
       ...config
     };
+    
+    console.log('PathGenerator created with unified coordinate system support');
   }
 
   /**
    * Generate standardized path data for multiple datasets
-   * @param {Array} datasets - Datasets with pixel coordinates (screenX, screenY)
+   * @param {Array} datasets - Datasets with UNIFIED coordinates (unifiedX, unifiedY)
    * @param {Object} options - Path generation options
    * @returns {Array} Array of standardized path objects
    */
@@ -43,13 +51,13 @@ export class PathGenerator {
     try {
       for (let i = 0; i < datasets.length; i++) {
         const dataset = datasets[i];
-        console.log(`PathGenerator: Processing dataset ${i + 1}/${datasets.length}: ${dataset.name || dataset.id || 'Unknown'}`);
+        console.log(`PathGenerator: Processing dataset ${i + 1}/${datasets.length} with UNIFIED coordinates: ${dataset.name || dataset.id || 'Unknown'}`);
         
         const pathData = await this.generatePath(dataset, pathOptions);
         generatedPaths.push(pathData);
       }
 
-      console.log(`PathGenerator: Generated ${generatedPaths.length} standardized paths`);
+      console.log(`PathGenerator: Generated ${generatedPaths.length} standardized paths from UNIFIED coordinates`);
       return generatedPaths;
 
     } catch (error) {
@@ -60,7 +68,7 @@ export class PathGenerator {
 
   /**
    * Generate standardized path data for a single dataset
-   * @param {Object} dataset - Dataset with pixel coordinates
+   * @param {Object} dataset - Dataset with UNIFIED coordinates
    * @param {Object} options - Path generation options
    * @returns {Object} Standardized path object
    */
@@ -72,16 +80,21 @@ export class PathGenerator {
     const pathOptions = { ...this.config, ...options };
     const data = dataset.data;
 
-    // Extract valid pixel coordinates
-    const pixelPoints = this._extractPixelCoordinates(data);
+    // UPDATED: Extract UNIFIED coordinates instead of mixed coordinate fields
+    const unifiedPoints = this._extractUnifiedCoordinates(data);
     
-    if (pixelPoints.length === 0) {
-      console.warn('No valid pixel coordinates found in dataset');
+    if (unifiedPoints.length === 0) {
+      console.warn('No valid unified coordinates found in dataset');
       return this._createEmptyPath(dataset);
     }
 
+    // Validate coordinates if enabled
+    if (pathOptions.enableCoordinateValidation) {
+      this._validateUnifiedCoordinates(unifiedPoints, dataset.name || dataset.id);
+    }
+
     // Generate vertices based on curve type
-    const vertices = await this._generateVertices(pixelPoints, pathOptions);
+    const vertices = await this._generateVertices(unifiedPoints, pathOptions);
     
     // Generate colors for each vertex
     const colors = this._generateColors(vertices, dataset, pathOptions);
@@ -94,7 +107,7 @@ export class PathGenerator {
       color: dataset.color,
       
       // Geometry data (standardized for both Canvas and WebGL)
-      vertices: vertices,           // Array of {x, y} coordinates
+      vertices: vertices,           // Array of {x, y} unified coordinates
       colors: colors,              // Array of {r, g, b, a} colors
       
       // Rendering hints
@@ -102,68 +115,110 @@ export class PathGenerator {
       curveType: pathOptions.curve,
       vertexCount: vertices.length,
       
+      // NEW: Coordinate system metadata
+      coordinateSystem: 'unified',
+      targetRenderer: pathOptions.targetRenderer,
+      
       // Original dataset reference
       originalDataset: dataset,
       
       // Path generation metadata
       generatedAt: Date.now(),
-      pixelPointCount: pixelPoints.length
+      unifiedPointCount: unifiedPoints.length
     };
 
-    console.log(`PathGenerator: Generated path for ${dataset.name || dataset.id} with ${vertices.length} vertices`);
+    console.log(`PathGenerator: Generated unified path for ${dataset.name || dataset.id} with ${vertices.length} vertices`);
     return pathData;
   }
 
   /**
-   * Extract pixel coordinates from dataset
+   * UPDATED: Extract UNIFIED coordinates from dataset
    * @private
    */
-  _extractPixelCoordinates(data) {
-    const pixelPoints = [];
+  _extractUnifiedCoordinates(data) {
+    const unifiedPoints = [];
 
     for (let i = 0; i < data.length; i++) {
       const point = data[i];
       
-      // Use pre-calculated pixel coordinates from CoordinateSystem
-      const x = point.screenX;
-      const y = point.screenY;
+      // UPDATED: Use UNIFIED coordinates from CoordinateSystem transformation
+      const x = point.unifiedX || point.screenX || point.pixelX;
+      const y = point.unifiedY || point.screenY || point.pixelY;
 
       if (x != null && y != null && isFinite(x) && isFinite(y)) {
-        pixelPoints.push({
+        unifiedPoints.push({
           x: x,
           y: y,
           originalIndex: i,
-          originalPoint: point
+          originalPoint: point,
+          // NEW: Include coordinate system metadata
+          coordinateSystem: point.coordinateSystem || 'unified'
         });
       }
     }
 
-    return pixelPoints;
+    return unifiedPoints;
+  }
+
+  /**
+   * NEW: Validate unified coordinates for consistency
+   * @private
+   */
+  _validateUnifiedCoordinates(unifiedPoints, datasetName) {
+    if (unifiedPoints.length === 0) return;
+
+    let inconsistentCount = 0;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (const point of unifiedPoints) {
+      // Check coordinate system consistency
+      if (point.coordinateSystem && point.coordinateSystem !== 'unified') {
+        inconsistentCount++;
+      }
+
+      // Track coordinate bounds
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+
+    // Log validation results
+    if (inconsistentCount > 0) {
+      console.warn(`PathGenerator: ${inconsistentCount} points in ${datasetName} have inconsistent coordinate systems`);
+    }
+
+    console.log(`PathGenerator: Unified coordinates validated for ${datasetName}:`, {
+      pointCount: unifiedPoints.length,
+      bounds: { minX, maxX, minY, maxY },
+      inconsistentCount
+    });
   }
 
   /**
    * Generate vertices based on curve type
    * @private
    */
-  async _generateVertices(pixelPoints, options) {
+  async _generateVertices(unifiedPoints, options) {
     const vertices = [];
 
     switch (options.curve) {
       case 'linear':
-        return this._generateLinearVertices(pixelPoints);
+        return this._generateLinearVertices(unifiedPoints);
         
       case 'step':
-        return this._generateStepVertices(pixelPoints);
+        return this._generateStepVertices(unifiedPoints);
         
       case 'cardinal':
-        return await this._generateCardinalVertices(pixelPoints, options);
+        return await this._generateCardinalVertices(unifiedPoints, options);
         
       case 'monotone':
-        return await this._generateMonotoneVertices(pixelPoints, options);
+        return await this._generateMonotoneVertices(unifiedPoints, options);
         
       default:
         console.warn(`Unknown curve type: ${options.curve}, falling back to linear`);
-        return this._generateLinearVertices(pixelPoints);
+        return this._generateLinearVertices(unifiedPoints);
     }
   }
 
@@ -171,9 +226,9 @@ export class PathGenerator {
    * Generate linear interpolation vertices
    * @private
    */
-  _generateLinearVertices(pixelPoints) {
-    // For linear, just return the pixel points as-is
-    return pixelPoints.map(point => ({
+  _generateLinearVertices(unifiedPoints) {
+    // For linear, just return the unified points as-is
+    return unifiedPoints.map(point => ({
       x: point.x,
       y: point.y
     }));
@@ -183,18 +238,18 @@ export class PathGenerator {
    * Generate step interpolation vertices
    * @private
    */
-  _generateStepVertices(pixelPoints) {
-    if (pixelPoints.length === 0) return [];
+  _generateStepVertices(unifiedPoints) {
+    if (unifiedPoints.length === 0) return [];
     
     const vertices = [];
     
     // First point
-    vertices.push({ x: pixelPoints[0].x, y: pixelPoints[0].y });
+    vertices.push({ x: unifiedPoints[0].x, y: unifiedPoints[0].y });
     
     // Generate step segments
-    for (let i = 1; i < pixelPoints.length; i++) {
-      const prevPoint = pixelPoints[i - 1];
-      const currentPoint = pixelPoints[i];
+    for (let i = 1; i < unifiedPoints.length; i++) {
+      const prevPoint = unifiedPoints[i - 1];
+      const currentPoint = unifiedPoints[i];
       
       // Horizontal line to current x
       vertices.push({ x: currentPoint.x, y: prevPoint.y });
@@ -210,22 +265,22 @@ export class PathGenerator {
    * Generate cardinal spline vertices
    * @private
    */
-  async _generateCardinalVertices(pixelPoints, options) {
-    if (pixelPoints.length < 2) return this._generateLinearVertices(pixelPoints);
+  async _generateCardinalVertices(unifiedPoints, options) {
+    if (unifiedPoints.length < 2) return this._generateLinearVertices(unifiedPoints);
     
     const vertices = [];
     const tension = options.tension || 0.4;
     const segments = 10; // Subdivisions per curve segment
     
     // Add first point
-    vertices.push({ x: pixelPoints[0].x, y: pixelPoints[0].y });
+    vertices.push({ x: unifiedPoints[0].x, y: unifiedPoints[0].y });
     
     // Generate cardinal spline segments
-    for (let i = 0; i < pixelPoints.length - 1; i++) {
-      const p0 = pixelPoints[Math.max(0, i - 1)];
-      const p1 = pixelPoints[i];
-      const p2 = pixelPoints[i + 1];
-      const p3 = pixelPoints[Math.min(pixelPoints.length - 1, i + 2)];
+    for (let i = 0; i < unifiedPoints.length - 1; i++) {
+      const p0 = unifiedPoints[Math.max(0, i - 1)];
+      const p1 = unifiedPoints[i];
+      const p2 = unifiedPoints[i + 1];
+      const p3 = unifiedPoints[Math.min(unifiedPoints.length - 1, i + 2)];
       
       // Generate curve points
       for (let t = 0; t <= segments; t++) {
@@ -273,10 +328,10 @@ export class PathGenerator {
    * Generate monotone interpolation vertices
    * @private
    */
-  async _generateMonotoneVertices(pixelPoints, options) {
+  async _generateMonotoneVertices(unifiedPoints, options) {
     // Simplified monotone cubic interpolation
     // For now, fall back to linear with some smoothing
-    return this._generateLinearVertices(pixelPoints);
+    return this._generateLinearVertices(unifiedPoints);
   }
 
   /**
@@ -332,10 +387,28 @@ export class PathGenerator {
       lineWidth: dataset.width || 2,
       curveType: 'linear',
       vertexCount: 0,
+      coordinateSystem: 'unified',
+      targetRenderer: this.config.targetRenderer,
       originalDataset: dataset,
       generatedAt: Date.now(),
-      pixelPointCount: 0
+      unifiedPointCount: 0
     };
+  }
+
+  /**
+   * NEW: Set target renderer for path generation optimization
+   */
+  setTargetRenderer(renderer) {
+    const validRenderers = ['canvas', 'webgl', 'auto'];
+    
+    if (validRenderers.includes(renderer)) {
+      this.config.targetRenderer = renderer;
+      console.log(`PathGenerator target renderer set to: ${renderer}`);
+    } else {
+      console.warn(`Invalid target renderer: ${renderer}. Valid renderers: ${validRenderers.join(', ')}`);
+    }
+    
+    return this;
   }
 
   /**
@@ -355,11 +428,46 @@ export class PathGenerator {
   }
 
   /**
+   * NEW: Enable/disable coordinate validation
+   */
+  setCoordinateValidation(enabled) {
+    this.config.enableCoordinateValidation = enabled;
+    console.log(`PathGenerator coordinate validation: ${enabled ? 'enabled' : 'disabled'}`);
+    return this;
+  }
+
+  /**
+   * NEW: Get path generation statistics
+   */
+  getGenerationStats() {
+    return {
+      config: this.config,
+      coordinateSystem: 'unified',
+      targetRenderer: this.config.targetRenderer,
+      validationEnabled: this.config.enableCoordinateValidation
+    };
+  }
+
+  /**
    * Create PathGenerator with specific configuration
    */
   static create(curveType = 'linear', options = {}) {
     return new PathGenerator({
       curve: curveType,
+      targetRenderer: 'auto',
+      enableCoordinateValidation: true,
+      ...options
+    });
+  }
+
+  /**
+   * NEW: Create PathGenerator for specific renderer
+   */
+  static createForRenderer(renderer, curveType = 'linear', options = {}) {
+    return new PathGenerator({
+      curve: curveType,
+      targetRenderer: renderer,
+      enableCoordinateValidation: true,
       ...options
     });
   }
