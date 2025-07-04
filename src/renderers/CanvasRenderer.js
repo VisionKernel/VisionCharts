@@ -334,64 +334,60 @@ export default class CanvasRenderer extends AbstractRenderer {
    * UPDATED: Render a single bar using unified coordinates
    */
   _renderUnifiedBar(ctx, x, y, barInfo, datasetIndex, pointIndex, scales) {
-    // Calculate bar position and size using unified coordinates
-    const barX = x - (barInfo.width / 2);
-    
-    // UNIFIED COORDINATES: Calculate baseline using unified coordinate system
-    // The baseline should be at the bottom of the chart area in unified coordinates
-    const chartArea = scales.y.range; // [bottom, top] in unified coordinates
-    const baselineY = chartArea[0]; // Bottom of chart area
-    const barHeight = Math.abs(y - baselineY);
-    const barY = Math.min(y, baselineY);
-    
-    // Handle multiple datasets - offset bars horizontally
-    const totalDatasets = barInfo.totalDatasets;
-    let adjustedBarX = barX;
-    let adjustedBarWidth = barInfo.width;
-    
-    if (totalDatasets > 1) {
-      adjustedBarWidth = barInfo.width / totalDatasets;
-      adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
-    }
-    
-    // Ensure minimum bar height for visibility
-    const minBarHeight = Math.max(barHeight, 1);
-    
-    // DEBUG: Log first few bars to verify unified coordinates
-    if (pointIndex < 3) {
-      console.log('Unified bar render:', {
-        pointIndex,
-        x, y,
-        baselineY,
-        barHeight,
-        barY,
-        barWidth: adjustedBarWidth,
-        chartBottom: chartArea[0],
-        chartTop: chartArea[1]
-      });
-    }
-    
-    // UPDATED: Convert unified coordinates to Canvas coordinates for rendering
-    const canvasBarCoords = this._convertUnifiedToCanvas({ x: adjustedBarX, y: barY });
-    
-    // Draw the bar
-    ctx.fillRect(
-      Math.round(canvasBarCoords.x),
-      Math.round(canvasBarCoords.y),
+  // Calculate bar position and size using unified coordinates
+  const barX = x - (barInfo.width / 2);
+  
+  // FIXED: For Canvas coordinate system, baseline should be at the bottom of chart area
+  const chartArea = scales.y.range; // [top, bottom] in Canvas coordinates
+  const baselineY = chartArea[1]; // Bottom of chart area (higher Y value in Canvas)
+  const barHeight = Math.abs(baselineY - y); // Height from baseline to data point
+  const barY = Math.min(y, baselineY); // Top of the bar
+  
+  // Handle multiple datasets - offset bars horizontally
+  const totalDatasets = barInfo.totalDatasets;
+  let adjustedBarX = barX;
+  let adjustedBarWidth = barInfo.width;
+  
+  if (totalDatasets > 1) {
+    adjustedBarWidth = barInfo.width / totalDatasets;
+    adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
+  }
+  
+  // Ensure minimum bar height for visibility
+  const minBarHeight = Math.max(barHeight, 1);
+  
+  // DEBUG: Log first few bars to verify coordinates
+  if (pointIndex < 3) {
+    console.log('Canvas bar render:', {
+      pointIndex,
+      x, y,
+      baselineY,
+      barHeight,
+      barY,
+      barWidth: adjustedBarWidth,
+      chartTop: chartArea[0],
+      chartBottom: chartArea[1]
+    });
+  }
+  
+  // Draw the bar (no coordinate conversion needed since we're already in Canvas coords)
+  ctx.fillRect(
+    Math.round(adjustedBarX),
+    Math.round(barY),
+    Math.round(adjustedBarWidth),
+    Math.round(minBarHeight)
+  );
+  
+  // Optional: Add border
+  if (barInfo.showBorder) {
+    ctx.strokeRect(
+      Math.round(adjustedBarX),
+      Math.round(barY),
       Math.round(adjustedBarWidth),
       Math.round(minBarHeight)
     );
-    
-    // Optional: Add border
-    if (barInfo.showBorder) {
-      ctx.strokeRect(
-        Math.round(canvasBarCoords.x),
-        Math.round(canvasBarCoords.y),
-        Math.round(adjustedBarWidth),
-        Math.round(minBarHeight)
-      );
-    }
   }
+}
 
   /**
    * UPDATED: Calculate bar dimensions using unified coordinates
