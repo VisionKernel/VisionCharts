@@ -56,9 +56,7 @@ export default class WebGLRenderer extends AbstractRenderer {
             // Convert to -1 to +1 clip space
             vec2 clipSpace = (normalized * 2.0) - 1.0;
             
-            // REMOVED: No longer flip Y axis here since unified coordinates 
-            // already provide consistent bottom-up coordinate system
-            // clipSpace.y = -clipSpace.y; // REMOVED
+            clipSpace.y = -clipSpace.y;
             
             // Apply pixel-perfect positioning
             gl_Position = vec4(clipSpace, 0.0, 1.0);
