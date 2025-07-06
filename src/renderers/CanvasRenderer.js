@@ -1,4 +1,5 @@
 import AbstractRenderer from './AbstractRenderer.js';
+import { ColorUtils } from '../utils/ColorUtils.js';
 
 /**
  * CanvasRenderer - HTML5 Canvas implementation (Updated for Unified Coordinates)
@@ -153,11 +154,13 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Render a single path using UNIFIED coordinate system
+   * UPDATED: Render a single path using unified coordinate system with improved colors
    */
   async _renderUnifiedPath(ctx, pathData, options, pathIndex) {
-    // Set line style from path data
-    ctx.strokeStyle = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
+    // UPDATED: Use shared color utilities for consistent color handling
+    const color = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
+    
+    ctx.strokeStyle = color;
     ctx.lineWidth = pathData.lineWidth || 2;
     ctx.globalAlpha = 1.0; // Could be made configurable
 
@@ -167,11 +170,7 @@ export default class CanvasRenderer extends AbstractRenderer {
     const vertices = pathData.vertices;
     if (vertices.length === 0) return;
 
-    // UNIFIED COORDINATES: Use vertex coordinates directly!
-    // These are already in the correct coordinate system and have been
-    // converted by the CoordinateSystem to work with Canvas's coordinate system
-    
-    // UPDATED: Apply coordinate system conversion for Canvas
+    // Use vertex coordinates directly (unified coordinate system)
     const canvasCoords = this._convertUnifiedToCanvas(vertices[0]);
     ctx.moveTo(canvasCoords.x, canvasCoords.y);
 
@@ -194,7 +193,7 @@ export default class CanvasRenderer extends AbstractRenderer {
       await this._renderUnifiedPathPoints(ctx, pathData, options);
     }
 
-    console.log(`Canvas rendered unified path with ${vertices.length} vertices`);
+    console.log(`Canvas rendered unified path with ${vertices.length} vertices using color ${color}`);
   }
 
   /**
@@ -242,23 +241,33 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * Format color for Canvas context
+   * Format color for Canvas context using shared ColorUtils (UPDATED)
    */
   _formatColorForCanvas(color) {
+    if (!color) {
+      return ColorUtils.toCanvasColor(ColorUtils.parseColor(ColorUtils.getDefaultColor(0)));
+    }
+    
     if (typeof color === 'string') {
-      return color; // Already in hex format
+      // Parse string color and convert to Canvas format
+      const parsedColor = ColorUtils.parseColor(color);
+      return ColorUtils.toCanvasColor(parsedColor);
     }
     
     if (color && typeof color === 'object' && 'r' in color) {
-      // Convert normalized RGBA to CSS format
-      const r = Math.round(color.r * 255);
-      const g = Math.round(color.g * 255);
-      const b = Math.round(color.b * 255);
-      const a = color.a || 1.0;
-      return `rgba(${r}, ${g}, ${b}, ${a})`;
+      // Already normalized RGBA object
+      return ColorUtils.toCanvasColor(color);
     }
     
-    return null;
+    // Fallback to default color
+    return ColorUtils.toCanvasColor(ColorUtils.parseColor(ColorUtils.getDefaultColor(0)));
+  }
+
+  /**
+   * Get default color using shared ColorUtils (UPDATED)
+   */
+  _getDefaultColor(index) {
+    return ColorUtils.getDefaultColor(index);
   }
 
   /**
@@ -440,21 +449,10 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * Get default color for dataset by index
+   * Get default color using shared ColorUtils (UPDATED)
    */
   _getDefaultColor(index) {
-    const colors = [
-      '#1468a8', // Blue
-      '#34A853', // Green
-      '#FBBC05', // Yellow
-      '#EA4335', // Red
-      '#9C27B0', // Purple
-      '#00ACC1', // Cyan
-      '#FF9800', // Orange
-      '#607D8B'  // Blue Grey
-    ];
-
-    return colors[index % colors.length];
+    return ColorUtils.getDefaultColor(index);
   }
 
   /**

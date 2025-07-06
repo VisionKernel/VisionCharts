@@ -931,6 +931,37 @@ export class Chart {
   }
   
   /**
+   * Update the color of a specific dataset (efficient, no full update)
+   * @param {string} datasetId - ID of the dataset to update
+   * @param {string} newColor - New color value (any format supported by ColorUtils)
+   * @returns {boolean} Success status
+   */
+  updateDatasetColor(datasetId, newColor) {
+    try {
+      const dataset = this.config.data.find(d => d.id === datasetId);
+      
+      if (!dataset) {
+        console.warn(`Dataset with ID ${datasetId} not found`);
+        return false;
+      }
+      
+      // Update dataset color
+      dataset.color = newColor;
+      
+      console.log(`Updated dataset ${datasetId} color to ${newColor}`);
+      
+      // Efficient re-render (just visual update, no data processing)
+      this.render();
+      
+      return true;
+      
+    } catch (error) {
+      console.error('Error updating dataset color:', error);
+      return false;
+    }
+  }
+  
+  /**
    * Destroy the chart and clean up resources
    */
   destroy() {

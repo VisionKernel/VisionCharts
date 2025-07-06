@@ -1,5 +1,5 @@
 import AbstractRenderer from './AbstractRenderer.js';
-
+import { ColorUtils } from '../utils/ColorUtils.js';
 /**
  * WebGLRenderer - High-performance WebGL implementation (Updated for Unified Coordinates)
  * 
@@ -401,7 +401,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Convert unified path data to WebGL vertex format
+   * UPDATED: Convert unified path data to WebGL vertex format with improved color handling
    */
   _convertUnifiedPathToWebGL(pathData) {
     const positions = [];
@@ -414,17 +414,18 @@ export default class WebGLRenderer extends AbstractRenderer {
       const vertex = vertices[i];
       
       // UNIFIED COORDINATES: Use vertex coordinates directly!
-      // These are already in the correct coordinate system (bottom-left, Y-up)
       if (vertex.x != null && vertex.y != null && isFinite(vertex.x) && isFinite(vertex.y)) {
         // Add position (unified coordinates in pixels)
         positions.push(vertex.x, vertex.y);
 
-        // Add color - use path color or default
+        // UPDATED: Improved color handling using ColorUtils
         let color;
         if (pathColors && pathColors[i]) {
+          // Use per-vertex color if available
           color = pathColors[i];
         } else {
-          color = this._parseColor(pathData.color || '#1468a8');
+          // Use shared ColorUtils for consistent color parsing
+          color = ColorUtils.parseColor(pathData.color || ColorUtils.getDefaultColor(0));
         }
         
         colors.push(color.r, color.g, color.b, color.a);

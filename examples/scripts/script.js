@@ -1,6 +1,7 @@
-// Enhanced script.js with full dataset management functionality
-// Import the new VisionCharts classes
-import { LineChart, BarChart } from '../../src/index.js';
+// Enhanced script.js with color picker functionality
+// Location: /examples/demo/scripts/script.js
+// Import the new VisionCharts classes and color utilities
+import { LineChart, BarChart, ColorUtils, ColorPicker } from '../../../src/index.js';
 
 // Global datasets storage
 let availableDatasets = {};
@@ -13,6 +14,381 @@ let barChart = null;
 let lineDatasetCounter = 1;
 let barDatasetCounter = 1;
 
+// Global color picker instance
+let colorPicker = null;
+
+// Initialize color picker
+function initColorPicker() {
+  colorPicker = new ColorPicker({
+    colors: ColorUtils.getDefaultPalette(),
+    columns: 5,
+    onColorSelect: (color) => {
+      // This will be set dynamically when showing the picker
+    }
+  });
+}
+
+// Update dataset color (CLEAN - use library method)
+function updateDatasetColor(datasetId, newColor, chartType) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    
+    if (!chart) {
+      console.error('Chart not found for type:', chartType);
+      return;
+    }
+    
+    // Use the new library method (efficient, no infinite loop)
+    const success = chart.updateDatasetColor(datasetId, newColor);
+    
+    if (success) {
+      // Update the UI color indicator
+      const datasetItem = document.querySelector(`[data-id="${datasetId}"]`);
+      if (datasetItem) {
+        const colorButton = datasetItem.querySelector('.color-picker-button');
+        if (colorButton) {
+          colorButton.style.backgroundColor = newColor;
+        }
+      }
+      
+      log(`Updated ${chartType} dataset ${datasetId} color to ${newColor}`);
+    } else {
+      console.error(`Failed to update color for dataset ${datasetId}`);
+    }
+    
+  } catch (error) {
+    console.error('Error updating dataset color:', error);
+  }
+}
+
+// Create dataset item element for the manager (UPDATED with color picker)
+function createDatasetItem(dataset, chartType, chart) {
+  const item = document.createElement('div');
+  item.className = 'dataset-item';
+  item.setAttribute('data-id', dataset.id);
+  
+  item.innerHTML = `
+    <div class="dataset-info">
+      <button class="color-picker-button" style="
+        width: 20px; 
+        height: 20px; 
+        border: 1px solid #ccc; 
+        border-radius: 3px; 
+        background-color: ${dataset.color}; 
+        cursor: pointer; 
+        margin-right: 8px;
+        display: inline-block;
+        vertical-align: middle;
+      " title="Click to change color"></button>
+      <span class="dataset-name">${dataset.name}</span>
+      <span class="dataset-points">${dataset.data.length} points</span>
+    </div>
+    <div class="dataset-controls">
+      <button class="remove-dataset" data-id="${dataset.id}">Remove</button>
+    </div>
+  `;
+  
+  // Add color picker functionality
+  const colorButton = item.querySelector('.color-picker-button');
+  colorButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    
+    // Set up color picker callback for this specific dataset
+    colorPicker.options.onColorSelect = (color) => {
+      updateDatasetColor(dataset.id, color, chartType);
+    };
+    
+    // Show color picker near the button
+    colorPicker.show(colorButton, dataset.color);
+  });
+  
+  // Add remove functionality
+  const removeBtn = item.querySelector('.remove-dataset');
+  removeBtn.addEventListener('click', () => {
+    if (chartType === 'line') {
+      lineChart.removeDataset(dataset.id);
+    } else if (chartType === 'bar') {
+      barChart.removeDataset(dataset.id);
+    }
+    item.remove();
+    log(`Removed dataset: ${dataset.id}`);
+  });
+  
+  return item;
+}
+
+// Get default colors for datasets (UPDATED to use ColorUtils)
+function getDefaultColors() {
+  return ColorUtils.getDefaultPalette();
+}
+
+// Add dataset to chart (UPDATED to use ColorUtils)
+function addDatasetToChart(chartType) {
+  try {
+    const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+    const randomizeCheckbox = document.getElementById(`${chartType}-randomize`);
+    const datasetManager = document.getElementById(`${chartType}-datasets`);
+    
+    if (!sourceSelect || !randomizeCheckbox || !datasetManager) {
+      console.error('Dataset controls not found');
+      return;
+    }
+    
+    const selectedSource = sourceSelect.value;
+    const shouldRandomize = randomizeCheckbox.checked;
+    
+    // Get raw data
+    let rawData = availableDatasets[selectedSource];
+    if (!rawData || rawData.length === 0) {
+      console.error('No data available for selected source:', selectedSource);
+      return;
+    }
+    
+    // Apply randomization if requested
+    if (shouldRandomize) {
+      rawData = applyRandomVariation([...rawData], 0.15); // 15% variation
+    }
+    
+    // Format data for the chart
+    const formattedData = formatDataForChart(rawData, chartType);
+    
+    // Generate dataset ID and get color using ColorUtils
+    let datasetId, datasetName, datasetColor;
+    
+    if (chartType === 'line') {
+      datasetId = `line-dataset-${lineDatasetCounter}`;
+      datasetName = `Line Dataset ${lineDatasetCounter}`;
+      datasetColor = ColorUtils.getDefaultColor(lineDatasetCounter - 1);
+      lineDatasetCounter++;
+    } else if (chartType === 'bar') {
+      datasetId = `bar-dataset-${barDatasetCounter}`;
+      datasetName = `Bar Dataset ${barDatasetCounter}`;
+      datasetColor = ColorUtils.getDefaultColor(barDatasetCounter - 1);
+      barDatasetCounter++;
+    }
+    
+    // Create dataset object
+    const dataset = {
+      id: datasetId,
+      name: datasetName,
+      color: datasetColor,
+      data: formattedData
+    };
+    
+    // Add line-specific properties
+    if (chartType === 'line') {
+      dataset.width = 2;
+    }
+    
+    // Add to chart
+    if (chartType === 'line' && lineChart) {
+      lineChart.addDataset(dataset);
+    } else if (chartType === 'bar' && barChart) {
+      barChart.addDataset(dataset);
+    }
+    
+    // Add to dataset manager UI
+    const datasetItem = createDatasetItem(dataset, chartType, chartType === 'line' ? lineChart : barChart);
+    datasetManager.appendChild(datasetItem);
+    
+    log(`Added ${chartType} dataset: ${datasetName} with ${formattedData.length} points (randomized: ${shouldRandomize})`);
+    
+  } catch (error) {
+    console.error('Error adding dataset:', error);
+  }
+}
+
+// Initialize Line Chart (UPDATED to use ColorUtils)
+async function initLineChart() {
+  log('Initializing Line Chart');
+  
+  try {
+    const containerElement = document.getElementById('line-chart');
+    
+    if (!containerElement) {
+      throw new Error('Line chart container element with ID "line-chart" not found');
+    }
+    
+    // Load datasets
+    availableDatasets = await loadAllDatasets();
+    
+    // Use timeseries data for initial chart
+    const timeSeriesData = availableDatasets.timeseries;
+    
+    // Format data for the line chart
+    const formattedData = timeSeriesData.map(item => ({
+      date: new Date(item.x),
+      price: item.y
+    }));
+    
+    // Create a single dataset using ColorUtils
+    const data = [
+      {
+        id: 'line-dataset-1',
+        name: 'Line Dataset 1',
+        color: ColorUtils.getDefaultColor(0), // Use ColorUtils
+        width: 2,
+        data: formattedData
+      }
+    ];
+    
+    // Increment counter since we used the first ID
+    lineDatasetCounter = 2;
+    
+    // Get initial values from inputs
+    const xAxisName = document.getElementById('line-x-name')?.value || 'Date';
+    const yAxisName = document.getElementById('line-y-name')?.value || 'Value';
+    
+    // Create the line chart with grid enabled by default
+    lineChart = new LineChart({
+      container: containerElement,
+      data: data,
+      options: {
+        title: 'Time Series Data',
+        xField: 'date',
+        yField: 'price',
+        xType: 'time',
+        yType: 'number',
+        xAxisName: xAxisName,
+        yAxisName: yAxisName,
+        showGrid: true,
+        showXGrid: true,
+        showYGrid: true
+      }
+    });
+    
+    // Render the chart
+    await lineChart.render();
+    
+    log('Line chart rendered successfully with grid');
+    
+    // Setup controls and dataset management
+    setupLineChartControls();
+    setupLineDatasetManagement();
+    
+    // Add initial dataset to UI
+    const datasetManager = document.getElementById('line-datasets');
+    if (datasetManager) {
+      const datasetItem = createDatasetItem(data[0], 'line', lineChart);
+      datasetManager.appendChild(datasetItem);
+    }
+    
+  } catch (error) {
+    log('Error initializing line chart:', error);
+    handleError('line-chart', error);
+  }
+}
+
+// Initialize Bar Chart (UPDATED to use ColorUtils)
+async function initBarChart() {
+  log('Initializing Bar Chart');
+  
+  try {
+    const containerElement = document.getElementById('bar-chart');
+    
+    if (!containerElement) {
+      throw new Error('Bar chart container element with ID "bar-chart" not found');
+    }
+    
+    // Load datasets if not already loaded
+    if (!availableDatasets.timeseries) {
+      availableDatasets = await loadAllDatasets();
+    }
+    
+    const timeSeriesData = availableDatasets.timeseries;
+    
+    // Transform data for bar chart
+    const transformedData = timeSeriesData.map(item => ({
+      x: new Date(item.x),
+      y: item.y
+    }));
+    
+    const data = [
+      {
+        id: 'bar-dataset-1',
+        name: 'Bar Dataset 1',
+        color: ColorUtils.getDefaultColor(0), // Use ColorUtils
+        data: transformedData
+      }
+    ];
+    
+    // Increment counter since we used the first ID
+    barDatasetCounter = 2;
+    
+    const xAxisName = document.getElementById('bar-x-name')?.value || 'Date';
+    const yAxisName = document.getElementById('bar-y-name')?.value || 'Value';
+    
+    // Create bar chart with grid enabled by default
+    barChart = new BarChart({
+      container: containerElement,
+      data: data,
+      options: {
+        title: 'Bar Chart',
+        xField: 'x',
+        yField: 'y',
+        xType: 'time',
+        yType: 'number',
+        xAxisName: xAxisName,
+        yAxisName: yAxisName,
+        showGrid: true,
+        showXGrid: true,
+        showYGrid: true
+      }
+    });
+    
+    await barChart.render();
+    
+    log('Bar chart rendered successfully with grid');
+    
+    // Setup controls and dataset management
+    setupBarChartControls();
+    setupBarDatasetManagement();
+    
+    // Add initial dataset to UI
+    const datasetManager = document.getElementById('bar-datasets');
+    if (datasetManager) {
+      const datasetItem = createDatasetItem(data[0], 'bar', barChart);
+      datasetManager.appendChild(datasetItem);
+    }
+    
+  } catch (error) {
+    log('Error initializing bar chart:', error);
+    handleError('bar-chart', error);
+  }
+}
+
+// Initialize everything (UPDATED to include color picker)
+async function initializeCharts() {
+  try {
+    // Ensure DOM is ready
+    await waitForDOMReady();
+    
+    // Small delay to ensure all elements are rendered
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Initialize color picker
+    initColorPicker();
+    
+    // Setup tabs
+    setupTabs();
+    
+    // Initialize the line chart (default active tab)
+    await initLineChart();
+    
+    log('Chart initialization complete with color picker support');
+    
+  } catch (error) {
+    console.error('Failed to initialize charts:', error);
+    
+    // Display error to user
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'position: fixed; top: 10px; left: 10px; background: red; color: white; padding: 10px; z-index: 9999;';
+    errorDiv.textContent = `Chart initialization failed: ${error.message}`;
+    document.body.appendChild(errorDiv);
+  }
+}
+
+// [REST OF THE FUNCTIONS REMAIN THE SAME]
 // Debug helper function
 function log(message, obj = null) {
   console.log(message, obj);
@@ -79,7 +455,7 @@ async function loadAllDatasets() {
       datasets.nasdaq = await fetch('../examples/data/NASDAQCOM.json')
       .then(response => response.json())
       .catch(error => {
-        console.error('Error loading monthly data:', error);
+        console.error('Error loading nasdaq data:', error);
         // Generate fallback monthly data
         return generateFallbackMonthlyData();
       });
@@ -134,20 +510,6 @@ function applyRandomVariation(data, variationPercent = 0.1) {
   });
 }
 
-// Get default colors for datasets
-function getDefaultColors() {
-  return [
-    '#1468a8', // Blue
-    '#34A853', // Green
-    '#FBBC05', // Yellow
-    '#EA4335', // Red
-    '#9C27B0', // Purple
-    '#00ACC1', // Cyan
-    '#FF9800', // Orange
-    '#607D8B'  // Blue Grey
-  ];
-}
-
 // Format data for chart consumption
 function formatDataForChart(rawData, chartType) {
   return rawData.map(item => {
@@ -189,274 +551,6 @@ function updateDatasetPreview(chartType) {
   if (sourceSelect && previewDiv) {
     const selectedDataset = sourceSelect.value;
     previewDiv.textContent = generateDatasetPreview(selectedDataset);
-  }
-}
-
-// Create dataset item element for the manager
-function createDatasetItem(dataset, chartType, chart) {
-  const item = document.createElement('div');
-  item.className = 'dataset-item';
-  item.setAttribute('data-id', dataset.id);
-  
-  item.innerHTML = `
-    <div class="dataset-info">
-      <span class="dataset-name">${dataset.name}</span>
-      <span class="dataset-points">${dataset.data.length} points</span>
-      <span class="dataset-color" style="background-color: ${dataset.color}"></span>
-    </div>
-    <div class="dataset-controls">
-      <button class="remove-dataset" data-id="${dataset.id}">Remove</button>
-    </div>
-  `;
-  
-  // Add remove functionality
-  const removeBtn = item.querySelector('.remove-dataset');
-  removeBtn.addEventListener('click', () => {
-    if (chartType === 'line') {
-      lineChart.removeDataset(dataset.id);
-    } else if (chartType === 'bar') {
-      barChart.removeDataset(dataset.id);
-    }
-    item.remove();
-    log(`Removed dataset: ${dataset.id}`);
-  });
-  
-  return item;
-}
-
-// Add dataset to chart
-function addDatasetToChart(chartType) {
-  try {
-    const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
-    const randomizeCheckbox = document.getElementById(`${chartType}-randomize`);
-    const datasetManager = document.getElementById(`${chartType}-datasets`);
-    
-    if (!sourceSelect || !randomizeCheckbox || !datasetManager) {
-      console.error('Dataset controls not found');
-      return;
-    }
-    
-    const selectedSource = sourceSelect.value;
-    const shouldRandomize = randomizeCheckbox.checked;
-    
-    // Get raw data
-    let rawData = availableDatasets[selectedSource];
-    if (!rawData || rawData.length === 0) {
-      console.error('No data available for selected source:', selectedSource);
-      return;
-    }
-    
-    // Apply randomization if requested
-    if (shouldRandomize) {
-      rawData = applyRandomVariation([...rawData], 0.15); // 15% variation
-    }
-    
-    // Format data for the chart
-    const formattedData = formatDataForChart(rawData, chartType);
-    
-    // Generate dataset ID and get color
-    const colors = getDefaultColors();
-    let datasetId, datasetName, datasetColor;
-    
-    if (chartType === 'line') {
-      datasetId = `line-dataset-${lineDatasetCounter}`;
-      datasetName = `Line Dataset ${lineDatasetCounter}`;
-      datasetColor = colors[(lineDatasetCounter - 1) % colors.length];
-      lineDatasetCounter++;
-    } else if (chartType === 'bar') {
-      datasetId = `bar-dataset-${barDatasetCounter}`;
-      datasetName = `Bar Dataset ${barDatasetCounter}`;
-      datasetColor = colors[(barDatasetCounter - 1) % colors.length];
-      barDatasetCounter++;
-    }
-    
-    // Create dataset object
-    const dataset = {
-      id: datasetId,
-      name: datasetName,
-      color: datasetColor,
-      data: formattedData
-    };
-    
-    // Add line-specific properties
-    if (chartType === 'line') {
-      dataset.width = 2;
-    }
-    
-    // Add to chart
-    if (chartType === 'line' && lineChart) {
-      lineChart.addDataset(dataset);
-    } else if (chartType === 'bar' && barChart) {
-      barChart.addDataset(dataset);
-    }
-    
-    // Add to dataset manager UI
-    const datasetItem = createDatasetItem(dataset, chartType, chartType === 'line' ? lineChart : barChart);
-    datasetManager.appendChild(datasetItem);
-    
-    log(`Added ${chartType} dataset: ${datasetName} with ${formattedData.length} points (randomized: ${shouldRandomize})`);
-    
-  } catch (error) {
-    console.error('Error adding dataset:', error);
-  }
-}
-
-// Initialize Line Chart
-async function initLineChart() {
-  log('Initializing Line Chart');
-  
-  try {
-    const containerElement = document.getElementById('line-chart');
-    
-    if (!containerElement) {
-      throw new Error('Line chart container element with ID "line-chart" not found');
-    }
-    
-    // Load datasets
-    availableDatasets = await loadAllDatasets();
-    
-    // Use timeseries data for initial chart
-    const timeSeriesData = availableDatasets.timeseries;
-    
-    // Format data for the line chart
-    const formattedData = timeSeriesData.map(item => ({
-      date: new Date(item.x),
-      price: item.y
-    }));
-    
-    // Create a single dataset
-    const data = [
-      {
-        id: 'line-dataset-1',
-        name: 'Line Dataset 1',
-        color: '#1468a8', 
-        width: 2,
-        data: formattedData
-      }
-    ];
-    
-    // Increment counter since we used the first ID
-    lineDatasetCounter = 2;
-    
-    // Get initial values from inputs
-    const xAxisName = document.getElementById('line-x-name')?.value || 'Date';
-    const yAxisName = document.getElementById('line-y-name')?.value || 'Value';
-    
-    // Create the line chart with grid enabled by default
-    lineChart = new LineChart({
-      container: containerElement,
-      data: data,
-      options: {
-        title: 'Time Series Data',
-        xField: 'date',
-        yField: 'price',
-        xType: 'time',
-        yType: 'number',
-        xAxisName: xAxisName,
-        yAxisName: yAxisName,
-        showGrid: true,
-        showXGrid: true,
-        showYGrid: true
-      }
-    });
-    
-    // Render the chart
-    await lineChart.render();
-    
-    log('Line chart rendered successfully with grid');
-    
-    // Setup controls and dataset management
-    setupLineChartControls();
-    setupLineDatasetManagement();
-    
-    // Add initial dataset to UI
-    const datasetManager = document.getElementById('line-datasets');
-    if (datasetManager) {
-      const datasetItem = createDatasetItem(data[0], 'line', lineChart);
-      datasetManager.appendChild(datasetItem);
-    }
-    
-  } catch (error) {
-    log('Error initializing line chart:', error);
-    handleError('line-chart', error);
-  }
-}
-
-// Initialize Bar Chart
-async function initBarChart() {
-  log('Initializing Bar Chart');
-  
-  try {
-    const containerElement = document.getElementById('bar-chart');
-    
-    if (!containerElement) {
-      throw new Error('Bar chart container element with ID "bar-chart" not found');
-    }
-    
-    // Load datasets if not already loaded
-    if (!availableDatasets.timeseries) {
-      availableDatasets = await loadAllDatasets();
-    }
-    
-    const timeSeriesData = availableDatasets.timeseries;
-    
-    // Transform data for bar chart
-    const transformedData = timeSeriesData.map(item => ({
-      x: new Date(item.x),
-      y: item.y
-    }));
-    
-    const data = [
-      {
-        id: 'bar-dataset-1',
-        name: 'Bar Dataset 1',
-        color: '#1468a8',
-        data: transformedData
-      }
-    ];
-    
-    // Increment counter since we used the first ID
-    barDatasetCounter = 2;
-    
-    const xAxisName = document.getElementById('bar-x-name')?.value || 'Date';
-    const yAxisName = document.getElementById('bar-y-name')?.value || 'Value';
-    
-    // Create bar chart with grid enabled by default
-    barChart = new BarChart({
-      container: containerElement,
-      data: data,
-      options: {
-        title: 'Bar Chart',
-        xField: 'x',
-        yField: 'y',
-        xType: 'time',
-        yType: 'number',
-        xAxisName: xAxisName,
-        yAxisName: yAxisName,
-        showGrid: true,
-        showXGrid: true,
-        showYGrid: true
-      }
-    });
-    
-    await barChart.render();
-    
-    log('Bar chart rendered successfully with grid');
-    
-    // Setup controls and dataset management
-    setupBarChartControls();
-    setupBarDatasetManagement();
-    
-    // Add initial dataset to UI
-    const datasetManager = document.getElementById('bar-datasets');
-    if (datasetManager) {
-      const datasetItem = createDatasetItem(data[0], 'bar', barChart);
-      datasetManager.appendChild(datasetItem);
-    }
-    
-  } catch (error) {
-    log('Error initializing bar chart:', error);
-    handleError('bar-chart', error);
   }
 }
 
@@ -589,34 +683,6 @@ function waitForDOMReady() {
       resolve();
     }
   });
-}
-
-// Initialize everything
-async function initializeCharts() {
-  try {
-    // Ensure DOM is ready
-    await waitForDOMReady();
-    
-    // Small delay to ensure all elements are rendered
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // Setup tabs
-    setupTabs();
-    
-    // Initialize the line chart (default active tab)
-    await initLineChart();
-    
-    log('Chart initialization complete');
-    
-  } catch (error) {
-    console.error('Failed to initialize charts:', error);
-    
-    // Display error to user
-    const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'position: fixed; top: 10px; left: 10px; background: red; color: white; padding: 10px; z-index: 9999;';
-    errorDiv.textContent = `Chart initialization failed: ${error.message}`;
-    document.body.appendChild(errorDiv);
-  }
 }
 
 // Start initialization when script loads

@@ -7,6 +7,7 @@
  * - Automatic renderer selection based on dataset size (50K+ points → WebGL)
  * - Unified event system and coordinate normalization
  * - Performance optimization and monitoring
+ * color utilies and color picker component
  * 
  * @version 1.2.1
  * @license MIT
@@ -24,6 +25,8 @@ export { Grid } from './components/Grid.js';
 export { LineChart } from './charts/LineChart.js';
 export { BarChart } from './charts/BarChart.js';
 
+export {ColorUtils} from './utils/ColorUtils.js';
+export {ColorPicker} from './components/ColorPicker.js';
 // Convenience function to create charts with automatic renderer selection
 export function createChart(type, config) {
   switch (type.toLowerCase()) {
