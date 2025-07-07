@@ -124,7 +124,7 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Render line paths using unified coordinate system
+   * UPDATED: Render line paths with fill support using unified coordinate system
    */
   async renderLines(generatedPaths, scales, options = {}) {
     if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
@@ -136,7 +136,17 @@ export default class CanvasRenderer extends AbstractRenderer {
     try {
       ctx.save();
       
-      // Render each standardized path using unified coordinates
+      // NEW: Render fills first (so lines appear on top)
+      if (options.enableFill) {
+        for (let i = 0; i < generatedPaths.length; i++) {
+          const pathData = generatedPaths[i];
+          if (pathData.fill && pathData.vertices && pathData.vertices.length > 0) {
+            await this._renderUnifiedFill(ctx, pathData, options, scales, i);
+          }
+        }
+      }
+      
+      // Then render lines on top
       for (let i = 0; i < generatedPaths.length; i++) {
         const pathData = generatedPaths[i];
         if (!pathData.vertices || pathData.vertices.length === 0) continue;
@@ -144,7 +154,7 @@ export default class CanvasRenderer extends AbstractRenderer {
         await this._renderUnifiedPath(ctx, pathData, options, i);
       }
       
-      console.log(`Canvas rendered ${generatedPaths.length} paths using UNIFIED coordinates`);
+      console.log(`Canvas rendered ${generatedPaths.length} paths with fill support`);
       
     } catch (error) {
       console.error('Error rendering lines with Canvas:', error);
@@ -152,6 +162,98 @@ export default class CanvasRenderer extends AbstractRenderer {
       ctx.restore();
     }
   }
+
+  /**
+   * NEW: Render area fill for a unified path
+   */
+  async _renderUnifiedFill(ctx, pathData, options, scales, pathIndex) {
+    const vertices = pathData.vertices;
+    if (vertices.length < 2) return; // Need at least 2 points for area
+
+    // Set fill style
+    const fillColor = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
+    const fillOpacity = pathData.fillOpacity || options.fillOpacity || 0.3;
+    
+    // Parse color and apply opacity
+    const colorMatch = fillColor.match(/rgba?\(([^)]+)\)/);
+    if (colorMatch) {
+      const colorParts = colorMatch[1].split(',').map(c => c.trim());
+      ctx.fillStyle = `rgba(${colorParts[0]}, ${colorParts[1]}, ${colorParts[2]}, ${fillOpacity})`;
+    } else if (fillColor.startsWith('#')) {
+      // Convert hex to rgba
+      const hex = fillColor.slice(1);
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fillOpacity})`;
+    } else {
+      ctx.fillStyle = `rgba(20, 104, 168, ${fillOpacity})`; // Fallback with opacity
+    }
+
+    // Begin fill path
+    ctx.beginPath();
+
+    // Get chart bottom (where fill should end)
+    const chartBottom = scales.y.range[1]; // Bottom of Y scale range
+
+    // Start from first point
+    const firstPoint = this._convertUnifiedToCanvas(vertices[0]);
+    ctx.moveTo(firstPoint.x, firstPoint.y);
+
+    // Draw line through all points
+    for (let i = 1; i < vertices.length; i++) {
+      const point = this._convertUnifiedToCanvas(vertices[i]);
+      ctx.lineTo(point.x, point.y);
+
+      // Yield control periodically for large paths
+      if (i % 1000 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    // Close the area by going to bottom-right, then bottom-left
+    const lastPoint = this._convertUnifiedToCanvas(vertices[vertices.length - 1]);
+    const firstPointConverted = this._convertUnifiedToCanvas(vertices[0]);
+    
+    ctx.lineTo(lastPoint.x, chartBottom);    // Down to bottom
+    ctx.lineTo(firstPointConverted.x, chartBottom); // Across bottom
+    ctx.closePath();
+
+    // Fill the area
+    ctx.fill();
+
+    console.log(`Canvas rendered fill area with ${vertices.length} vertices and ${fillOpacity} opacity`);
+  }
+
+  // /**
+  //  * UPDATED: Render line paths using unified coordinate system
+  //  */
+  // async renderLines(generatedPaths, scales, options = {}) {
+  //   if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
+  //     return;
+  //   }
+
+  //   const ctx = this.ctx;
+    
+  //   try {
+  //     ctx.save();
+      
+  //     // Render each standardized path using unified coordinates
+  //     for (let i = 0; i < generatedPaths.length; i++) {
+  //       const pathData = generatedPaths[i];
+  //       if (!pathData.vertices || pathData.vertices.length === 0) continue;
+        
+  //       await this._renderUnifiedPath(ctx, pathData, options, i);
+  //     }
+      
+  //     console.log(`Canvas rendered ${generatedPaths.length} paths using UNIFIED coordinates`);
+      
+  //   } catch (error) {
+  //     console.error('Error rendering lines with Canvas:', error);
+  //   } finally {
+  //     ctx.restore();
+  //   }
+  // }
 
   /**
    * UPDATED: Render a single path using unified coordinate system with improved colors

@@ -73,6 +73,38 @@ export default class WebGLRenderer extends AbstractRenderer {
         `
       },
       
+      // NEW: Area fill shader
+      area: {
+        vertex: `
+          precision highp float;
+          
+          attribute vec2 a_position;
+          attribute vec4 a_color;
+          
+          uniform vec2 u_resolution;
+          
+          varying vec4 v_color;
+          
+          void main() {
+            // UNIFIED COORDINATE SYSTEM: Same as line vertex shader
+            vec2 normalized = a_position / u_resolution;
+            vec2 clipSpace = (normalized * 2.0) - 1.0;
+            clipSpace.y = -clipSpace.y;
+            
+            gl_Position = vec4(clipSpace, 0.0, 1.0);
+            v_color = a_color;
+          }
+        `,
+        fragment: `
+          precision mediump float;
+          varying vec4 v_color;
+          
+          void main() {
+            gl_FragColor = v_color;
+          }
+        `
+      },
+      
       point: {
         vertex: `
           precision highp float;
@@ -113,6 +145,38 @@ export default class WebGLRenderer extends AbstractRenderer {
     };
     
     console.log('WebGLRenderer created with unified coordinate system support');
+  }
+  /**
+ * Convert unified path data to WebGL vertex format (UPDATED with better colors)
+ */
+  _convertUnifiedPathToWebGL(pathData) {
+    const positions = [];
+    const colors = [];
+
+    const vertices = pathData.vertices;
+    const pathColors = pathData.colors;
+
+    for (let i = 0; i < vertices.length; i++) {
+      const vertex = vertices[i];
+      
+      if (vertex.x != null && vertex.y != null && isFinite(vertex.x) && isFinite(vertex.y)) {
+        // Add position (unified coordinates in pixels)
+        positions.push(vertex.x, vertex.y);
+
+        // UPDATED: Use full opacity for lines (not fillOpacity)
+        let color;
+        if (pathColors && pathColors[i]) {
+          color = pathColors[i];
+        } else {
+          color = this._parseColor(pathData.color || '#1468a8');
+          color.a = 1.0; // FORCE full opacity for lines
+        }
+        
+        colors.push(color.r, color.g, color.b, color.a);
+      }
+    }
+
+    return { positions, colors };
   }
 
   /**
@@ -316,7 +380,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Render line paths using unified coordinate system
+   * UPDATED: Render line paths with fill support using unified coordinate system
    */
   async renderLines(generatedPaths, scales, options = {}) {
     if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
@@ -324,33 +388,60 @@ export default class WebGLRenderer extends AbstractRenderer {
     }
 
     const gl = this.gl;
-    const program = this.programs.get('line');
     
-    if (!program) {
-      console.error('Line shader program not found');
-      return;
-    }
-
     try {
-      // Use line shader program
-      gl.useProgram(program);
-      this.currentProgram = program;
+      // NEW: Render fills first (so lines appear on top)
+      if (options.enableFill) {
+        const areaProgram = this.programs.get('area');
+        if (areaProgram) {
+          gl.useProgram(areaProgram);
+          this.currentProgram = areaProgram;
+          this._setUniforms(areaProgram, scales);
+          
+          for (const pathData of generatedPaths) {
+            if (pathData.fill && pathData.vertices && pathData.vertices.length > 0) {
+              await this._renderUnifiedAreaFill(pathData, options);
+            }
+          }
+        }
+      }
+      // gl.enable(gl.BLEND); // Ensure blending is enabled for fills
+      // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      
+      // Then render lines on top
+      const lineProgram = this.programs.get('line');
+      if (lineProgram) {
+        gl.useProgram(lineProgram);
+        this.currentProgram = lineProgram;
+        this._setUniforms(lineProgram, scales);
 
-      // UPDATED: Set uniforms with logical canvas dimensions
-      this._setUniforms(program, scales);
-
-      // Render each standardized path using unified coordinates
-      for (const pathData of generatedPaths) {
-        if (!pathData.vertices || pathData.vertices.length === 0) continue;
-
-        await this._renderUnifiedPath(pathData, options);
+        for (const pathData of generatedPaths) {
+          if (!pathData.vertices || pathData.vertices.length === 0) continue;
+          await this._renderUnifiedPath(pathData, options);
+        }
       }
 
-      console.log(`WebGL rendered ${generatedPaths.length} paths using UNIFIED coordinates`);
+      console.log(`WebGL rendered ${generatedPaths.length} paths with fill support`);
 
     } catch (error) {
       console.error('Error rendering lines with WebGL:', error);
     }
+  }
+
+  /**
+ * Calculate line width based on color brightness (SMART VERSION)
+ */
+  _getSmartLineWidth(pathData) {
+    const baseWidth = pathData.lineWidth || 2;
+    
+    // Parse color to check brightness
+    const color = this._parseColor(pathData.color);
+    const brightness = (color.r + color.g + color.b) / 3;
+    
+    // Lighter colors get thicker lines
+    const brightnessFactor = brightness > 0.7 ? 2.0 : 1.5;
+    
+    return Math.max(3, baseWidth * brightnessFactor);
   }
 
   /**
@@ -366,7 +457,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     if (webglData.positions.length === 0) return;
 
     // Set line width to match Canvas exactly
-    const lineWidth = pathData.lineWidth || 2;
+    const lineWidth = this._getSmartLineWidth(pathData);
     gl.lineWidth(lineWidth);
 
     // Upload position data - UNIFIED coordinates used directly!
@@ -401,50 +492,98 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Convert unified path data to WebGL vertex format with improved color handling
+   * NEW: Render area fill using WebGL triangulation
    */
-  _convertUnifiedPathToWebGL(pathData) {
+  async _renderUnifiedAreaFill(pathData, options) {
+    const gl = this.gl;
+    const vertices = pathData.vertices;
+    
+    if (vertices.length < 3) return; // Need at least 3 points for triangulation
+
+    // gl.disable(gl.BLEND)
+
+    const chartArea = options.chartArea;
+    if (!chartArea) {
+      console.error('Chart area not provided to WebGL renderer');
+      return;
+    }
+    
+    const chartBottom = chartArea.y + chartArea.height; // TRULY DYNAMIC!
+    console.log('WebGL using TRULY DYNAMIC chartBottom:', chartBottom, 'from chartArea:', chartArea);
+
+    // Create triangulated area
+    const triangleData = this._triangulateArea(pathData, options, chartBottom);
+    
+    if (triangleData.positions.length === 0) return;
+
+    // Upload triangle data
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('position'));
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleData.positions), gl.STATIC_DRAW);
+    
+    const positionLocation = this.currentProgram.attributes.a_position;
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+    // Upload color data
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.get('color'));
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(triangleData.colors), gl.STATIC_DRAW);
+    
+    const colorLocation = this.currentProgram.attributes.a_color;
+    gl.enableVertexAttribArray(colorLocation);
+    gl.vertexAttribPointer(colorLocation, 4, gl.FLOAT, false, 0, 0);
+
+    // Render triangles
+    const vertexCount = triangleData.positions.length / 2;
+    gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    
+    console.log(`WebGL rendered area fill with ${vertexCount} triangle vertices`);
+  }
+
+  /**
+   * NEW: Convert path to triangulated area (simple fan triangulation)
+   */
+  _triangulateArea(pathData, options, chartBottom) {
+    const vertices = pathData.vertices;
     const positions = [];
     const colors = [];
+    
+    // Parse fill color with opacity
+    const baseColor = ColorUtils.parseColor(pathData.color);
+    const fillOpacity = pathData.fillOpacity || options.fillOpacity || 0.3;
+    const fillColor = { ...baseColor, a: fillOpacity };
 
-    const vertices = pathData.vertices;
-    const pathColors = pathData.colors;
-
-    for (let i = 0; i < vertices.length; i++) {
-      const vertex = vertices[i];
+    
+    
+    // Simple triangulation: fan from bottom-left
+    const firstVertex = vertices[0];
+    const lastVertex = vertices[vertices.length - 1];
+    
+    // Create triangles for the area
+    for (let i = 0; i < vertices.length - 1; i++) {
+      const currentVertex = vertices[i];
+      const nextVertex = vertices[i + 1];
       
-      // UNIFIED COORDINATES: Use vertex coordinates directly!
-      if (vertex.x != null && vertex.y != null && isFinite(vertex.x) && isFinite(vertex.y)) {
-        // Add position (unified coordinates in pixels)
-        positions.push(vertex.x, vertex.y);
-
-        // UPDATED: Improved color handling using ColorUtils
-        let color;
-        if (pathColors && pathColors[i]) {
-          // Use per-vertex color if available
-          color = pathColors[i];
-        } else {
-          // Use shared ColorUtils for consistent color parsing
-          color = ColorUtils.parseColor(pathData.color || ColorUtils.getDefaultColor(0));
-        }
-        
-        colors.push(color.r, color.g, color.b, color.a);
+      // Triangle 1: current point, next point, bottom-current
+      positions.push(
+        currentVertex.x, currentVertex.y,
+        nextVertex.x, nextVertex.y,
+        currentVertex.x, chartBottom
+      );
+      
+      // Triangle 2: next point, bottom-next, bottom-current  
+      positions.push(
+        nextVertex.x, nextVertex.y,
+        nextVertex.x, chartBottom,
+        currentVertex.x, chartBottom
+      );
+      
+      // Colors for 6 vertices (2 triangles)
+      for (let j = 0; j < 6; j++) {
+        colors.push(fillColor.r, fillColor.g, fillColor.b, fillColor.a);
       }
     }
 
     return { positions, colors };
-  }
-
-  /**
-   * Render bars (simplified implementation for large datasets)
-   */
-  async renderBars(datasets, scales, options = {}) {
-    // For WebGL bar rendering, we'd convert bars to triangles
-    // This is a simplified version - full implementation would be more complex
-    console.log('WebGL bar rendering not fully implemented yet - using line fallback');
-    
-    // Convert bars to line representation for now
-    await this.renderLines(datasets, scales, options);
   }
 
   /**

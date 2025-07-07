@@ -962,6 +962,37 @@ export class Chart {
   }
   
   /**
+   * Update the fill state of a specific dataset (efficient, no full update)
+   * @param {string} datasetId - ID of the dataset to update  
+   * @param {boolean} fillEnabled - Whether to enable fill
+   * @returns {boolean} Success status
+   */
+  updateDatasetFill(datasetId, fillEnabled) {
+    try {
+      const dataset = this.config.data.find(d => d.id === datasetId);
+      
+      if (!dataset) {
+        console.warn(`Dataset with ID ${datasetId} not found`);
+        return false;
+      }
+      
+      // Update dataset fill state
+      dataset.fill = fillEnabled;
+      
+      console.log(`Updated dataset ${datasetId} fill to ${fillEnabled}`);
+      
+      // Efficient re-render (just visual update, no data processing)
+      this.render();
+      
+      return true;
+      
+    } catch (error) {
+      console.error('Error updating dataset fill:', error);
+      return false;
+    }
+  }
+  
+  /**
    * Destroy the chart and clean up resources
    */
   destroy() {

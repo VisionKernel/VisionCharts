@@ -61,11 +61,53 @@ function updateDatasetColor(datasetId, newColor, chartType) {
   }
 }
 
-// Create dataset item element for the manager (UPDATED with color picker)
+// Add this function to /examples/demo/scripts/script.js
+
+function updateDatasetFill(datasetId, fillEnabled, chartType) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    
+    if (!chart) {
+      console.error('Chart not found for type:', chartType);
+      return;
+    }
+    
+    // Use the new library method for fill updates
+    const success = chart.updateDatasetFill(datasetId, fillEnabled);
+    
+    if (success) {
+      log(`Updated ${chartType} dataset ${datasetId} fill to ${fillEnabled}`);
+    } else {
+      console.error(`Failed to update fill for dataset ${datasetId}`);
+    }
+    
+  } catch (error) {
+    console.error('Error updating dataset fill:', error);
+  }
+}
+
 function createDatasetItem(dataset, chartType, chart) {
   const item = document.createElement('div');
   item.className = 'dataset-item';
   item.setAttribute('data-id', dataset.id);
+  
+  // Only show fill checkbox for line charts
+  const fillCheckboxHtml = chartType === 'line' ? `
+    <label class="fill-checkbox-container" style="
+      display: inline-block;
+      margin-right: 8px;
+      vertical-align: middle;
+      cursor: pointer;
+    ">
+      <input type="checkbox" class="fill-checkbox" ${dataset.fill ? 'checked' : ''} style="
+        width: 14px;
+        height: 14px;
+        margin-right: 4px;
+        cursor: pointer;
+      ">
+      <span style="font-size: 12px; color: #666;">Fill</span>
+    </label>
+  ` : '';
   
   item.innerHTML = `
     <div class="dataset-info">
@@ -80,6 +122,9 @@ function createDatasetItem(dataset, chartType, chart) {
         display: inline-block;
         vertical-align: middle;
       " title="Click to change color"></button>
+      
+      ${fillCheckboxHtml}
+      
       <span class="dataset-name">${dataset.name}</span>
       <span class="dataset-points">${dataset.data.length} points</span>
     </div>
@@ -93,14 +138,23 @@ function createDatasetItem(dataset, chartType, chart) {
   colorButton.addEventListener('click', (e) => {
     e.stopPropagation();
     
-    // Set up color picker callback for this specific dataset
     colorPicker.options.onColorSelect = (color) => {
       updateDatasetColor(dataset.id, color, chartType);
     };
     
-    // Show color picker near the button
     colorPicker.show(colorButton, dataset.color);
   });
+  
+  // Add fill checkbox functionality (only for line charts)
+  if (chartType === 'line') {
+    const fillCheckbox = item.querySelector('.fill-checkbox');
+    if (fillCheckbox) {
+      fillCheckbox.addEventListener('change', (e) => {
+        const fillEnabled = e.target.checked;
+        updateDatasetFill(dataset.id, fillEnabled, chartType);
+      });
+    }
+  }
   
   // Add remove functionality
   const removeBtn = item.querySelector('.remove-dataset');
@@ -228,6 +282,7 @@ async function initLineChart() {
         name: 'Line Dataset 1',
         color: ColorUtils.getDefaultColor(0), // Use ColorUtils
         width: 2,
+        fill: false,  // NEW: Include fill default
         data: formattedData
       }
     ];
@@ -259,6 +314,9 @@ async function initLineChart() {
     
     // Render the chart
     await lineChart.render();
+    
+    // ADD THIS LINE for debugging:
+    window.lineChart = lineChart;  // Make globally accessible
     
     log('Line chart rendered successfully with grid');
     
@@ -308,6 +366,7 @@ async function initBarChart() {
         id: 'bar-dataset-1',
         name: 'Bar Dataset 1',
         color: ColorUtils.getDefaultColor(0), // Use ColorUtils
+        fill: false,  // NEW: Include fill default (even though bars don't use it)
         data: transformedData
       }
     ];

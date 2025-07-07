@@ -59,14 +59,17 @@ export class LineChart extends Chart {
       // Set viewport for clipping
       this.rendererInstance.setViewport(this.chartArea);
 
-      // Render lines using standardized paths with unified coordinates
+      // UPDATED: Render with fill support
       await this.rendererInstance.renderLines(this.generatedPaths, this.scales, {
         showPoints: this.config.options.showPoints,
-        pointRadius: this.config.options.pointRadius
+        pointRadius: this.config.options.pointRadius,
+        enableFill: true, // NEW: Enable fill rendering
+        chartArea: this.chartArea,
+        fillOpacity: 0.3  // NEW: 30% opacity for fills
       });
 
       const totalVertices = this.generatedPaths.reduce((sum, path) => sum + (path.vertexCount || 0), 0);
-      console.log(`LineChart: Rendered ${this.generatedPaths.length} datasets with ${totalVertices} total vertices using ${this.activeRenderer} with UNIFIED coordinates`);
+      console.log(`LineChart: Rendered ${this.generatedPaths.length} datasets with fills using ${this.activeRenderer}`);
 
       // NEW: Collect rendering debug info
       if (this.config.options.enableRenderingDebug) {
@@ -74,7 +77,7 @@ export class LineChart extends Chart {
       }
 
     } catch (error) {
-      console.error('Error rendering line chart data:', error);
+      console.error('Error rendering line chart data with fills:', error);
       throw error;
     }
   }
@@ -245,7 +248,38 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Add a new dataset to the chart
+   * Update the fill state of a specific dataset (efficient, no full update)
+   * @param {string} datasetId - ID of the dataset to update
+   * @param {boolean} fillEnabled - Whether to enable fill
+   * @returns {boolean} Success status
+   */
+  updateDatasetFill(datasetId, fillEnabled) {
+    try {
+      const dataset = this.config.data.find(d => d.id === datasetId);
+      
+      if (!dataset) {
+        console.warn(`Dataset with ID ${datasetId} not found`);
+        return false;
+      }
+      
+      // Update dataset fill state
+      dataset.fill = fillEnabled;
+      
+      console.log(`Updated dataset ${datasetId} fill to ${fillEnabled}`);
+      
+      // Efficient re-render (just visual update, no data processing)
+      this.render();
+      
+      return true;
+      
+    } catch (error) {
+      console.error('Error updating dataset fill:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Add a new dataset to the chart (UPDATED to include fill default)
    */
   addDataset(dataset) {
     if (!dataset || !dataset.data) {
@@ -259,12 +293,13 @@ export class LineChart extends Chart {
       name: dataset.name || `Dataset ${this.config.data.length + 1}`,
       color: dataset.color || this._getDefaultColor(this.config.data.length),
       width: dataset.width || this.config.options.strokeWidth,
+      fill: dataset.fill !== undefined ? dataset.fill : false, // NEW: default fill to false
       ...dataset
     };
     
     this.config.data.push(processedDataset);
     
-    console.log(`LineChart: Added dataset with unified coordinates: ${processedDataset.id} with ${processedDataset.data.length} points`);
+    console.log(`LineChart: Added dataset with fill support: ${processedDataset.id} (fill: ${processedDataset.fill})`);
     
     // Update and re-render
     this.update();

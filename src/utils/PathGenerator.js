@@ -28,6 +28,9 @@ export class PathGenerator {
       // NEW: Coordinate system validation
       enableCoordinateValidation: true,
       
+      // NEW: Default fill options
+      fillOpacity: 0.3,
+      
       ...config
     };
     
@@ -106,6 +109,10 @@ export class PathGenerator {
       name: dataset.name,
       color: dataset.color,
       
+      // NEW: Fill support
+      fill: dataset.fill || false,
+      fillOpacity: pathOptions.fillOpacity || 0.6,
+      
       // Geometry data (standardized for both Canvas and WebGL)
       vertices: vertices,           // Array of {x, y} unified coordinates
       colors: colors,              // Array of {r, g, b, a} colors
@@ -115,7 +122,7 @@ export class PathGenerator {
       curveType: pathOptions.curve,
       vertexCount: vertices.length,
       
-      // NEW: Coordinate system metadata
+      // Coordinate system metadata
       coordinateSystem: 'unified',
       targetRenderer: pathOptions.targetRenderer,
       
@@ -127,7 +134,7 @@ export class PathGenerator {
       unifiedPointCount: unifiedPoints.length
     };
 
-    console.log(`PathGenerator: Generated unified path for ${dataset.name || dataset.id} with ${vertices.length} vertices`);
+    console.log(`PathGenerator: Generated path with fill support for ${dataset.name || dataset.id} (fill: ${pathData.fill})`);
     return pathData;
   }
 
@@ -382,6 +389,8 @@ export class PathGenerator {
       id: dataset.id,
       name: dataset.name,
       color: dataset.color,
+      fill: dataset.fill || false,        // NEW: Include fill
+      fillOpacity: 0.3,                   // NEW: Default opacity
       vertices: [],
       colors: [],
       lineWidth: dataset.width || 2,
