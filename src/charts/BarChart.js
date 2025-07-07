@@ -292,7 +292,7 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Add a new dataset to the chart
+   * Add a new dataset to the chart (UPDATED with legend support)
    */
   addDataset(dataset) {
     if (!dataset || !dataset.data) {
@@ -305,12 +305,18 @@ export class BarChart extends Chart {
       id: dataset.id || `dataset-${this.config.data.length + 1}`,
       name: dataset.name || `Dataset ${this.config.data.length + 1}`,
       color: dataset.color || this._getDefaultColor(this.config.data.length),
+      fill: dataset.fill !== undefined ? dataset.fill : false, // Bar charts don't use fill, but keep for consistency
       ...dataset
     };
     
     this.config.data.push(processedDataset);
     
-    console.log(`BarChart: Added dataset with unified coordinates: ${processedDataset.id} with ${processedDataset.data.length} bars`);
+    console.log(`BarChart: Added dataset with legend support: ${processedDataset.id} with ${processedDataset.data.length} bars`);
+    
+    // NEW: Update legend
+    if (this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
     
     // Update and re-render
     this.update();
@@ -319,7 +325,7 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Remove a dataset by ID
+   * Remove a dataset by ID (UPDATED with legend support)
    */
   removeDataset(datasetId) {
     const initialCount = this.config.data.length;
@@ -327,6 +333,12 @@ export class BarChart extends Chart {
     
     if (this.config.data.length < initialCount) {
       console.log(`BarChart: Removed dataset: ${datasetId}`);
+      
+      // NEW: Update legend
+      if (this.legend) {
+        this.legend.updateDatasets(this.config.data);
+      }
+      
       this.update();
     } else {
       console.warn(`BarChart: Dataset not found: ${datasetId}`);
@@ -336,7 +348,7 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Update a specific dataset
+   * Update a specific dataset (UPDATED with legend support)
    */
   updateDataset(datasetId, newData) {
     const dataset = this.config.data.find(ds => ds.id === datasetId);
@@ -349,7 +361,17 @@ export class BarChart extends Chart {
     // Update dataset properties
     Object.assign(dataset, newData);
     
-    console.log(`BarChart: Updated dataset with unified coordinates: ${datasetId}`);
+    // NEW: Update legend if color changed
+    if (newData.color && this.legend) {
+      this.legend.updateDatasetColor(datasetId, newData.color);
+    }
+    
+    // NEW: Update legend if name changed
+    if (newData.name && this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
+    
+    console.log(`BarChart: Updated dataset with legend support: ${datasetId}`);
     this.update();
     
     return this;

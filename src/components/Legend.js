@@ -1,565 +1,281 @@
 /**
- * Legend - Enhanced SVG legend implementation
+ * Legend.js - Professional Legend Component for Financial Charts
+ * Location: /src/components/Legend.js
  * 
- * Renders chart legends using SVG for crisp text and vector graphics,
- * independent of whether chart data is rendered via Canvas or WebGL.
+ * Renders dataset legends with color indicators and names.
+ * Designed for investment/portfolio manager use cases.
  */
 
 export class Legend {
   constructor(config = {}) {
     this.config = {
-      // Position: 'top', 'bottom', 'left', 'right'
-      position: 'top',
-      
-      // Layout options
-      orientation: 'horizontal', // 'horizontal' or 'vertical'
-      align: 'center', // 'left', 'center', 'right' for horizontal; 'top', 'middle', 'bottom' for vertical
-      
-      // Spacing and sizing
-      itemSpacing: 20,
-      itemPadding: { top: 8, right: 12, bottom: 8, left: 12 },
-      symbolSize: 12,
-      symbolSpacing: 8,
+      // Positioning
+      position: 'center-top', // Under title, centered
+      marginTop: 20,          // Space below title
+      marginBottom: 20,       // Space above chart
       
       // Styling
       fontSize: 12,
       fontFamily: 'Arial, sans-serif',
       fontWeight: 'normal',
-      textColor: '#333',
+      textColor: '#333333',
+      
+      // Layout
+      itemSpacing: 20,        // Space between legend items
+      indicatorSize: 10,      // Size of color squares
+      indicatorSpacing: 6,    // Space between indicator and text
+      
+      // Professional styling
       backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      borderColor: '#e0e0e0',
-      borderWidth: 1,
+      border: '1px solid #e0e0e0',
       borderRadius: 4,
-      
-      // Interactive features
-      interactive: true,
-      hoverEffect: true,
-      
-      // Study badges
-      showStudyBadges: true,
+      padding: 8,
       
       ...config
     };
     
-    // State
+    this.element = null;
     this.datasets = [];
-    this.studies = [];
-    this.hiddenDatasets = new Set();
-    this.svgGroup = null;
-    this.eventListeners = new Map();
-    
-    // Callbacks
-    this.onDatasetToggle = null;
-    this.onStudyToggle = null;
   }
-  
+
   /**
-   * Update datasets for the legend
+   * Update datasets and re-render legend
+   * @param {Array} datasets - Array of dataset objects
    */
-  setDatasets(datasets) {
-    this.datasets = Array.isArray(datasets) ? datasets : [];
-    return this;
+  updateDatasets(datasets) {
+    this.datasets = datasets || [];
+    this.render();
   }
-  
+
   /**
-   * Update studies for the legend
+   * Render legend to SVG container
+   * @param {SVGElement} svgContainer - SVG element to render into
+   * @param {Object} chartArea - Chart area dimensions
+   * @param {Object} options - Additional options
    */
-  setStudies(studies) {
-    this.studies = Array.isArray(studies) ? studies : [];
-    return this;
-  }
-  
-  /**
-   * Set dataset toggle callback
-   */
-  onDatasetToggled(callback) {
-    this.onDatasetToggle = callback;
-    return this;
-  }
-  
-  /**
-   * Set study toggle callback
-   */
-  onStudyToggled(callback) {
-    this.onStudyToggle = callback;
-    return this;
-  }
-  
-  /**
-   * Hide a dataset
-   */
-  hideDataset(datasetId) {
-    this.hiddenDatasets.add(datasetId);
-    this._updateVisualState();
-    return this;
-  }
-  
-  /**
-   * Show a dataset
-   */
-  showDataset(datasetId) {
-    this.hiddenDatasets.delete(datasetId);
-    this._updateVisualState();
-    return this;
-  }
-  
-  /**
-   * Toggle dataset visibility
-   */
-  toggleDataset(datasetId) {
-    if (this.hiddenDatasets.has(datasetId)) {
-      this.showDataset(datasetId);
-    } else {
-      this.hideDataset(datasetId);
-    }
-    
-    // Trigger callback
-    if (this.onDatasetToggle) {
-      this.onDatasetToggle(datasetId, !this.hiddenDatasets.has(datasetId));
-    }
-    
-    return this;
-  }
-  
-  /**
-   * Check if dataset is visible
-   */
-  isDatasetVisible(datasetId) {
-    return !this.hiddenDatasets.has(datasetId);
-  }
-  
-  /**
-   * Calculate legend dimensions and position
-   */
-  calculateLayout(chartArea, chartWidth, chartHeight) {
-    const items = [...this.datasets, ...this.studies];
-    if (items.length === 0) {
-      return { x: 0, y: 0, width: 0, height: 0 };
-    }
-    
-    let totalWidth = 0;
-    let totalHeight = 0;
-    let maxItemWidth = 0;
-    let maxItemHeight = 0;
-    
-    // Calculate item dimensions
-    items.forEach(item => {
-      const text = item.name || item.label || 'Unknown';
-      const textWidth = this._estimateTextWidth(text, this.config.fontSize, this.config.fontFamily);
-      
-      const itemWidth = this.config.symbolSize + this.config.symbolSpacing + textWidth + 
-                       this.config.itemPadding.left + this.config.itemPadding.right;
-      const itemHeight = Math.max(this.config.symbolSize, this.config.fontSize) + 
-                        this.config.itemPadding.top + this.config.itemPadding.bottom;
-      
-      maxItemWidth = Math.max(maxItemWidth, itemWidth);
-      maxItemHeight = Math.max(maxItemHeight, itemHeight);
-    });
-    
-    // Calculate total dimensions based on orientation
-    if (this.config.orientation === 'horizontal') {
-      totalWidth = items.length > 0 ? 
-        (maxItemWidth * items.length) + (this.config.itemSpacing * (items.length - 1)) : 0;
-      totalHeight = maxItemHeight;
-    } else {
-      totalWidth = maxItemWidth;
-      totalHeight = items.length > 0 ? 
-        (maxItemHeight * items.length) + (this.config.itemSpacing * (items.length - 1)) : 0;
-    }
-    
-    // Calculate position based on legend position
-    let x, y;
-    
-    switch (this.config.position) {
-      case 'top':
-        x = this._getAlignedX(totalWidth, chartWidth);
-        y = 10; // Small margin from top
-        break;
-      case 'bottom':
-        x = this._getAlignedX(totalWidth, chartWidth);
-        y = chartHeight - totalHeight - 10; // Small margin from bottom
-        break;
-      case 'left':
-        x = 10; // Small margin from left
-        y = this._getAlignedY(totalHeight, chartArea);
-        break;
-      case 'right':
-        x = chartWidth - totalWidth - 10; // Small margin from right
-        y = this._getAlignedY(totalHeight, chartArea);
-        break;
-      default:
-        x = this._getAlignedX(totalWidth, chartWidth);
-        y = 10;
-    }
-    
-    return {
-      x: Math.max(0, x),
-      y: Math.max(0, y),
-      width: totalWidth,
-      height: totalHeight,
-      itemWidth: maxItemWidth,
-      itemHeight: maxItemHeight
-    };
-  }
-  
-  /**
-   * Get aligned X position
-   */
-  _getAlignedX(legendWidth, chartWidth) {
-    switch (this.config.align) {
-      case 'left':
-        return 10;
-      case 'right':
-        return chartWidth - legendWidth - 10;
-      case 'center':
-      default:
-        return (chartWidth - legendWidth) / 2;
-    }
-  }
-  
-  /**
-   * Get aligned Y position for vertical legends
-   */
-  _getAlignedY(legendHeight, chartArea) {
-    switch (this.config.align) {
-      case 'top':
-        return chartArea.y;
-      case 'bottom':
-        return chartArea.y + chartArea.height - legendHeight;
-      case 'middle':
-      default:
-        return chartArea.y + (chartArea.height - legendHeight) / 2;
-    }
-  }
-  
-  /**
-   * Estimate text width (simple approximation)
-   */
-  _estimateTextWidth(text, fontSize, fontFamily) {
-    // Rough estimation: most characters are about 0.6 * fontSize wide
-    return text.length * fontSize * 0.6;
-  }
-  
-  /**
-   * Render legend to SVG
-   */
-  render(svgElement, chartArea, chartWidth, chartHeight) {
-    // Remove existing legend
-    this._cleanup();
-    
-    if (this.datasets.length === 0 && this.studies.length === 0) {
+  render(svgContainer, chartArea, options = {}) {
+    if (!svgContainer || !chartArea) {
+      console.warn('Legend: SVG container and chart area required for rendering');
       return;
     }
-    
-    // Calculate layout
-    const layout = this.calculateLayout(chartArea, chartWidth, chartHeight);
-    
+
+    // Remove existing legend
+    this._remove();
+
+    // Don't render if no datasets
+    if (!this.datasets || this.datasets.length === 0) {
+      return;
+    }
+
     // Create legend group
-    this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    this.svgGroup.setAttribute('class', 'visioncharts-legend');
-    this.svgGroup.setAttribute('transform', `translate(${layout.x}, ${layout.y})`);
+    this.element = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.element.setAttribute('class', 'chart-legend');
+
+    // Calculate initial legend dimensions and position
+    const legendData = this._calculateLegendLayout(chartArea);
     
-    // Add background if specified
-    if (this.config.backgroundColor && this.config.backgroundColor !== 'transparent') {
-      this._renderBackground(layout);
-    }
+    // Create legend items first
+    this._createLegendItems(legendData);
     
-    // Render items
-    let currentX = 0;
-    let currentY = 0;
+    // Measure actual dimensions of the created items
+    const actualDimensions = this._measureLegendItems();
     
-    const allItems = [...this.datasets, ...this.studies];
-    
-    allItems.forEach((item, index) => {
-      this._renderLegendItem(item, currentX, currentY, layout, index);
-      
-      // Update position for next item
-      if (this.config.orientation === 'horizontal') {
-        currentX += layout.itemWidth + this.config.itemSpacing;
-      } else {
-        currentY += layout.itemHeight + this.config.itemSpacing;
-      }
-    });
-    
+    // Create background with actual dimensions
+    this._createBackground(legendData, actualDimensions);
+
     // Add to SVG
-    svgElement.appendChild(this.svgGroup);
+    svgContainer.appendChild(this.element);
     
-    console.log('Legend rendered with SVG');
+    console.log(`Legend rendered with ${this.datasets.length} datasets`);
   }
-  
+
   /**
-   * Render legend background
+   * Measure the actual dimensions of all legend items
+   * @private
    */
-  _renderBackground(layout) {
-    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    bg.setAttribute('x', -this.config.itemPadding.left);
-    bg.setAttribute('y', -this.config.itemPadding.top);
-    bg.setAttribute('width', layout.width + this.config.itemPadding.left + this.config.itemPadding.right);
-    bg.setAttribute('height', layout.height + this.config.itemPadding.top + this.config.itemPadding.bottom);
-    bg.setAttribute('fill', this.config.backgroundColor);
-    bg.setAttribute('stroke', this.config.borderColor);
-    bg.setAttribute('stroke-width', this.config.borderWidth);
-    bg.setAttribute('rx', this.config.borderRadius);
-    bg.setAttribute('ry', this.config.borderRadius);
+  _measureLegendItems() {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
     
-    this.svgGroup.appendChild(bg);
-  }
-  
-  /**
-   * Render individual legend item
-   */
-  _renderLegendItem(item, x, y, layout, index) {
-    const isDataset = this.datasets.includes(item);
-    const isVisible = isDataset ? this.isDatasetVisible(item.id) : true;
+    // Get all legend items
+    const items = this.element.querySelectorAll('.legend-item');
     
-    // Create item group
-    const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    itemGroup.setAttribute('class', `visioncharts-legend-item ${isDataset ? 'dataset' : 'study'}`);
-    itemGroup.setAttribute('data-id', item.id);
-    
-    // Add interactivity
-    if (this.config.interactive) {
-      itemGroup.style.cursor = 'pointer';
-      this._addItemEventListeners(itemGroup, item, isDataset);
-    }
-    
-    // Apply visibility styling
-    if (!isVisible) {
-      itemGroup.style.opacity = '0.5';
-    }
-    
-    // Render symbol (line segment for datasets, special symbols for studies)
-    this._renderSymbol(itemGroup, item, 0, y + layout.itemHeight / 2, isDataset);
-    
-    // Render text
-    this._renderText(itemGroup, item, this.config.symbolSize + this.config.symbolSpacing, 
-                    y + layout.itemHeight / 2, isVisible);
-    
-    // Add study badge if applicable
-    if (!isDataset && this.config.showStudyBadges) {
-      this._renderStudyBadge(itemGroup, item, layout.itemWidth - 20, y + layout.itemHeight / 2);
-    }
-    
-    this.svgGroup.appendChild(itemGroup);
-  }
-  
-  /**
-   * Render legend symbol
-   */
-  _renderSymbol(parent, item, x, y, isDataset) {
-    if (isDataset) {
-      // Line segment for datasets
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', x);
-      line.setAttribute('y1', y);
-      line.setAttribute('x2', x + this.config.symbolSize);
-      line.setAttribute('y2', y);
-      line.setAttribute('stroke', item.color || '#1468a8');
-      line.setAttribute('stroke-width', item.width || 2);
-      line.setAttribute('stroke-linecap', 'round');
-      
-      parent.appendChild(line);
-    } else {
-      // Special symbols for studies (circles, squares, etc.)
-      const symbol = this._createStudySymbol(item, x + this.config.symbolSize / 2, y);
-      parent.appendChild(symbol);
-    }
-  }
-  
-  /**
-   * Create study symbol based on study type
-   */
-  _createStudySymbol(study, cx, cy) {
-    const symbolSize = this.config.symbolSize;
-    const color = study.color || '#FBBC05';
-    
-    switch (study.type) {
-      case 'sma':
-      case 'ema':
-        // Dashed line for moving averages
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', cx - symbolSize / 2);
-        line.setAttribute('y1', cy);
-        line.setAttribute('x2', cx + symbolSize / 2);
-        line.setAttribute('y2', cy);
-        line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', 2);
-        line.setAttribute('stroke-dasharray', '3,2');
-        return line;
-        
-      case 'bollinger':
-        // Rectangle for bands
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', cx - symbolSize / 2);
-        rect.setAttribute('y', cy - symbolSize / 4);
-        rect.setAttribute('width', symbolSize);
-        rect.setAttribute('height', symbolSize / 2);
-        rect.setAttribute('fill', 'none');
-        rect.setAttribute('stroke', color);
-        rect.setAttribute('stroke-width', 1.5);
-        return rect;
-        
-      case 'rsi':
-      case 'macd':
-        // Circle for oscillators
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', cx);
-        circle.setAttribute('cy', cy);
-        circle.setAttribute('r', symbolSize / 3);
-        circle.setAttribute('fill', color);
-        return circle;
-        
-      default:
-        // Default: small square
-        const square = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        square.setAttribute('x', cx - symbolSize / 4);
-        square.setAttribute('y', cy - symbolSize / 4);
-        square.setAttribute('width', symbolSize / 2);
-        square.setAttribute('height', symbolSize / 2);
-        square.setAttribute('fill', color);
-        return square;
-    }
-  }
-  
-  /**
-   * Render legend text
-   */
-  _renderText(parent, item, x, y, isVisible) {
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', x);
-    text.setAttribute('y', y);
-    text.setAttribute('dominant-baseline', 'central');
-    text.setAttribute('font-size', this.config.fontSize);
-    text.setAttribute('font-family', this.config.fontFamily);
-    text.setAttribute('font-weight', this.config.fontWeight);
-    text.setAttribute('fill', isVisible ? this.config.textColor : '#999');
-    text.textContent = item.name || item.label || 'Unknown';
-    
-    parent.appendChild(text);
-  }
-  
-  /**
-   * Render study badge
-   */
-  _renderStudyBadge(parent, study, x, y) {
-    const badge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    badge.setAttribute('cx', x);
-    badge.setAttribute('cy', y);
-    badge.setAttribute('r', 6);
-    badge.setAttribute('fill', '#666');
-    badge.setAttribute('class', 'study-badge');
-    
-    const badgeText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    badgeText.setAttribute('x', x);
-    badgeText.setAttribute('y', y);
-    badgeText.setAttribute('dominant-baseline', 'central');
-    badgeText.setAttribute('text-anchor', 'middle');
-    badgeText.setAttribute('font-size', '8');
-    badgeText.setAttribute('font-weight', 'bold');
-    badgeText.setAttribute('fill', 'white');
-    badgeText.textContent = 'S';
-    
-    parent.appendChild(badge);
-    parent.appendChild(badgeText);
-  }
-  
-  /**
-   * Add event listeners to legend items
-   */
-  _addItemEventListeners(itemGroup, item, isDataset) {
-    const clickHandler = () => {
-      if (isDataset) {
-        this.toggleDataset(item.id);
-      } else if (this.onStudyToggle) {
-        this.onStudyToggle(item.id, item);
-      }
-    };
-    
-    const hoverInHandler = () => {
-      if (this.config.hoverEffect) {
-        itemGroup.style.opacity = '0.8';
-      }
-    };
-    
-    const hoverOutHandler = () => {
-      if (this.config.hoverEffect) {
-        const isVisible = isDataset ? this.isDatasetVisible(item.id) : true;
-        itemGroup.style.opacity = isVisible ? '1' : '0.5';
-      }
-    };
-    
-    itemGroup.addEventListener('click', clickHandler);
-    itemGroup.addEventListener('mouseenter', hoverInHandler);
-    itemGroup.addEventListener('mouseleave', hoverOutHandler);
-    
-    // Store for cleanup
-    this.eventListeners.set(itemGroup, { clickHandler, hoverInHandler, hoverOutHandler });
-  }
-  
-  /**
-   * Update visual state of legend items
-   */
-  _updateVisualState() {
-    if (!this.svgGroup) return;
-    
-    const items = this.svgGroup.querySelectorAll('.visioncharts-legend-item.dataset');
+    // Find the bounding box that contains all items
     items.forEach(item => {
-      const datasetId = item.getAttribute('data-id');
-      const isVisible = this.isDatasetVisible(datasetId);
-      item.style.opacity = isVisible ? '1' : '0.5';
+      const bbox = item.getBBox();
+      minX = Math.min(minX, bbox.x);
+      minY = Math.min(minY, bbox.y);
+      maxX = Math.max(maxX, bbox.x + bbox.width);
+      maxY = Math.max(maxY, bbox.y + bbox.height);
+    });
+    
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    };
+  }
+
+  /**
+   * Calculate legend layout and positioning
+   * @private
+   */
+  _calculateLegendLayout(chartArea) {
+    const itemWidth = this._estimateItemWidth();
+    const totalWidth = Math.min(
+      this.datasets.length * itemWidth + (this.datasets.length - 1) * this.config.itemSpacing,
+      chartArea.width - 40 // Leave margin on sides
+    );
+    
+    // Center horizontally in chart area
+    const x = chartArea.x + (chartArea.width - totalWidth) / 2;
+    
+    // Position under title with margin, now 15px lower
+    const y = chartArea.y - this.config.marginBottom + 15;
+    
+    return {
+      x: x,
+      y: y,
+      totalWidth: totalWidth,
+      itemWidth: itemWidth,
+      height: this.config.fontSize + this.config.padding * 2
+    };
+  }
+
+  /**
+   * Estimate width needed for each legend item
+   * @private
+   */
+  _estimateItemWidth() {
+    // Rough estimation: indicator + spacing + average text width
+    const avgTextWidth = 60; // Rough estimate for "Dataset X"
+    return this.config.indicatorSize + this.config.indicatorSpacing + avgTextWidth;
+  }
+
+  /**
+   * Create individual legend items
+   * @private
+   */
+  _createLegendItems(legendData) {
+    this.datasets.forEach((dataset, index) => {
+      const itemX = legendData.x + index * (legendData.itemWidth + this.config.itemSpacing);
+      const itemY = legendData.y;
       
-      // Update text color
-      const text = item.querySelector('text');
-      if (text) {
-        text.setAttribute('fill', isVisible ? this.config.textColor : '#999');
-      }
+      // Create legend item group
+      const itemGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      itemGroup.setAttribute('class', 'legend-item');
+      
+      // Color indicator (square)
+      const indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      indicator.setAttribute('x', itemX);
+      indicator.setAttribute('y', itemY - this.config.indicatorSize / 2);
+      indicator.setAttribute('width', this.config.indicatorSize);
+      indicator.setAttribute('height', this.config.indicatorSize);
+      indicator.setAttribute('fill', dataset.color || '#1468a8');
+      indicator.setAttribute('stroke', '#999');
+      indicator.setAttribute('stroke-width', '0.5');
+      
+      // Dataset name text
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', itemX + this.config.indicatorSize + this.config.indicatorSpacing);
+      text.setAttribute('y', itemY + this.config.fontSize / 3); // Vertically center
+      text.setAttribute('font-size', this.config.fontSize);
+      text.setAttribute('font-family', this.config.fontFamily);
+      text.setAttribute('font-weight', this.config.fontWeight);
+      text.setAttribute('fill', this.config.textColor);
+      text.setAttribute('text-anchor', 'start');
+      text.textContent = dataset.name || dataset.id || 'Unnamed Dataset';
+      
+      // Add to item group
+      itemGroup.appendChild(indicator);
+      itemGroup.appendChild(text);
+      
+      // Add to legend
+      this.element.appendChild(itemGroup);
     });
   }
-  
+
   /**
-   * Update legend configuration
+   * Create legend background
+   * @private
    */
-  updateConfig(newConfig) {
-    this.config = { ...this.config, ...newConfig };
-    return this;
+  _createBackground(legendData, actualDimensions) {
+    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    
+    // Position and size based on actual dimensions plus padding
+    background.setAttribute('x', actualDimensions.x - this.config.padding);
+    background.setAttribute('y', actualDimensions.y - this.config.padding);
+    background.setAttribute('width', actualDimensions.width + this.config.padding * 2);
+    background.setAttribute('height', actualDimensions.height + this.config.padding * 2);
+    background.setAttribute('fill', this.config.backgroundColor);
+    background.setAttribute('stroke', this.config.border.split(' ')[2]); // Extract color
+    background.setAttribute('stroke-width', '1');
+    background.setAttribute('rx', this.config.borderRadius);
+    
+    // Insert at the beginning so it's behind the text
+    this.element.insertBefore(background, this.element.firstChild);
   }
-  
+
+  /**
+   * Remove legend from DOM
+   * @private
+   */
+  _remove() {
+    if (this.element && this.element.parentElement) {
+      this.element.parentElement.removeChild(this.element);
+      this.element = null;
+    }
+  }
+
+  /**
+   * Update legend when dataset color changes
+   * @param {string} datasetId - ID of dataset that changed
+   * @param {string} newColor - New color value
+   */
+  updateDatasetColor(datasetId, newColor) {
+    const dataset = this.datasets.find(d => d.id === datasetId);
+    if (dataset) {
+      dataset.color = newColor;
+      
+      // Update the specific indicator in the DOM
+      if (this.element) {
+        const legendItems = this.element.querySelectorAll('.legend-item');
+        const datasetIndex = this.datasets.findIndex(d => d.id === datasetId);
+        
+        if (legendItems[datasetIndex]) {
+          const indicator = legendItems[datasetIndex].querySelector('rect');
+          if (indicator) {
+            indicator.setAttribute('fill', newColor);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get legend height for layout calculations
+   */
+  getHeight() {
+    return this.config.fontSize + this.config.padding * 2 + this.config.marginTop + this.config.marginBottom;
+  }
+
   /**
    * Show/hide legend
    */
   setVisible(visible) {
-    if (this.svgGroup) {
-      this.svgGroup.style.display = visible ? 'block' : 'none';
-    }
-    return this;
-  }
-  
-  /**
-   * Clean up event listeners and DOM elements
-   */
-  _cleanup() {
-    if (this.svgGroup) {
-      // Remove event listeners
-      this.eventListeners.forEach((listeners, element) => {
-        element.removeEventListener('click', listeners.clickHandler);
-        element.removeEventListener('mouseenter', listeners.hoverInHandler);
-        element.removeEventListener('mouseleave', listeners.hoverOutHandler);
-      });
-      this.eventListeners.clear();
-      
-      // Remove from DOM
-      this.svgGroup.remove();
-      this.svgGroup = null;
+    if (this.element) {
+      this.element.style.display = visible ? 'block' : 'none';
     }
   }
-  
+
   /**
    * Destroy legend and clean up
    */
   destroy() {
-    this._cleanup();
+    this._remove();
     this.datasets = [];
-    this.studies = [];
-    this.hiddenDatasets.clear();
   }
 }

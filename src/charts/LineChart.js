@@ -279,7 +279,7 @@ export class LineChart extends Chart {
   }
 
   /**
-   * Add a new dataset to the chart (UPDATED to include fill default)
+   * Add a new dataset to the chart (UPDATED with legend support)
    */
   addDataset(dataset) {
     if (!dataset || !dataset.data) {
@@ -299,7 +299,12 @@ export class LineChart extends Chart {
     
     this.config.data.push(processedDataset);
     
-    console.log(`LineChart: Added dataset with fill support: ${processedDataset.id} (fill: ${processedDataset.fill})`);
+    console.log(`LineChart: Added dataset with legend support: ${processedDataset.id} (fill: ${processedDataset.fill})`);
+    
+    // NEW: Update legend
+    if (this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
     
     // Update and re-render
     this.update();
@@ -308,7 +313,7 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Remove a dataset by ID
+   * Remove a dataset by ID (UPDATED with legend support)
    */
   removeDataset(datasetId) {
     const initialCount = this.config.data.length;
@@ -316,6 +321,12 @@ export class LineChart extends Chart {
     
     if (this.config.data.length < initialCount) {
       console.log(`LineChart: Removed dataset: ${datasetId}`);
+      
+      // NEW: Update legend
+      if (this.legend) {
+        this.legend.updateDatasets(this.config.data);
+      }
+      
       this.update();
     } else {
       console.warn(`LineChart: Dataset not found: ${datasetId}`);
@@ -325,7 +336,7 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Update a specific dataset
+   * Update a specific dataset (UPDATED with legend support)
    */
   updateDataset(datasetId, newData) {
     const dataset = this.config.data.find(ds => ds.id === datasetId);
@@ -338,7 +349,17 @@ export class LineChart extends Chart {
     // Update dataset properties
     Object.assign(dataset, newData);
     
-    console.log(`LineChart: Updated dataset with unified coordinates: ${datasetId}`);
+    // NEW: Update legend if color changed
+    if (newData.color && this.legend) {
+      this.legend.updateDatasetColor(datasetId, newData.color);
+    }
+    
+    // NEW: Update legend if name changed
+    if (newData.name && this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
+    
+    console.log(`LineChart: Updated dataset with legend support: ${datasetId}`);
     this.update();
     
     return this;

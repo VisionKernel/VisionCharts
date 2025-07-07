@@ -14,6 +14,10 @@ import WebGLRenderer from '../renderers/WebGLRenderer.js';
 import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 import { DataProcessor } from '../utils/DataProcessor.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
+import { Legend } from '../components/Legend.js';
+import { ColorUtils } from '../utils/ColorUtils.js';
+
+
 
 export class Chart {
   constructor(config = {}) {
@@ -104,9 +108,21 @@ export class Chart {
     // Initialization state
     this.isInitialized = false;
     
+    // Legend component
+    this.legend = new Legend({
+      fontSize: 12,
+      fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
+      textColor: '#333333',
+      itemSpacing: 25,
+      marginTop: 15,
+      marginBottom: 15
+    });
+    
     // Initialize
     this._initPromise = this._initialize();
   }
+
+  
   
   /**
    * Resolve container from selector or element
@@ -626,7 +642,7 @@ export class Chart {
   }
   
   /**
-   * Render the chart using the selected renderer
+   * Render the chart using the selected renderer (UPDATED with legend)
    */
   async render() {
     if (!this.isInitialized) {
@@ -653,14 +669,13 @@ export class Chart {
       // Transform data using unified coordinate system
       await this._preprocessDataForRenderer();
       
-      // HYBRID RENDERING ARCHITECTURE with UNIFIED COORDINATES:
-      // 1. Grid: Always Canvas 2D (simple, reliable) - use separate canvas for WebGL
+      // HYBRID RENDERING ARCHITECTURE:
+      // 1. Grid: Always Canvas 2D
       if (this.grid && this.config.options.showGrid) {
         const ctx = this.activeRenderer === 'webgl' 
           ? this.gridCanvas.getContext('2d')
           : this.canvas.getContext('2d');
         
-        // Clear grid canvas if using WebGL
         if (this.activeRenderer === 'webgl') {
           ctx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
         }
@@ -668,16 +683,19 @@ export class Chart {
         this.grid.render(ctx);
       }
       
-      // 2. Title: Always SVG (crisp text, vector graphics)
+      // 2. Title: Always SVG
       this._renderTitle();
       
-      // 3. Axes: Always SVG (crisp text, vector graphics)
+      // 3. NEW: Legend: Always SVG (under title)
+      this._updateLegend();
+      
+      // 4. Axes: Always SVG
       this._renderAxes();
       
-      // 4. Data: Selected renderer using UNIFIED coordinates
+      // 5. Data: Selected renderer
       await this._renderChartData();
       
-      console.log(`Chart rendered successfully using ${this.activeRenderer} renderer with unified coordinates`);
+      console.log(`Chart rendered successfully using ${this.activeRenderer} renderer with legend`);
       
     } catch (error) {
       console.error('Error rendering chart:', error);
@@ -989,6 +1007,22 @@ export class Chart {
     } catch (error) {
       console.error('Error updating dataset fill:', error);
       return false;
+    }
+  }
+  
+  
+  /**
+   * Update legend with current datasets
+   * @private
+   */
+  _updateLegend() {
+    if (this.legend && this.config.data) {
+      this.legend.updateDatasets(this.config.data);
+      
+      // Re-render legend if SVG overlay exists
+      if (this.svgOverlay && this.chartArea) {
+        this.legend.render(this.svgOverlay, this.chartArea);
+      }
     }
   }
   
