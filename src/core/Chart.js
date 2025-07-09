@@ -17,6 +17,7 @@ import { PathGenerator } from '../utils/PathGenerator.js';
 import { Legend } from '../components/Legend.js';
 // import { ColorUtils } from '../utils/ColorUtils.js';
 import { Crosshair } from '../components/Crosshair.js';
+import {CrosshairTooltip} from '../components/CrosshairTooltip.js';
 
 
 
@@ -1055,6 +1056,12 @@ export class Chart {
       this.crosshair = null;
     }
     
+    // Cleanup tooltip
+    if (this.tooltip) {
+      this.tooltip.destroy();
+      this.tooltip = null;
+    }
+    
     // Remove mouse event listeners
     if (this._boundMouseMove && this.container) {
       this.container.removeEventListener('mousemove', this._boundMouseMove);
@@ -1104,6 +1111,16 @@ export class Chart {
       lineOpacity: 0.7,
       highlightRadius: 3
     });
+
+    this.tooltip = new CrosshairTooltip({
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      textColor: '#ffffff',
+      fontSize: 12,
+      dateFormat: 'medium',
+      valueDecimals: 2,
+      offsetX: 15,
+      offsetY: 15
+    });
     
     console.log('Crosshair component created');
   }
@@ -1144,6 +1161,10 @@ export class Chart {
       // Check if mouse is within chart area
       if (!this._isMouseInChartArea(mouseX, mouseY)) {
         this.crosshair.hide();
+        // Hide tooltip when outside chart area
+        if (this.tooltip) {
+          this.tooltip.hide();
+        }
         return;
       }
       
@@ -1153,6 +1174,10 @@ export class Chart {
         const deltaY = Math.abs(mouseY - this.lastMousePosition.y);
         
         if (deltaX < this.mouseThreshold && deltaY < this.mouseThreshold) {
+          // Update tooltip position even if crosshair doesn't update
+          if (this.tooltip && this.tooltip.isVisible) {
+            this.tooltip.updatePosition(mouseX, mouseY);
+          }
           return; // Skip update if mouse hasn't moved enough
         }
       }
@@ -1180,6 +1205,9 @@ export class Chart {
     if (this.crosshair) {
       this.crosshair.hide();
       this.lastMousePosition = null;
+    }
+    if (this.tooltip) {
+      this.tooltip.hide();
     }
   }
 
@@ -1268,42 +1296,80 @@ export class Chart {
    * @private
    */
   _updateCrosshair(targetDataX, mouseX, mouseY) {
-    if (!this.crosshair) return;
+    console.log('=== _updateCrosshair called ===');
+    console.log('targetDataX:', targetDataX, 'mouseX:', mouseX, 'mouseY:', mouseY);
+    
+    if (!this.crosshair) {
+      console.log('No crosshair - returning');
+      return;
+    }
     
     try {
-      // Find candidate points with new proximity logic
+      // Find candidate points
       const candidatePoints = this._findCandidateDataPoints(targetDataX);
+      console.log('candidatePoints:', candidatePoints.length);
       
       if (candidatePoints.length === 0) {
+        console.log('No candidates - hiding tooltip');
         this.crosshair.hide();
+        if (this.tooltip) {
+          this.tooltip.hide();
+        }
         return;
       }
       
-      // FIXED: Pass mouse position to find best X
+      // Select best X
       const bestDataX = this._findBestDataX(candidatePoints, targetDataX);
+      console.log('bestDataX:', bestDataX);
       
-      // Get actual data points at the selected X coordinate
+      // Get actual points
       const actualDataPoints = this._getDataPointsAtX(bestDataX);
+      console.log('actualDataPoints:', actualDataPoints);
+      console.log('actualDataPoints structure:', actualDataPoints.map(p => ({
+        dataset: p.dataset ? p.dataset.name : 'no dataset',
+        dataX: p.dataX,
+        dataY: p.dataY,
+        color: p.color
+      })));
       
       if (actualDataPoints.length === 0) {
+        console.log('No actual points - hiding tooltip');
         this.crosshair.hide();
+        if (this.tooltip) {
+          this.tooltip.hide();
+        }
         return;
       }
       
-      // Use the first point's position for crosshair, but highlight all points
+      // Update crosshair
       const primaryPoint = actualDataPoints[0];
       const crosshairX = primaryPoint.unifiedX;
       const crosshairY = primaryPoint.unifiedY;
       
-      // Show and update crosshair
       this.crosshair.show();
       this.crosshair.updatePosition(crosshairX, crosshairY);
       this.crosshair.updateHighlights(actualDataPoints);
       
-      console.log(`Crosshair updated: ${actualDataPoints.length} points at X=${bestDataX}`);
+      // SHOW TOOLTIP - Debug this part carefully
+      if (this.tooltip) {
+        console.log('About to call tooltip.show with:', {
+          dataPoints: actualDataPoints.length,
+          mouseX: mouseX,
+          mouseY: mouseY
+        });
+        
+        this.tooltip.show(actualDataPoints, mouseX, mouseY);
+        
+        console.log('Tooltip state after show:', this.tooltip.getState());
+      } else {
+        console.log('No tooltip object available');
+      }
       
     } catch (error) {
       console.error('Error updating crosshair:', error);
+      if (this.tooltip) {
+        this.tooltip.hide();
+      }
     }
   }
 
@@ -1401,5 +1467,38 @@ export class Chart {
   getDataPointsAtX(exactDataX, dataset) {
     console.warn('getDataPointsAtX not implemented');
     return [];
+  }
+  
+  /**
+   * Configure tooltip appearance
+   */
+  setTooltipConfig(config) {
+    if (this.tooltip) {
+      this.tooltip.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Enable/disable tooltip
+   */
+  toggleTooltip(enabled = null) {
+    const shouldEnable = enabled !== null ? enabled : !this.tooltip;
+    
+    if (shouldEnable && !this.tooltip) {
+      this.tooltip = new CrosshairTooltip();
+    } else if (!shouldEnable && this.tooltip) {
+      this.tooltip.destroy();
+      this.tooltip = null;
+    }
+    
+    return shouldEnable;
+  }
+
+  /**
+   * Get tooltip state for debugging
+   */
+  getTooltipInfo() {
+    return this.tooltip ? this.tooltip.getState() : { enabled: false };
   }
 }
