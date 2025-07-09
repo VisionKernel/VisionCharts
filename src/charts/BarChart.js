@@ -613,4 +613,247 @@ export class BarChart extends Chart {
       throw error;
     }
   }
+
+  /**
+   * Find closest data points for given X coordinate
+   */
+  findClosestDataPoints(targetDataX, dataset = null) {
+    // Use provided dataset or find from config
+    const targetDataset = dataset || this.config.data[0];
+    
+    if (!targetDataset || !targetDataset.data || targetDataset.data.length === 0) {
+      return [];
+    }
+    
+    try {
+      const closestPoint = this._binarySearchClosest(targetDataset.data, targetDataX);
+      
+      if (closestPoint) {
+        return [{
+          ...closestPoint,
+          datasetId: targetDataset.id,
+          dataset: targetDataset,
+          dataX: this._extractXValue(closestPoint),
+          dataY: this._extractYValue(closestPoint),
+          color: targetDataset.color
+        }];
+      }
+      
+      return [];
+      
+    } catch (error) {
+      console.error('Error finding closest data points:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get data points at exact X coordinate
+   */
+  getDataPointsAtX(exactDataX, dataset = null) {
+    const targetDataset = dataset || this.config.data[0];
+    
+    if (!targetDataset || !targetDataset.data || targetDataset.data.length === 0) {
+      return [];
+    }
+    
+    try {
+      const matchingPoints = [];
+      
+      // FIXED: Use global tolerance method (inherited from Chart base class)
+      const tolerance = this._calculateMouseProximityTolerance();
+      
+      console.log(`Using global tolerance: ${tolerance}ms (${tolerance/60000} minutes) for dataset ${targetDataset.id}`);
+      
+      // Find all points within reasonable distance of mouse
+      for (const point of targetDataset.data) {
+        const pointX = this._extractXValue(point);
+        
+        if (Math.abs(pointX - exactDataX) <= tolerance) {
+          matchingPoints.push({
+            ...point,
+            datasetId: targetDataset.id,
+            dataset: targetDataset,
+            dataX: pointX,
+            dataY: this._extractYValue(point),
+            color: targetDataset.color,
+            unifiedX: point.unifiedX || point.screenX,
+            unifiedY: point.unifiedY || point.screenY
+          });
+        }
+      }
+
+      // FIXED: No fallback to distant points! If no points within tolerance, return empty
+      if (matchingPoints.length === 0) {
+        console.log(`No points found within ${tolerance}ms of mouse position for dataset ${targetDataset.id}`);
+        return [];
+      }
+      
+      return matchingPoints;
+      
+    } catch (error) {
+      console.error('Error getting data points at X:', error);
+      return [];
+    }
+  }
+
+  
+
+  /**
+   * Binary search for closest data point by X coordinate
+   * @private
+   */
+  _binarySearchClosest(data, targetX) {
+    if (!data || data.length === 0) return null;
+    
+    // Quick check if data appears to be sorted
+    const isSorted = this._isDataSorted(data);
+    
+    if (isSorted) {
+      return this._binarySearchSorted(data, targetX);
+    } else {
+      console.warn('Data not sorted, falling back to linear search');
+      return this._linearSearchClosest(data, targetX);
+    }
+  }
+
+  /**
+   * Binary search on sorted data
+   * @private
+   */
+  _binarySearchSorted(data, targetX) {
+    let left = 0;
+    let right = data.length - 1;
+    let closest = data[0];
+    let minDistance = Math.abs(this._extractXValue(data[0]) - targetX);
+    
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const midPoint = data[mid];
+      const midX = this._extractXValue(midPoint);
+      const distance = Math.abs(midX - targetX);
+      
+      // Update closest if this point is closer
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = midPoint;
+      }
+      
+      // Navigate search space
+      if (midX < targetX) {
+        left = mid + 1;
+      } else if (midX > targetX) {
+        right = mid - 1;
+      } else {
+        // Exact match found
+        return midPoint;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
+   * Linear search fallback for unsorted data
+   * @private
+   */
+  _linearSearchClosest(data, targetX) {
+    let closest = null;
+    let minDistance = Infinity;
+    
+    for (const point of data) {
+      const pointX = this._extractXValue(point);
+      const distance = Math.abs(pointX - targetX);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = point;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
+   * Check if data is sorted by X coordinate
+   * @private
+   */
+  _isDataSorted(data) {
+    if (data.length < 2) return true;
+    
+    // Check first few and last few points to determine if sorted
+    const checkCount = Math.min(10, Math.floor(data.length / 2));
+    
+    for (let i = 1; i < checkCount; i++) {
+      const prevX = this._extractXValue(data[i - 1]);
+      const currX = this._extractXValue(data[i]);
+      
+      if (prevX > currX) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Extract X value from data point
+   * @private
+   */
+  _extractXValue(point) {
+    const x = point.x || point.date || point.time || point.timestamp;
+    
+    // Convert Date objects to timestamps
+    if (x instanceof Date) {
+      return x.getTime();
+    }
+    
+    if (typeof x === 'string' && this.config.options.xType === 'time') {
+      return new Date(x).getTime();
+    }
+    
+    return typeof x === 'number' ? x : null;
+  }
+
+  /**
+   * Extract Y value from data point
+   * @private
+   */
+  _extractYValue(point) {
+    const y = point.y || point.value || point.price || point.close;
+    return typeof y === 'number' ? y : null;
+  }
+
+  /**
+   * Calculate bar tolerance for point selection
+   * @private
+   */
+  _calculateBarTolerance(dataset) {
+    if (!dataset.data || dataset.data.length < 2) {
+      return 1000; // Default tolerance in milliseconds for time data
+    }
+    
+    // Calculate average distance between consecutive points
+    let totalDistance = 0;
+    let validDistances = 0;
+    
+    for (let i = 1; i < Math.min(dataset.data.length, 10); i++) {
+      const prevX = this._extractXValue(dataset.data[i - 1]);
+      const currX = this._extractXValue(dataset.data[i]);
+      
+      if (prevX != null && currX != null) {
+        totalDistance += Math.abs(currX - prevX);
+        validDistances++;
+      }
+    }
+    
+    if (validDistances === 0) {
+      return 1000; // Default fallback
+    }
+    
+    const avgDistance = totalDistance / validDistances;
+    
+    // Use half the average distance as tolerance (bar width consideration)
+    return avgDistance * 0.5;
+  }
 }

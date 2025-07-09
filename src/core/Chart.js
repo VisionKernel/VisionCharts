@@ -15,7 +15,8 @@ import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 import { DataProcessor } from '../utils/DataProcessor.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
 import { Legend } from '../components/Legend.js';
-import { ColorUtils } from '../utils/ColorUtils.js';
+// import { ColorUtils } from '../utils/ColorUtils.js';
+import { Crosshair } from '../components/Crosshair.js';
 
 
 
@@ -118,6 +119,11 @@ export class Chart {
       marginBottom: 15
     });
     
+    // Crosshair functionality  
+    this.crosshair = null;
+    this.lastMousePosition = null;
+    this.mouseThreshold = 5; // pixels
+    
     // Initialize
     this._initPromise = this._initialize();
   }
@@ -182,6 +188,9 @@ export class Chart {
       
       // Create axes
       this._createAxes();
+
+      //set up crosshair
+      this._setupCrosshair();
       
       // Initialize the selected renderer
       await this._initializeRenderer();
@@ -692,6 +701,16 @@ export class Chart {
       // 4. Axes: Always SVG
       this._renderAxes();
       
+      // Render crosshair
+      if (this.crosshair && this.svgOverlay && this.chartArea) {
+        this.crosshair.render(this.svgOverlay, this.chartArea);
+        
+        // Set up events if not already done
+        if (!this._boundMouseMove) {
+          this._setupCrosshairEvents();
+        }
+      }
+      
       // 5. Data: Selected renderer
       await this._renderChartData();
       
@@ -1030,6 +1049,20 @@ export class Chart {
    * Destroy the chart and clean up resources
    */
   destroy() {
+    // Cleanup crosshair
+    if (this.crosshair) {
+      this.crosshair.destroy();
+      this.crosshair = null;
+    }
+    
+    // Remove mouse event listeners
+    if (this._boundMouseMove && this.container) {
+      this.container.removeEventListener('mousemove', this._boundMouseMove);
+      this.container.removeEventListener('mouseleave', this._boundMouseLeave);
+      this._boundMouseMove = null;
+      this._boundMouseLeave = null;
+    }
+    
     if (this.titleElement) {
       this.titleElement.remove();
       this.titleElement = null;
@@ -1041,7 +1074,7 @@ export class Chart {
     }
     
     if (this.coordinateSystem) {
-      this.coordinateSystem.clearCache();
+      this.coordinateSystem.clearCache(); // Clear any cached data
     }
     
     if (this.container) {
@@ -1052,5 +1085,321 @@ export class Chart {
     this.isInitialized = false;
     
     console.log('Chart destroyed and resources cleaned up');
+  }
+  
+  /**
+   * Set up crosshair component
+   * @private
+   */
+  _setupCrosshair() {
+    if (!this.svgOverlay) {
+      console.warn('SVG overlay not available for crosshair');
+      return;
+    }
+    
+    // Create crosshair instance (always enabled)
+    this.crosshair = new Crosshair({
+      enabled: true,
+      lineColor: '#666666',
+      lineOpacity: 0.7,
+      highlightRadius: 3
+    });
+    
+    console.log('Crosshair component created');
+  }
+
+  /**
+   * Set up crosshair mouse event listeners
+   * @private
+   */
+  _setupCrosshairEvents() {
+    if (!this.container || !this.crosshair) return;
+    
+    // Mouse move handler
+    this._boundMouseMove = this._onMouseMove.bind(this);
+    this._boundMouseLeave = this._onMouseLeave.bind(this);
+    
+    // Add event listeners to the container
+    this.container.addEventListener('mousemove', this._boundMouseMove);
+    this.container.addEventListener('mouseleave', this._boundMouseLeave);
+    
+    console.log('Crosshair mouse events setup');
+  }
+
+  /**
+   * Handle mouse move events for crosshair
+   * @private
+   */
+  _onMouseMove(event) {
+    if (!this.crosshair || !this.isInitialized) {
+      return;
+    }
+    
+    try {
+      // Get mouse coordinates relative to container
+      const rect = this.container.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      
+      // Check if mouse is within chart area
+      if (!this._isMouseInChartArea(mouseX, mouseY)) {
+        this.crosshair.hide();
+        return;
+      }
+      
+      // Apply distance threshold to avoid excessive updates
+      if (this.lastMousePosition) {
+        const deltaX = Math.abs(mouseX - this.lastMousePosition.x);
+        const deltaY = Math.abs(mouseY - this.lastMousePosition.y);
+        
+        if (deltaX < this.mouseThreshold && deltaY < this.mouseThreshold) {
+          return; // Skip update if mouse hasn't moved enough
+        }
+      }
+      
+      this.lastMousePosition = { x: mouseX, y: mouseY };
+      
+      // Convert mouse coordinates to data coordinates
+      const dataCoords = this._mouseToDataCoordinates(mouseX, mouseY);
+      
+      if (dataCoords.x != null && dataCoords.y != null) {
+        // Update crosshair with new position
+        this._updateCrosshair(dataCoords.x, mouseX, mouseY);
+      }
+      
+    } catch (error) {
+      console.error('Error handling crosshair mouse move:', error);
+    }
+  }
+
+  /**
+   * Handle mouse leave events for crosshair
+   * @private
+   */
+  _onMouseLeave(event) {
+    if (this.crosshair) {
+      this.crosshair.hide();
+      this.lastMousePosition = null;
+    }
+  }
+
+  /**
+   * Check if mouse is within chart area
+   * @private
+   */
+  _isMouseInChartArea(mouseX, mouseY) {
+    const chartArea = this.chartArea;
+    return mouseX >= chartArea.x && 
+           mouseX <= chartArea.x + chartArea.width &&
+           mouseY >= chartArea.y && 
+           mouseY <= chartArea.y + chartArea.height;
+  }
+
+  /**
+   * Convert mouse coordinates to data coordinates
+   * @private
+   */
+  _mouseToDataCoordinates(mouseX, mouseY) {
+    if (!this.scales.x || !this.scales.y) {
+      return { x: null, y: null };
+    }
+    
+    try {
+      const dataX = this.scales.x.invert(mouseX);
+      const dataY = this.scales.y.invert(mouseY);
+      
+      return { x: dataX, y: dataY };
+      
+    } catch (error) {
+      console.error('Error converting mouse to data coordinates:', error);
+      return { x: null, y: null };
+    }
+  }
+
+  /**
+   * Calculate proximity tolerance based on visible time range
+   * @private
+   */
+  _calculateMouseProximityTolerance() {
+    // Base tolerance on visible time range, not dataset frequency
+    const xScale = this.scales.x;
+    if (!xScale) return 3600000; // 1 hour fallback
+    
+    const visibleTimeRange = xScale.domain[1] - xScale.domain[0];
+    const chartPixelWidth = this.chartArea.width;
+    
+    // Calculate milliseconds per pixel
+    const msPerPixel = visibleTimeRange / chartPixelWidth;
+    
+    // Use tolerance of ~10 pixels worth of time (reasonable mouse precision)
+    const tolerancePixels = 10;
+    const tolerance = msPerPixel * tolerancePixels;
+    
+    // Cap at reasonable limits (5 minutes to 12 hours)
+    return Math.max(300000, Math.min(43200000, tolerance));
+  }
+
+  /**
+ * Get actual data points at specific X coordinate
+ * @private
+  */
+  _getDataPointsAtX(exactDataX) {
+    const dataPoints = [];
+    
+    if (!Array.isArray(this.config.data) || exactDataX == null) {
+      return dataPoints;
+    }
+    
+    // Get points from each dataset at the exact X coordinate
+    for (const dataset of this.config.data) {
+      if (dataset.data && Array.isArray(dataset.data)) {
+        const points = this.getDataPointsAtX(exactDataX, dataset);
+        if (points && points.length > 0) {
+          dataPoints.push(...points);
+        }
+      }
+    }
+    
+    return dataPoints;
+  }
+
+  /**
+   * Update crosshair position and highlights
+   * @private
+   */
+  _updateCrosshair(targetDataX, mouseX, mouseY) {
+    if (!this.crosshair) return;
+    
+    try {
+      // Find candidate points with new proximity logic
+      const candidatePoints = this._findCandidateDataPoints(targetDataX);
+      
+      if (candidatePoints.length === 0) {
+        this.crosshair.hide();
+        return;
+      }
+      
+      // FIXED: Pass mouse position to find best X
+      const bestDataX = this._findBestDataX(candidatePoints, targetDataX);
+      
+      // Get actual data points at the selected X coordinate
+      const actualDataPoints = this._getDataPointsAtX(bestDataX);
+      
+      if (actualDataPoints.length === 0) {
+        this.crosshair.hide();
+        return;
+      }
+      
+      // Use the first point's position for crosshair, but highlight all points
+      const primaryPoint = actualDataPoints[0];
+      const crosshairX = primaryPoint.unifiedX;
+      const crosshairY = primaryPoint.unifiedY;
+      
+      // Show and update crosshair
+      this.crosshair.show();
+      this.crosshair.updatePosition(crosshairX, crosshairY);
+      this.crosshair.updateHighlights(actualDataPoints);
+      
+      console.log(`Crosshair updated: ${actualDataPoints.length} points at X=${bestDataX}`);
+      
+    } catch (error) {
+      console.error('Error updating crosshair:', error);
+    }
+  }
+
+  /**
+   * Find the best X coordinate across all candidate points
+   * @private
+   */
+  _findBestDataX(candidatePoints, mouseDataX) {
+    if (candidatePoints.length === 0) return null;
+    if (candidatePoints.length === 1) return candidatePoints[0].dataX;
+    
+    // FIXED: Find X coordinate closest to mouse position
+    let bestX = null;
+    let minDistance = Infinity;
+    
+    // Group by X coordinate and find closest to mouse
+    const xGroups = new Map();
+    candidatePoints.forEach(point => {
+      const dataX = point.dataX;
+      if (!xGroups.has(dataX)) {
+        xGroups.set(dataX, []);
+      }
+      xGroups.get(dataX).push(point);
+    });
+    
+    for (const [dataX, points] of xGroups) {
+      const distance = Math.abs(dataX - mouseDataX);
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestX = dataX;
+      }
+    }
+    
+    console.log(`Best X: ${bestX}, distance from mouse: ${minDistance}ms`);
+    return bestX;
+  }
+
+  /**
+   * Find candidate data points from all datasets
+   * @private
+   */
+  _findCandidateDataPoints(targetDataX) {
+    const candidates = [];
+    
+    if (!Array.isArray(this.config.data)) {
+      return candidates;
+    }
+    
+    // Get closest points from each dataset
+    for (const dataset of this.config.data) {
+      if (dataset.data && Array.isArray(dataset.data) && dataset.data.length > 0) {
+        const closestPoints = this.findClosestDataPoints(targetDataX, dataset);
+        if (closestPoints && closestPoints.length > 0) {
+          candidates.push(...closestPoints);
+        }
+      }
+    }
+    
+    return candidates;
+  }
+
+  testNewCrosshairLogic(mouseDataX) {
+    console.log(`\n=== Testing New Crosshair Logic at ${mouseDataX} ===`);
+    
+    const tolerance = this._calculateMouseProximityTolerance();
+    console.log(`Global tolerance: ${tolerance}ms (${tolerance/60000} minutes)`);
+    
+    this.config.data.forEach((dataset, i) => {
+      const points = this.getDataPointsAtX(mouseDataX, dataset);
+      console.log(`\nDataset ${i} (${dataset.name}):`);
+      console.log(`  Found ${points.length} points within tolerance`);
+      
+      points.forEach(point => {
+        const diff = Math.abs(point.dataX - mouseDataX);
+        console.log(`    Point at ${point.dataX}, diff: ${diff}ms (${diff/60000} minutes)`);
+      });
+      
+      if (points.length === 0) {
+        // Find actual closest for comparison
+        const closest = this.findClosestDataPoints(mouseDataX, dataset);
+        if (closest.length > 0) {
+          const diff = Math.abs(closest[0].dataX - mouseDataX);
+          console.log(`    Closest point (rejected): ${closest[0].dataX}, diff: ${diff}ms (${diff/60000} minutes)`);
+        }
+      }
+    });
+  }
+
+  // PLACEHOLDER METHODS (implemented in LineChart/BarChart)
+  findClosestDataPoints(targetDataX, dataset) {
+    console.warn('findClosestDataPoints not implemented');
+    return [];
+  }
+
+  getDataPointsAtX(exactDataX, dataset) {
+    console.warn('getDataPointsAtX not implemented');
+    return [];
   }
 }
