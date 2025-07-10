@@ -634,6 +634,26 @@ function setupLineChartControls() {
       lineChart.render();
     });
   }
+  
+  // NEW: Recession lines toggle (IMPROVED)
+  const recessionToggle = document.getElementById('line-toggle-recession');
+  if (recessionToggle) {
+    // Initialize button state to match chart default (off)
+    recessionToggle.classList.remove('active');
+    
+    recessionToggle.addEventListener('click', () => {
+      const newState = lineChart.toggleRecessionLines();
+      
+      // Force update button state
+      if (newState) {
+        recessionToggle.classList.add('active');
+      } else {
+        recessionToggle.classList.remove('active');
+      }
+      
+      console.log('Recession button state:', newState ? 'active' : 'inactive');
+    });
+  }
 }
 
 // Setup Bar Chart Controls
@@ -655,6 +675,26 @@ function setupBarChartControls() {
     yNameInput.addEventListener('change', (e) => {
       barChart.config.options.yAxisName = e.target.value;
       barChart.render();
+    });
+  }
+  
+  // NEW: Recession lines toggle (IMPROVED)
+  const recessionToggle = document.getElementById('bar-toggle-recession');
+  if (recessionToggle) {
+    // Initialize button state to match chart default (off)
+    recessionToggle.classList.remove('active');
+    
+    recessionToggle.addEventListener('click', () => {
+      const newState = barChart.toggleRecessionLines();
+      
+      // Force update button state
+      if (newState) {
+        recessionToggle.classList.add('active');
+      } else {
+        recessionToggle.classList.remove('active');
+      }
+      
+      console.log('Recession button state:', newState ? 'active' : 'inactive');
     });
   }
 }

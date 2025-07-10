@@ -18,6 +18,7 @@ import { Legend } from '../components/Legend.js';
 // import { ColorUtils } from '../utils/ColorUtils.js';
 import { Crosshair } from '../components/Crosshair.js';
 import {CrosshairTooltip} from '../components/CrosshairTooltip.js';
+import { RecessionLines } from '../components/RecessionLines.js'; 
 
 
 
@@ -53,6 +54,10 @@ export class Chart {
         gridColor: '#e0e0e0',
         gridOpacity: 0.7,
         gridDash: [], // [] for solid, [5, 5] for dashed
+
+        showRecessionLines: false, // Show recession lines
+        recessionFillColor: 'rgba(50, 50, 5, 0.3)',
+        recessionStrokeColor: 'rgba(30, 30, 30, 0.5)',
         
         // Renderer options
         forceRenderer: null, // 'canvas', 'webgl', or null for auto
@@ -124,6 +129,12 @@ export class Chart {
     this.crosshair = null;
     this.lastMousePosition = null;
     this.mouseThreshold = 5; // pixels
+
+    this.recessionLines = new RecessionLines({
+      enabled: this.config.options.showRecessionLines,
+      fillColor: this.config.options.recessionFillColor,
+      strokeColor: this.config.options.recessionStrokeColor
+    });
     
     // Initialize
     this._initPromise = this._initialize();
@@ -698,9 +709,13 @@ export class Chart {
       
       // 3. NEW: Legend: Always SVG (under title)
       this._updateLegend();
+
+      this._renderRecessionLines(); // Render recession lines if enabled
       
       // 4. Axes: Always SVG
       this._renderAxes();
+
+
       
       // Render crosshair
       if (this.crosshair && this.svgOverlay && this.chartArea) {
@@ -714,6 +729,9 @@ export class Chart {
       
       // 5. Data: Selected renderer
       await this._renderChartData();
+      
+      // 6. Recession Lines: Always SVG (if enabled)
+      this._renderRecessionLines();
       
       console.log(`Chart rendered successfully using ${this.activeRenderer} renderer with legend`);
       
@@ -743,6 +761,35 @@ export class Chart {
       x: this.chartArea.x,
       y: 0
     });
+  }
+  
+  /**
+   * Toggle recession lines visibility
+   */
+  toggleRecessionLines(show = null) {
+    if (!this.recessionLines) {
+      console.warn('RecessionLines component not available');
+      return false;
+    }
+    
+    const newState = this.recessionLines.toggle(show);
+    this.config.options.showRecessionLines = newState;
+    
+    console.log(`RecessionLines ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Render recession lines
+   * @private
+   */
+  _renderRecessionLines() {
+    if (!this.recessionLines || !this.scales.x || !this.scales.y) {
+      return;
+    }
+    
+    // Render recession lines to the container (creates dedicated SVG layer)
+    this.recessionLines.render(this.container, this.chartArea, this.scales);
   }
   
   /**
@@ -805,6 +852,11 @@ export class Chart {
     if (this.grid) {
       this.grid.updateScales(this.scales.x, this.scales.y);
       this.grid.updateChartArea(this.chartArea);
+    }
+
+    if (this.recessionLines) {
+      this.recessionLines.updateScales(this.scales);
+      this.recessionLines.updateChartArea(this.chartArea);
     }
     
     // Update renderer
@@ -1060,6 +1112,11 @@ export class Chart {
     if (this.tooltip) {
       this.tooltip.destroy();
       this.tooltip = null;
+    }
+    // Cleanup recession lines
+    if (this.recessionLines) {
+      this.recessionLines.destroy();
+      this.recessionLines = null; 
     }
     
     // Remove mouse event listeners
