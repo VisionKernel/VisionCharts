@@ -27,8 +27,6 @@ export { BarChart } from './charts/BarChart.js';
 
 export { Legend } from './components/Legend.js';
 
-export { NBER_RECESSIONS, getRecessionTimestamps, getRecessionsByDateRange } from './utils/recessionData.js';
-
 // Convenience function to create charts with automatic renderer selection
 export function createChart(type, config) {
   switch (type.toLowerCase()) {

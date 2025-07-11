@@ -1,11 +1,9 @@
 /**
  * RecessionLines component for financial charts
  * Visualizes economic recession periods as shaded areas
- * Renders US recession periods as vertical shaded areas using SVG.
+ * Renders user-provided recession periods as vertical shaded areas using SVG.
  * Integrates with the unified coordinate system and chart scales.
  */
-
-import { getRecessionsByDateRange } from '../utils/recessionData.js';
 
 export class RecessionLines {
   constructor(config = {}) {
@@ -21,6 +19,9 @@ export class RecessionLines {
       
       // Theme integration
       useThemeColors: true,                       // Use colors from light/dark themes
+      
+      // NEW: User-provided recession data
+      recessionData: [],                          // Array of recession periods
       
       ...config
     };
@@ -39,6 +40,79 @@ export class RecessionLines {
     this.isRendered = false;
     
     console.log('RecessionLines component created');
+  }
+  
+  /**
+   * Set recession data from user
+   * @param {Array} recessionData - Array of recession periods
+   *   Format: [{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }, ...]
+   *   Or: [{ start: timestamp, end: timestamp }, ...]
+   */
+  setRecessionData(recessionData) {
+    if (!Array.isArray(recessionData)) {
+      console.warn('RecessionLines: recessionData must be an array');
+      return this;
+    }
+    
+    // Convert to standardized format with timestamps
+    this.config.recessionData = recessionData.map(recession => {
+      const startTime = this._parseDate(recession.start);
+      const endTime = this._parseDate(recession.end);
+      
+      return {
+        start: startTime,
+        end: endTime,
+        startDate: recession.start,
+        endDate: recession.end,
+        name: recession.name || `Recession ${recession.start} - ${recession.end}`
+      };
+    });
+    
+    console.log(`RecessionLines: Set ${this.config.recessionData.length} recession periods`);
+    
+    // Update visible recessions if already rendered
+    if (this.isRendered) {
+      this._updateVisibleRecessions();
+      this._renderRecessionRects();
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Parse date string or timestamp to milliseconds
+   * @private
+   */
+  _parseDate(dateValue) {
+    if (typeof dateValue === 'number') {
+      return dateValue; // Already a timestamp
+    }
+    
+    if (typeof dateValue === 'string') {
+      return new Date(dateValue).getTime();
+    }
+    
+    if (dateValue instanceof Date) {
+      return dateValue.getTime();
+    }
+    
+    console.warn('RecessionLines: Invalid date format:', dateValue);
+    return Date.now(); // Fallback
+  }
+  
+  /**
+   * Get recessions that overlap with a given date range
+   * @private
+   */
+  _getRecessionsByDateRange(startTime, endTime) {
+    if (!Array.isArray(this.config.recessionData)) {
+      return [];
+    }
+    
+    return this.config.recessionData.filter(recession => {
+      // Include recession if it overlaps with the date range at all
+      return recession.start <= endTime && recession.end >= startTime;
+    });
   }
   
   /**
@@ -179,6 +253,7 @@ export class RecessionLines {
       isVisible: this.isVisible,
       isRendered: this.isRendered,
       recessionCount: this.currentRecessions.length,
+      totalRecessionData: this.config.recessionData.length,
       hasScales: !!this.scales,
       hasChartArea: !!this.chartArea
     };
@@ -227,7 +302,7 @@ export class RecessionLines {
     const chartEndTime = xDomain[1];
     
     // Get recessions that overlap with visible range
-    this.currentRecessions = getRecessionsByDateRange(chartStartTime, chartEndTime);
+    this.currentRecessions = this._getRecessionsByDateRange(chartStartTime, chartEndTime);
     
     console.log(`Found ${this.currentRecessions.length} recessions in visible range: ${new Date(chartStartTime).getFullYear()}-${new Date(chartEndTime).getFullYear()}`);
   }
@@ -301,6 +376,13 @@ export class RecessionLines {
       rect.setAttribute('data-recession-end', recession.endDate);
       rect.setAttribute('data-recession-index', index);
       
+      // Add title for tooltip (optional)
+      if (recession.name) {
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = recession.name;
+        rect.appendChild(title);
+      }
+      
       return rect;
       
     } catch (error) {
@@ -346,6 +428,7 @@ export class RecessionLines {
     this.scales = null;
     this.chartArea = null;
     this.currentRecessions = [];
+    this.config.recessionData = [];
     this.isVisible = false;
     
     console.log('RecessionLines destroyed');

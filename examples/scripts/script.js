@@ -1,4 +1,4 @@
-// Enhanced script.js - Cleaned up version
+// Enhanced script.js - Cleaned up version with sample recession data
 // Location: /examples/scripts/script.js
 
 import { LineChart, BarChart } from '../../../src/index.js';
@@ -24,6 +24,52 @@ const DEFAULT_COLORS = [
   '#00ACC1', // Cyan
   '#FF9800', // Orange
   '#607D8B'  // Blue Grey
+];
+
+// Sample recession data for demonstration
+// In real applications, users would provide their own recession periods
+const SAMPLE_RECESSION_DATA = [
+  // Great Recession
+  { 
+    start: '2007-12-01', 
+    end: '2009-06-01',
+    name: 'Great Recession (2007-2009)'
+  },
+  
+  // Dot-com Recession
+  { 
+    start: '2001-03-01', 
+    end: '2001-11-01',
+    name: 'Dot-com Recession (2001)'
+  },
+  
+  // COVID-19 Recession
+  { 
+    start: '2020-02-01', 
+    end: '2020-04-01',
+    name: 'COVID-19 Recession (2020)'
+  },
+  
+  // 1990-1991 Gulf War Recession
+  { 
+    start: '1990-07-01', 
+    end: '1991-03-01',
+    name: 'Gulf War Recession (1990-1991)'
+  },
+  
+  // 1981-1982 Recession
+  { 
+    start: '1981-07-01', 
+    end: '1982-11-01',
+    name: 'Early 1980s Recession'
+  },
+  
+  // 1973-1975 Oil Crisis Recession
+  { 
+    start: '1973-11-01', 
+    end: '1975-03-01',
+    name: 'Oil Crisis Recession (1973-1975)'
+  }
 ];
 
 // Get default color by index
@@ -263,6 +309,12 @@ async function initLineChart() {
       }
     });
     
+    // NEW: Set up recession lines with sample data
+    if (lineChart.recessionLines) {
+      lineChart.recessionLines.setRecessionData(SAMPLE_RECESSION_DATA);
+      console.log('Line chart: Loaded sample recession data');
+    }
+    
     await lineChart.render();
     window.lineChart = lineChart; // Debug access
     
@@ -276,7 +328,7 @@ async function initLineChart() {
       datasetManager.appendChild(datasetItem);
     }
     
-    console.log('Line chart initialized successfully');
+    console.log('Line chart initialized successfully with sample recession data');
     
   } catch (error) {
     console.error('Error initializing line chart:', error);
@@ -331,6 +383,12 @@ async function initBarChart() {
       }
     });
     
+    // NEW: Set up recession lines with sample data
+    if (barChart.recessionLines) {
+      barChart.recessionLines.setRecessionData(SAMPLE_RECESSION_DATA);
+      console.log('Bar chart: Loaded sample recession data');
+    }
+    
     await barChart.render();
     window.barChart = barChart; // Debug access
     
@@ -344,7 +402,7 @@ async function initBarChart() {
       datasetManager.appendChild(datasetItem);
     }
     
-    console.log('Bar chart initialized successfully');
+    console.log('Bar chart initialized successfully with sample recession data');
     
   } catch (error) {
     console.error('Error initializing bar chart:', error);
@@ -380,6 +438,7 @@ function setupLineChartControls() {
     recessionToggle.addEventListener('click', () => {
       const newState = lineChart.toggleRecessionLines();
       recessionToggle.classList.toggle('active', newState);
+      console.log(`Line chart recession lines: ${newState ? 'enabled' : 'disabled'}`);
     });
   }
   
@@ -413,6 +472,7 @@ function setupBarChartControls() {
     recessionToggle.addEventListener('click', () => {
       const newState = barChart.toggleRecessionLines();
       recessionToggle.classList.toggle('active', newState);
+      console.log(`Bar chart recession lines: ${newState ? 'enabled' : 'disabled'}`);
     });
   }
 }
@@ -491,8 +551,8 @@ async function loadAllDatasets() {
 // Generate fallback data
 function generateFallbackData(type) {
   const data = [];
-  const startDate = new Date('2023-01-01');
-  const count = type === 'monthly' ? 48 : 252; // 4 years monthly or 1 year daily
+  const startDate = new Date('2000-01-01'); // Start from 2000 to include recession periods
+  const count = type === 'monthly' ? 300 : 6000; // More data points to cover recession periods
   let value = 100;
   
   for (let i = 0; i < count; i++) {
@@ -581,7 +641,7 @@ async function initializeCharts() {
     setupTabs();
     await initLineChart(); // Initialize line chart first (default tab)
     
-    console.log('Chart initialization complete');
+    console.log('Chart initialization complete with sample recession data');
     
   } catch (error) {
     console.error('Failed to initialize charts:', error);
