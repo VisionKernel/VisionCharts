@@ -506,25 +506,6 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Get default color for dataset by index
-   * @private
-   */
-  _getDefaultColor(index) {
-    const colors = [
-      '#1468a8', // Blue
-      '#34A853', // Green
-      '#FBBC05', // Yellow
-      '#EA4335', // Red
-      '#9C27B0', // Purple
-      '#00ACC1', // Cyan
-      '#FF9800', // Orange
-      '#607D8B'  // Blue Grey
-    ];
-    
-    return colors[index % colors.length];
-  }
-  
-  /**
    * Optimize for large datasets by enabling WebGL if needed
    */
   optimizeForLargeDataset() {

@@ -1,5 +1,4 @@
 import AbstractRenderer from './AbstractRenderer.js';
-import { ColorUtils } from '../utils/ColorUtils.js';
 
 /**
  * CanvasRenderer - HTML5 Canvas implementation (Updated for Unified Coordinates)
@@ -340,36 +339,6 @@ export default class CanvasRenderer extends AbstractRenderer {
     }
 
     ctx.restore();
-  }
-
-  /**
-   * Format color for Canvas context using shared ColorUtils (UPDATED)
-   */
-  _formatColorForCanvas(color) {
-    if (!color) {
-      return ColorUtils.toCanvasColor(ColorUtils.parseColor(ColorUtils.getDefaultColor(0)));
-    }
-    
-    if (typeof color === 'string') {
-      // Parse string color and convert to Canvas format
-      const parsedColor = ColorUtils.parseColor(color);
-      return ColorUtils.toCanvasColor(parsedColor);
-    }
-    
-    if (color && typeof color === 'object' && 'r' in color) {
-      // Already normalized RGBA object
-      return ColorUtils.toCanvasColor(color);
-    }
-    
-    // Fallback to default color
-    return ColorUtils.toCanvasColor(ColorUtils.parseColor(ColorUtils.getDefaultColor(0)));
-  }
-
-  /**
-   * Get default color using shared ColorUtils (UPDATED)
-   */
-  _getDefaultColor(index) {
-    return ColorUtils.getDefaultColor(index);
   }
 
   /**

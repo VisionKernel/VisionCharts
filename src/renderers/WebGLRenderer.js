@@ -1,5 +1,4 @@
 import AbstractRenderer from './AbstractRenderer.js';
-import { ColorUtils } from '../utils/ColorUtils.js';
 /**
  * WebGLRenderer - High-performance WebGL implementation (Updated for Unified Coordinates)
  * 

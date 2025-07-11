@@ -25,9 +25,6 @@ export { Grid } from './components/Grid.js';
 export { LineChart } from './charts/LineChart.js';
 export { BarChart } from './charts/BarChart.js';
 
-export {ColorUtils} from './utils/ColorUtils.js';
-export {ColorPicker} from './components/ColorPicker.js';
-
 export { Legend } from './components/Legend.js';
 
 export { NBER_RECESSIONS, getRecessionTimestamps, getRecessionsByDateRange } from './utils/recessionData.js';

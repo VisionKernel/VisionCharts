@@ -364,23 +364,6 @@ export class PathGenerator {
   }
 
   /**
-   * Parse color string to normalized RGBA
-   * @private
-   */
-  _parseColor(colorString) {
-    if (typeof colorString === 'string' && colorString.startsWith('#')) {
-      const hex = colorString.slice(1);
-      const r = parseInt(hex.slice(0, 2), 16) / 255;
-      const g = parseInt(hex.slice(2, 4), 16) / 255;
-      const b = parseInt(hex.slice(4, 6), 16) / 255;
-      return { r, g, b, a: 1.0 };
-    }
-    
-    // Default blue color
-    return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 };
-  }
-
-  /**
    * Create empty path object
    * @private
    */
