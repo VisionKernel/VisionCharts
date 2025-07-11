@@ -169,8 +169,8 @@ export default class CanvasRenderer extends AbstractRenderer {
     const vertices = pathData.vertices;
     if (vertices.length < 2) return; // Need at least 2 points for area
 
-    // Set fill style
-    const fillColor = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
+    // SIMPLIFIED: Use pathData color directly or fallback
+    const fillColor = pathData.color || '#1468a8';
     const fillOpacity = pathData.fillOpacity || options.fillOpacity || 0.3;
     
     // Parse color and apply opacity
@@ -224,42 +224,12 @@ export default class CanvasRenderer extends AbstractRenderer {
     console.log(`Canvas rendered fill area with ${vertices.length} vertices and ${fillOpacity} opacity`);
   }
 
-  // /**
-  //  * UPDATED: Render line paths using unified coordinate system
-  //  */
-  // async renderLines(generatedPaths, scales, options = {}) {
-  //   if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
-  //     return;
-  //   }
-
-  //   const ctx = this.ctx;
-    
-  //   try {
-  //     ctx.save();
-      
-  //     // Render each standardized path using unified coordinates
-  //     for (let i = 0; i < generatedPaths.length; i++) {
-  //       const pathData = generatedPaths[i];
-  //       if (!pathData.vertices || pathData.vertices.length === 0) continue;
-        
-  //       await this._renderUnifiedPath(ctx, pathData, options, i);
-  //     }
-      
-  //     console.log(`Canvas rendered ${generatedPaths.length} paths using UNIFIED coordinates`);
-      
-  //   } catch (error) {
-  //     console.error('Error rendering lines with Canvas:', error);
-  //   } finally {
-  //     ctx.restore();
-  //   }
-  // }
-
   /**
-   * UPDATED: Render a single path using unified coordinate system with improved colors
+   * UPDATED: Render a single path using unified coordinate system - SIMPLIFIED COLORS
    */
   async _renderUnifiedPath(ctx, pathData, options, pathIndex) {
-    // UPDATED: Use shared color utilities for consistent color handling
-    const color = this._formatColorForCanvas(pathData.color) || this._getDefaultColor(pathIndex);
+    // SIMPLIFIED: Use pathData color directly or fallback to default blue
+    const color = pathData.color || '#1468a8';
     
     ctx.strokeStyle = color;
     ctx.lineWidth = pathData.lineWidth || 2;
@@ -375,11 +345,11 @@ export default class CanvasRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Render a single bar dataset using unified coordinates
+   * UPDATED: Render a single bar dataset using unified coordinates - SIMPLIFIED COLORS
    */
   async _renderUnifiedBarDataset(ctx, dataset, scales, options, barInfo, datasetIndex) {
-    // Set bar style
-    ctx.fillStyle = dataset.color || this._getDefaultColor(datasetIndex);
+    // SIMPLIFIED: Use dataset color directly or fallback to default blue
+    ctx.fillStyle = dataset.color || '#1468a8';
     ctx.strokeStyle = ctx.fillStyle;
     ctx.lineWidth = 1;
     ctx.globalAlpha = dataset.opacity || 1.0;
@@ -414,60 +384,60 @@ export default class CanvasRenderer extends AbstractRenderer {
    * UPDATED: Render a single bar using unified coordinates
    */
   _renderUnifiedBar(ctx, x, y, barInfo, datasetIndex, pointIndex, scales) {
-  // Calculate bar position and size using unified coordinates
-  const barX = x - (barInfo.width / 2);
-  
-  // FIXED: For Canvas coordinate system, baseline should be at the bottom of chart area
-  const chartArea = scales.y.range; // [top, bottom] in Canvas coordinates
-  const baselineY = chartArea[1]; // Bottom of chart area (higher Y value in Canvas)
-  const barHeight = Math.abs(baselineY - y); // Height from baseline to data point
-  const barY = Math.min(y, baselineY); // Top of the bar
-  
-  // Handle multiple datasets - offset bars horizontally
-  const totalDatasets = barInfo.totalDatasets;
-  let adjustedBarX = barX;
-  let adjustedBarWidth = barInfo.width;
-  
-  if (totalDatasets > 1) {
-    adjustedBarWidth = barInfo.width / totalDatasets;
-    adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
-  }
-  
-  // Ensure minimum bar height for visibility
-  const minBarHeight = Math.max(barHeight, 1);
-  
-  // DEBUG: Log first few bars to verify coordinates
-  if (pointIndex < 3) {
-    console.log('Canvas bar render:', {
-      pointIndex,
-      x, y,
-      baselineY,
-      barHeight,
-      barY,
-      barWidth: adjustedBarWidth,
-      chartTop: chartArea[0],
-      chartBottom: chartArea[1]
-    });
-  }
-  
-  // Draw the bar (no coordinate conversion needed since we're already in Canvas coords)
-  ctx.fillRect(
-    Math.round(adjustedBarX),
-    Math.round(barY),
-    Math.round(adjustedBarWidth),
-    Math.round(minBarHeight)
-  );
-  
-  // Optional: Add border
-  if (barInfo.showBorder) {
-    ctx.strokeRect(
+    // Calculate bar position and size using unified coordinates
+    const barX = x - (barInfo.width / 2);
+    
+    // FIXED: For Canvas coordinate system, baseline should be at the bottom of chart area
+    const chartArea = scales.y.range; // [top, bottom] in Canvas coordinates
+    const baselineY = chartArea[1]; // Bottom of chart area (higher Y value in Canvas)
+    const barHeight = Math.abs(baselineY - y); // Height from baseline to data point
+    const barY = Math.min(y, baselineY); // Top of the bar
+    
+    // Handle multiple datasets - offset bars horizontally
+    const totalDatasets = barInfo.totalDatasets;
+    let adjustedBarX = barX;
+    let adjustedBarWidth = barInfo.width;
+    
+    if (totalDatasets > 1) {
+      adjustedBarWidth = barInfo.width / totalDatasets;
+      adjustedBarX = barX + (datasetIndex * adjustedBarWidth);
+    }
+    
+    // Ensure minimum bar height for visibility
+    const minBarHeight = Math.max(barHeight, 1);
+    
+    // DEBUG: Log first few bars to verify coordinates
+    if (pointIndex < 3) {
+      console.log('Canvas bar render:', {
+        pointIndex,
+        x, y,
+        baselineY,
+        barHeight,
+        barY,
+        barWidth: adjustedBarWidth,
+        chartTop: chartArea[0],
+        chartBottom: chartArea[1]
+      });
+    }
+    
+    // Draw the bar (no coordinate conversion needed since we're already in Canvas coords)
+    ctx.fillRect(
       Math.round(adjustedBarX),
       Math.round(barY),
       Math.round(adjustedBarWidth),
       Math.round(minBarHeight)
     );
+    
+    // Optional: Add border
+    if (barInfo.showBorder) {
+      ctx.strokeRect(
+        Math.round(adjustedBarX),
+        Math.round(barY),
+        Math.round(adjustedBarWidth),
+        Math.round(minBarHeight)
+      );
+    }
   }
-}
 
   /**
    * UPDATED: Calculate bar dimensions using unified coordinates
@@ -517,13 +487,6 @@ export default class CanvasRenderer extends AbstractRenderer {
       totalDatasets: datasets.length,
       showBorder: options.showBorder || false
     };
-  }
-
-  /**
-   * Get default color using shared ColorUtils (UPDATED)
-   */
-  _getDefaultColor(index) {
-    return ColorUtils.getDefaultColor(index);
   }
 
   /**

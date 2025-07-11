@@ -145,9 +145,10 @@ export default class WebGLRenderer extends AbstractRenderer {
     
     console.log('WebGLRenderer created with unified coordinate system support');
   }
+
   /**
- * Convert unified path data to WebGL vertex format (UPDATED with better colors)
- */
+   * Convert unified path data to WebGL vertex format (SIMPLIFIED)
+   */
   _convertUnifiedPathToWebGL(pathData) {
     const positions = [];
     const colors = [];
@@ -162,13 +163,13 @@ export default class WebGLRenderer extends AbstractRenderer {
         // Add position (unified coordinates in pixels)
         positions.push(vertex.x, vertex.y);
 
-        // UPDATED: Use full opacity for lines (not fillOpacity)
+        // SIMPLIFIED: Use pathData color or default
         let color;
         if (pathColors && pathColors[i]) {
           color = pathColors[i];
         } else {
           color = this._parseColor(pathData.color || '#1468a8');
-          color.a = 1.0; // FORCE full opacity for lines
+          color.a = 1.0; // Full opacity for lines
         }
         
         colors.push(color.r, color.g, color.b, color.a);
@@ -404,8 +405,6 @@ export default class WebGLRenderer extends AbstractRenderer {
           }
         }
       }
-      // gl.enable(gl.BLEND); // Ensure blending is enabled for fills
-      // gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       
       // Then render lines on top
       const lineProgram = this.programs.get('line');
@@ -428,13 +427,13 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
- * Calculate line width based on color brightness (SMART VERSION)
- */
+   * Calculate line width based on color brightness (SIMPLIFIED)
+   */
   _getSmartLineWidth(pathData) {
     const baseWidth = pathData.lineWidth || 2;
     
     // Parse color to check brightness
-    const color = this._parseColor(pathData.color);
+    const color = this._parseColor(pathData.color || '#1468a8');
     const brightness = (color.r + color.g + color.b) / 3;
     
     // Lighter colors get thicker lines
@@ -499,16 +498,14 @@ export default class WebGLRenderer extends AbstractRenderer {
     
     if (vertices.length < 3) return; // Need at least 3 points for triangulation
 
-    // gl.disable(gl.BLEND)
-
     const chartArea = options.chartArea;
     if (!chartArea) {
       console.error('Chart area not provided to WebGL renderer');
       return;
     }
     
-    const chartBottom = chartArea.y + chartArea.height; // TRULY DYNAMIC!
-    console.log('WebGL using TRULY DYNAMIC chartBottom:', chartBottom, 'from chartArea:', chartArea);
+    const chartBottom = chartArea.y + chartArea.height;
+    console.log('WebGL using dynamic chartBottom:', chartBottom, 'from chartArea:', chartArea);
 
     // Create triangulated area
     const triangleData = this._triangulateArea(pathData, options, chartBottom);
@@ -539,19 +536,17 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * NEW: Convert path to triangulated area (simple fan triangulation)
+   * NEW: Convert path to triangulated area (SIMPLIFIED - no ColorUtils)
    */
   _triangulateArea(pathData, options, chartBottom) {
     const vertices = pathData.vertices;
     const positions = [];
     const colors = [];
     
-    // Parse fill color with opacity
-    const baseColor = ColorUtils.parseColor(pathData.color);
+    // SIMPLIFIED: Parse fill color with opacity using existing _parseColor method
+    const baseColor = this._parseColor(pathData.color || '#1468a8');
     const fillOpacity = pathData.fillOpacity || options.fillOpacity || 0.3;
     const fillColor = { ...baseColor, a: fillOpacity };
-
-    
     
     // Simple triangulation: fan from bottom-left
     const firstVertex = vertices[0];
@@ -619,19 +614,46 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * Parse color string to normalized RGBA
+   * Parse color string to normalized RGBA (SIMPLIFIED - no external dependencies)
    */
   _parseColor(colorString) {
-    // Simple hex color parser
-    if (typeof colorString === 'string' && colorString.startsWith('#')) {
-      const hex = colorString.slice(1);
-      const r = parseInt(hex.slice(0, 2), 16) / 255;
-      const g = parseInt(hex.slice(2, 4), 16) / 255;
-      const b = parseInt(hex.slice(4, 6), 16) / 255;
-      return { r, g, b, a: 1.0 };
+    if (typeof colorString !== 'string') {
+      return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 }; // Default blue
     }
-    
-    // Default blue color
+
+    // Handle hex colors
+    if (colorString.startsWith('#')) {
+      const hex = colorString.slice(1);
+      let r, g, b;
+      
+      if (hex.length === 3) {
+        r = parseInt(hex[0] + hex[0], 16);
+        g = parseInt(hex[1] + hex[1], 16);
+        b = parseInt(hex[2] + hex[2], 16);
+      } else if (hex.length === 6) {
+        r = parseInt(hex.slice(0, 2), 16);
+        g = parseInt(hex.slice(2, 4), 16);
+        b = parseInt(hex.slice(4, 6), 16);
+      } else {
+        return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 }; // Default blue
+      }
+      
+      return { r: r / 255, g: g / 255, b: b / 255, a: 1.0 };
+    }
+
+    // Handle rgba() colors
+    const rgbaMatch = colorString.match(/rgba?\(([^)]+)\)/);
+    if (rgbaMatch) {
+      const parts = rgbaMatch[1].split(',').map(s => s.trim());
+      return {
+        r: parseInt(parts[0]) / 255,
+        g: parseInt(parts[1]) / 255,
+        b: parseInt(parts[2]) / 255,
+        a: parts[3] ? parseFloat(parts[3]) : 1.0
+      };
+    }
+
+    // Default fallback
     return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 };
   }
 

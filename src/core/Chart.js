@@ -1019,6 +1019,24 @@ export class Chart {
     this.render();
     return this;
   }
+
+  /**
+   * Update dataset color
+   * @param {string} datasetId - The ID of the dataset to update
+   */
+  updateDatasetColor(datasetId, newColor) {
+    const dataset = this.config.data.find(d => d.id === datasetId);
+    if (!dataset) return false;
+    
+    dataset.color = newColor;
+    
+    if (this.legend) {
+      this.legend.updateDatasetColor(datasetId, newColor);
+    }
+    
+    this.render();
+    return true;
+  }
   
   /**
    * Update legend with current datasets

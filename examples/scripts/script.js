@@ -1,7 +1,7 @@
-// Enhanced script.js with color picker functionality
+// Enhanced script.js with simple color picker functionality
 // Location: /examples/demo/scripts/script.js
-// Import the new VisionCharts classes and color utilities
-import { LineChart, BarChart, ColorUtils, ColorPicker } from '../../../src/index.js';
+// Import the VisionCharts classes (removed ColorUtils and ColorPicker)
+import { LineChart, BarChart } from '../../../src/index.js';
 
 // Global datasets storage
 let availableDatasets = {};
@@ -14,18 +14,53 @@ let barChart = null;
 let lineDatasetCounter = 1;
 let barDatasetCounter = 1;
 
-// Global color picker instance
-let colorPicker = null;
+// Simple default color palette (replaces ColorUtils)
+const DEFAULT_COLORS = [
+  '#1468a8', // Blue
+  '#34A853', // Green
+  '#FBBC05', // Yellow
+  '#EA4335', // Red
+  '#9C27B0', // Purple
+  '#00ACC1', // Cyan
+  '#FF9800', // Orange
+  '#607D8B'  // Blue Grey
+];
 
-// Initialize color picker
-function initColorPicker() {
-  colorPicker = new ColorPicker({
-    colors: ColorUtils.getDefaultPalette(),
-    columns: 5,
-    onColorSelect: (color) => {
-      // This will be set dynamically when showing the picker
-    }
+// Get default color by index
+function getDefaultColor(index) {
+  return DEFAULT_COLORS[index % DEFAULT_COLORS.length];
+}
+
+// Simple color picker using HTML5 color input
+function showColorPicker(currentColor, onColorSelect, targetElement) {
+  // Create a hidden color input
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = currentColor;
+  colorInput.style.position = 'absolute';
+  colorInput.style.left = '-9999px';
+  
+  // Add to document temporarily
+  document.body.appendChild(colorInput);
+  
+  // Handle color change
+  colorInput.addEventListener('change', (e) => {
+    const newColor = e.target.value;
+    onColorSelect(newColor);
+    document.body.removeChild(colorInput);
   });
+  
+  // Handle cancel (click away)
+  colorInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (document.body.contains(colorInput)) {
+        document.body.removeChild(colorInput);
+      }
+    }, 100);
+  });
+  
+  // Trigger the color picker
+  colorInput.click();
 }
 
 // Update dataset color (CLEAN - use library method)
@@ -38,7 +73,7 @@ function updateDatasetColor(datasetId, newColor, chartType) {
       return;
     }
     
-    // Use the new library method (efficient, no infinite loop)
+    // Use the chart's updateDatasetColor method
     const success = chart.updateDatasetColor(datasetId, newColor);
     
     if (success) {
@@ -61,8 +96,7 @@ function updateDatasetColor(datasetId, newColor, chartType) {
   }
 }
 
-// Add this function to /examples/demo/scripts/script.js
-
+// Update dataset fill (for line charts)
 function updateDatasetFill(datasetId, fillEnabled, chartType) {
   try {
     const chart = chartType === 'line' ? lineChart : barChart;
@@ -72,7 +106,7 @@ function updateDatasetFill(datasetId, fillEnabled, chartType) {
       return;
     }
     
-    // Use the new library method for fill updates
+    // Use the chart's updateDatasetFill method
     const success = chart.updateDatasetFill(datasetId, fillEnabled);
     
     if (success) {
@@ -138,11 +172,10 @@ function createDatasetItem(dataset, chartType, chart) {
   colorButton.addEventListener('click', (e) => {
     e.stopPropagation();
     
-    colorPicker.options.onColorSelect = (color) => {
-      updateDatasetColor(dataset.id, color, chartType);
-    };
-    
-    colorPicker.show(colorButton, dataset.color);
+    // Use simple color picker
+    showColorPicker(dataset.color, (newColor) => {
+      updateDatasetColor(dataset.id, newColor, chartType);
+    }, colorButton);
   });
   
   // Add fill checkbox functionality (only for line charts)
@@ -171,12 +204,7 @@ function createDatasetItem(dataset, chartType, chart) {
   return item;
 }
 
-// Get default colors for datasets (UPDATED to use ColorUtils)
-function getDefaultColors() {
-  return ColorUtils.getDefaultPalette();
-}
-
-// Add dataset to chart (UPDATED to use ColorUtils)
+// Add dataset to chart (UPDATED to use simple default colors)
 function addDatasetToChart(chartType) {
   try {
     const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
@@ -206,18 +234,18 @@ function addDatasetToChart(chartType) {
     // Format data for the chart
     const formattedData = formatDataForChart(rawData, chartType);
     
-    // Generate dataset ID and get color using ColorUtils
+    // Generate dataset ID and get color using our simple default colors
     let datasetId, datasetName, datasetColor;
     
     if (chartType === 'line') {
       datasetId = `line-dataset-${lineDatasetCounter}`;
       datasetName = `Line Dataset ${lineDatasetCounter}`;
-      datasetColor = ColorUtils.getDefaultColor(lineDatasetCounter - 1);
+      datasetColor = getDefaultColor(lineDatasetCounter - 1);
       lineDatasetCounter++;
     } else if (chartType === 'bar') {
       datasetId = `bar-dataset-${barDatasetCounter}`;
       datasetName = `Bar Dataset ${barDatasetCounter}`;
-      datasetColor = ColorUtils.getDefaultColor(barDatasetCounter - 1);
+      datasetColor = getDefaultColor(barDatasetCounter - 1);
       barDatasetCounter++;
     }
     
@@ -232,6 +260,7 @@ function addDatasetToChart(chartType) {
     // Add line-specific properties
     if (chartType === 'line') {
       dataset.width = 2;
+      dataset.fill = false; // Default to no fill
     }
     
     // Add to chart
@@ -252,7 +281,7 @@ function addDatasetToChart(chartType) {
   }
 }
 
-// Initialize Line Chart (UPDATED to use ColorUtils)
+// Initialize Line Chart (UPDATED to use simple default colors)
 async function initLineChart() {
   log('Initializing Line Chart');
   
@@ -275,14 +304,14 @@ async function initLineChart() {
       price: item.y
     }));
     
-    // Create a single dataset using ColorUtils
+    // Create a single dataset using our simple default colors
     const data = [
       {
         id: 'line-dataset-1',
         name: 'Line Dataset 1',
-        color: ColorUtils.getDefaultColor(0), // Use ColorUtils
+        color: getDefaultColor(0), // Use our simple default color function
         width: 2,
-        fill: false,  // NEW: Include fill default
+        fill: false,  // Include fill default
         data: formattedData
       }
     ];
@@ -315,8 +344,8 @@ async function initLineChart() {
     // Render the chart
     await lineChart.render();
     
-    // ADD THIS LINE for debugging:
-    window.lineChart = lineChart;  // Make globally accessible
+    // Make globally accessible for debugging
+    window.lineChart = lineChart;
     
     log('Line chart rendered successfully with grid');
     
@@ -337,7 +366,7 @@ async function initLineChart() {
   }
 }
 
-// Initialize Bar Chart (UPDATED to use ColorUtils)
+// Initialize Bar Chart (UPDATED to use simple default colors)
 async function initBarChart() {
   log('Initializing Bar Chart');
   
@@ -365,8 +394,8 @@ async function initBarChart() {
       {
         id: 'bar-dataset-1',
         name: 'Bar Dataset 1',
-        color: ColorUtils.getDefaultColor(0), // Use ColorUtils
-        fill: false,  // NEW: Include fill default (even though bars don't use it)
+        color: getDefaultColor(0), // Use our simple default color function
+        fill: false,  // Include fill default (even though bars don't use it)
         data: transformedData
       }
     ];
@@ -416,7 +445,7 @@ async function initBarChart() {
   }
 }
 
-// Initialize everything (UPDATED to include color picker)
+// Initialize everything (removed color picker initialization)
 async function initializeCharts() {
   try {
     // Ensure DOM is ready
@@ -425,16 +454,13 @@ async function initializeCharts() {
     // Small delay to ensure all elements are rendered
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Initialize color picker
-    initColorPicker();
-    
     // Setup tabs
     setupTabs();
     
     // Initialize the line chart (default active tab)
     await initLineChart();
     
-    log('Chart initialization complete with color picker support');
+    log('Chart initialization complete with simple color picker support');
     
   } catch (error) {
     console.error('Failed to initialize charts:', error);
@@ -635,7 +661,7 @@ function setupLineChartControls() {
     });
   }
   
-  // NEW: Recession lines toggle (IMPROVED)
+  // Recession lines toggle
   const recessionToggle = document.getElementById('line-toggle-recession');
   if (recessionToggle) {
     // Initialize button state to match chart default (off)
@@ -678,7 +704,7 @@ function setupBarChartControls() {
     });
   }
   
-  // NEW: Recession lines toggle (IMPROVED)
+  // Recession lines toggle
   const recessionToggle = document.getElementById('bar-toggle-recession');
   if (recessionToggle) {
     // Initialize button state to match chart default (off)
