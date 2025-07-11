@@ -364,6 +364,51 @@ export class PathGenerator {
   }
 
   /**
+ * Parse color string to normalized RGBA
+ * @private
+ */
+_parseColor(colorString) {
+  if (typeof colorString !== 'string') {
+    return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 }; // Default blue
+  }
+
+  // Handle hex colors
+  if (colorString.startsWith('#')) {
+    const hex = colorString.slice(1);
+    let r, g, b;
+    
+    if (hex.length === 3) {
+      r = parseInt(hex[0] + hex[0], 16);
+      g = parseInt(hex[1] + hex[1], 16);
+      b = parseInt(hex[2] + hex[2], 16);
+    } else if (hex.length === 6) {
+      r = parseInt(hex.slice(0, 2), 16);
+      g = parseInt(hex.slice(2, 4), 16);
+      b = parseInt(hex.slice(4, 6), 16);
+    } else {
+      return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 }; // Default blue
+    }
+    
+    return { r: r / 255, g: g / 255, b: b / 255, a: 1.0 };
+  }
+
+  // Handle rgba() colors
+  const rgbaMatch = colorString.match(/rgba?\(([^)]+)\)/);
+  if (rgbaMatch) {
+    const parts = rgbaMatch[1].split(',').map(s => s.trim());
+    return {
+      r: parseInt(parts[0]) / 255,
+      g: parseInt(parts[1]) / 255,
+      b: parseInt(parts[2]) / 255,
+      a: parts[3] ? parseFloat(parts[3]) : 1.0
+    };
+  }
+
+  // Default fallback
+  return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 };
+}
+
+  /**
    * Create empty path object
    * @private
    */
