@@ -723,6 +723,57 @@ function setupBarChartControls() {
       }
     });
   }
+
+  const averageToggle = document.getElementById('bar-toggle-average');
+  if (averageToggle) {
+    // Initialize button state - average line starts disabled
+    averageToggle.classList.remove('active');
+    let averageVisible = false;
+    
+    averageToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        averageVisible = !averageVisible;
+        
+        // Apply the new state
+        barChart.toggleAverageLine();
+        
+        console.log('Bar chart average line toggle - new state:', averageVisible);
+        
+        // Update button appearance
+        averageToggle.classList.toggle('active', averageVisible);
+        
+      } catch (error) {
+        console.error('Error toggling bar chart average line:', error);
+      }
+    });
+  }
+
+  // Median line toggle
+  const medianToggle = document.getElementById('bar-toggle-median');
+  if (medianToggle) {
+    // Initialize button state - median line starts disabled
+    medianToggle.classList.remove('active');
+    let medianVisible = false;
+    
+    medianToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        medianVisible = !medianVisible;
+        
+        // Apply the new state
+        barChart.toggleMedianLine();
+        
+        console.log('Bar chart median line toggle - new state:', medianVisible);
+        
+        // Update button appearance
+        medianToggle.classList.toggle('active', medianVisible);
+        
+      } catch (error) {
+        console.error('Error toggling bar chart median line:', error);
+      }
+    });
+  }
 }
 
 // Setup dataset management
