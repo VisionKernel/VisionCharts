@@ -882,7 +882,8 @@ export class Chart {
       
       for (const point of dataset.data) {
         if (point.x != null) {
-          const xValue = point.x instanceof Date ? point.x.getTime() : point.x;
+          const xValue = point.x instanceof Date ? 
+            point.x.getTime() : point.x;
           xMin = Math.min(xMin, xValue);
           xMax = Math.max(xMax, xValue);
         }
@@ -898,9 +899,18 @@ export class Chart {
     const xRange = [60, this.container.offsetWidth - 20]; // Leave space for Y axes
     
     const scaleType = this.config.options.xType === 'time' ? 'time' : 'linear';
+    
+    // Use ScaleManager to create scale
     this.sharedXScale = this.scaleManager.createScale(scaleType, {
       domain: xDomain,
-      range: xRange
+      range: xRange,
+      dataType: this.config.options.xType,
+      coordinateSystem: 'normalized',
+      orientation: 'horizontal',
+      options: {
+        nice: true,
+        padding: 0.05
+      }
     });
     
     console.log('Shared X scale created:', { domain: xDomain, range: xRange });

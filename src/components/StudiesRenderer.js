@@ -1,5 +1,4 @@
-import SvgRenderer from '../renderers/SvgRenderer.js';
-import EndingLabels from './EndingLabels.js';
+import { EndingLabels } from './EndingLabels.js';
 
 /**
  * StudiesRenderer - Centralized component for rendering all types of studies/indicators

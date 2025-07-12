@@ -1,10 +1,10 @@
-import Axis from '../core/Axis.js';
-import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
+import { Axis } from '../core/Axis.js';
+import { Scale } from '../core/Scale.js';
 import PanelDataRenderer from './PanelDataRenderer.js';
-import RecessionLines from './RecessionLines.js';
-import ZeroLine from './ZeroLine.js';
-import Grid from './Grid.js';
-import StatisticalLines from './StatisticalLines.js';
+import { RecessionLines } from './RecessionLines.js';
+import { ZeroLine } from './ZeroLine.js';
+import { Grid } from './Grid.js';
+import { StatisticalLines } from './StatisticalLines.js';
 // import StudiesRenderer from './StudiesRenderer.js';
 
 /**
@@ -212,21 +212,21 @@ export class Panel {
   }
   
   /**
-   * Create Y scale for this panel's dataset
-   * @private
-   */
-  _createYScale() {
+     * Create Y scale for this panel's dataset
+     * @private
+     */
+    _createYScale() {
     if (!this.config.dataset || !this.config.dataset.data) {
-      throw new Error('Panel dataset required for Y scale creation');
+        throw new Error('Panel dataset required for Y scale creation');
     }
     
     // Calculate Y domain for this dataset only
     const yValues = this.config.dataset.data
-      .map(d => d.y)
-      .filter(y => y != null && !isNaN(y));
+        .map(d => d.y)
+        .filter(y => y != null && !isNaN(y));
     
     if (yValues.length === 0) {
-      throw new Error('No valid Y values found in panel dataset');
+        throw new Error('No valid Y values found in panel dataset');
     }
     
     const yMin = Math.min(...yValues);
@@ -236,12 +236,23 @@ export class Panel {
     const padding = (yMax - yMin) * 0.05;
     const yDomain = [yMin - padding, yMax + padding];
     
-    // Create Y scale directly using LinearScale
-    this.yScale = new LinearScale({
-      domain: yDomain,
-      range: [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y]
+    // Determine scale type (could be passed via config)
+    const scaleType = this.config.scaleType || 'linear';
+    
+    // Create Y scale using unified Scale class
+    this.yScale = new Scale({
+        type: scaleType,
+        domain: yDomain,
+        range: [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y],
+        dataType: 'number',
+        coordinateSystem: 'normalized',
+        orientation: 'vertical',
+        options: {
+        nice: true,
+        padding: 0.05
+        }
     });
-  }
+    }
   
   /**
    * Create Y axis for this panel
