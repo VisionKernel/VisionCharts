@@ -15,7 +15,7 @@ import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 import { DataProcessor } from '../utils/DataProcessor.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
 import { Legend } from '../components/Legend.js';
-// import { ColorUtils } from '../utils/ColorUtils.js';
+import { EndingLabels } from '../components/EndingLabels.js';
 import { Crosshair } from '../components/Crosshair.js';
 import {CrosshairTooltip} from '../components/CrosshairTooltip.js';
 import { RecessionLines } from '../components/RecessionLines.js'; 
@@ -123,6 +123,17 @@ export class Chart {
       itemSpacing: 25,
       marginTop: 15,
       marginBottom: 15
+    });
+
+    // Ending labels component
+    this.endingLabels = new EndingLabels({
+      fontSize: 11,
+      fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
+      showBackground: true,
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      formatValue: true,
+      decimals: 1,
+      enabled: false
     });
     
     // Crosshair functionality  
@@ -704,15 +715,14 @@ export class Chart {
         this.grid.render(ctx);
       }
       
-      // 2. Title: Always SVG
       this._renderTitle();
       
-      // 3. NEW: Legend: Always SVG (under title)
       this._updateLegend();
 
-      this._renderRecessionLines(); // Render recession lines if enabled
+      this._updateEndingLabels();
+
+      this._renderRecessionLines();
       
-      // 4. Axes: Always SVG
       this._renderAxes();
 
 
@@ -1033,6 +1043,10 @@ export class Chart {
     if (this.legend) {
       this.legend.updateDatasetColor(datasetId, newColor);
     }
+
+    if (this.endingLabels) {
+      this.endingLabels.updateDatasetColor(datasetId, newColor);
+    }
     
     this.render();
     return true;
@@ -1051,6 +1065,56 @@ export class Chart {
         this.legend.render(this.svgOverlay, this.chartArea);
       }
     }
+  }
+
+  /**
+   * Update ending labels with current datasets
+   * @private
+   */
+  _updateEndingLabels() {
+    if (this.endingLabels && this.config.data) {
+      this.endingLabels.updateDatasets(this.config.data);
+      
+      // Re-render ending labels if SVG overlay exists
+      if (this.svgOverlay && this.chartArea) {
+        this.endingLabels.render(this.svgOverlay, this.chartArea);
+      }
+    }
+  }
+
+  /**
+   * Toggle ending labels visibility
+   * @param {boolean} show - Force show/hide state, or null to toggle
+   * @returns {boolean} New visibility state
+   */
+  toggleEndingLabels(show = null) {
+    if (!this.endingLabels) {
+      console.warn('EndingLabels component not available');
+      return false;
+    }
+    
+    const newState = this.endingLabels.toggle(show);
+    
+    console.log(`EndingLabels ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Configure ending labels appearance
+   * @param {Object} config - Configuration options
+   */
+  setEndingLabelsConfig(config) {
+    if (this.endingLabels) {
+      this.endingLabels.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Get ending labels state for debugging
+   */
+  getEndingLabelsInfo() {
+    return this.endingLabels ? this.endingLabels.getState() : { enabled: false };
   }
   
   /**
@@ -1072,6 +1136,11 @@ export class Chart {
     if (this.recessionLines) {
       this.recessionLines.destroy();
       this.recessionLines = null; 
+    }
+
+    if (this.endingLabels) {
+      this.endingLabels.destroy();
+      this.endingLabels = null;
     }
     
     // Remove mouse event listeners

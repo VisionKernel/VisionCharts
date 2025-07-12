@@ -486,6 +486,32 @@ function setupLineChartControls() {
       }
     });
   }
+
+  const endingLabelsToggle = document.getElementById('line-toggle-endinglabels');
+  if (endingLabelsToggle) {
+    // Initialize button state - ending labels start disabled
+    endingLabelsToggle.classList.remove('active');
+    let endingLabelsVisible = false; // Track state manually
+    
+    endingLabelsToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        endingLabelsVisible = !endingLabelsVisible;
+        
+        // Apply the new state - DON'T pass parameters, let it toggle naturally
+        lineChart.toggleEndingLabels();
+        
+        console.log('Line chart ending labels toggle - new state:', endingLabelsVisible);
+        
+        // Update button appearance based on manual state (like recession toggle)
+        endingLabelsToggle.classList.toggle('active', endingLabelsVisible);
+        
+        console.log('Line ending labels button classes after toggle:', endingLabelsToggle.className);
+      } catch (error) {
+        console.error('Error toggling line chart ending labels:', error);
+      }
+    });
+  }
 }
 
 // Setup bar chart controls with working recession toggle
@@ -561,6 +587,32 @@ function setupBarChartControls() {
         }
       } catch (error) {
         console.error('Error toggling bar legend:', error);
+      }
+    });
+  }
+
+  const endingLabelsToggle = document.getElementById('bar-toggle-endinglabels');
+  if (endingLabelsToggle) {
+    // Initialize button state - ending labels start disabled
+    endingLabelsToggle.classList.remove('active');
+    let endingLabelsVisible = false; // Track state manually
+    
+    endingLabelsToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        endingLabelsVisible = !endingLabelsVisible;
+        
+        // Apply the new state - DON'T pass parameters, let it toggle naturally
+        barChart.toggleEndingLabels();
+        
+        console.log('Bar chart ending labels toggle - new state:', endingLabelsVisible);
+        
+        // Update button appearance based on manual state (like recession toggle)
+        endingLabelsToggle.classList.toggle('active', endingLabelsVisible);
+        
+        console.log('Bar ending labels button classes after toggle:', endingLabelsToggle.className);
+      } catch (error) {
+        console.error('Error toggling bar chart ending labels:', error);
       }
     });
   }
