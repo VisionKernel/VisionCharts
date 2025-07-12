@@ -1,4 +1,4 @@
-// Enhanced script.js - Cleaned up version with sample recession data
+// Enhanced script.js - Working recession toggle version
 // Location: /examples/scripts/script.js
 
 import { LineChart, BarChart } from '../../../src/index.js';
@@ -309,7 +309,7 @@ async function initLineChart() {
       }
     });
     
-    // NEW: Set up recession lines with sample data
+    // CRITICAL: Set up recession data after chart creation
     if (lineChart.recessionLines) {
       lineChart.recessionLines.setRecessionData(SAMPLE_RECESSION_DATA);
       console.log('Line chart: Loaded sample recession data');
@@ -383,7 +383,7 @@ async function initBarChart() {
       }
     });
     
-    // NEW: Set up recession lines with sample data
+    // CRITICAL: Set up recession data after chart creation
     if (barChart.recessionLines) {
       barChart.recessionLines.setRecessionData(SAMPLE_RECESSION_DATA);
       console.log('Bar chart: Loaded sample recession data');
@@ -404,13 +404,13 @@ async function initBarChart() {
     
     console.log('Bar chart initialized successfully with sample recession data');
     
-  } catch (error) {
+    } catch (error) {
     console.error('Error initializing bar chart:', error);
     handleError('bar-chart', error);
   }
 }
 
-// Setup chart controls
+// Setup line chart controls with working recession toggle
 function setupLineChartControls() {
   if (!lineChart) return;
   
@@ -431,20 +431,64 @@ function setupLineChartControls() {
     });
   }
   
-  // Recession lines toggle
+  // Recession toggle that actually works
   const recessionToggle = document.getElementById('line-toggle-recession');
   if (recessionToggle) {
-    recessionToggle.classList.remove('active'); // Start inactive
+    // Initialize button state - recessions start disabled
+    recessionToggle.classList.remove('active');
+    let recessionVisible = false; // Track state manually like legend toggle
+    
     recessionToggle.addEventListener('click', () => {
-      const newState = lineChart.toggleRecessionLines();
-      recessionToggle.classList.toggle('active', newState);
-      console.log(`Line chart recession lines: ${newState ? 'enabled' : 'disabled'}`);
+      try {
+        // Toggle the state manually
+        recessionVisible = !recessionVisible;
+        
+        // Apply the new state
+        lineChart.toggleRecessionLines();
+        
+        console.log('Line chart recession toggle - new state:', recessionVisible);
+        
+        // Update button appearance based on manual state
+        recessionToggle.classList.toggle('active', recessionVisible);
+        
+        console.log('Line recession button classes after toggle:', recessionToggle.className);
+      } catch (error) {
+        console.error('Error toggling line chart recessions:', error);
+      }
     });
   }
   
-  // Add other controls as needed...
+  // Legend toggle with proper state tracking
+  const legendToggle = document.getElementById('line-toggle-legend');
+  if (legendToggle) {
+    // Initialize button state - legend starts visible
+    legendToggle.classList.add('active');
+    let legendVisible = true; // Track state manually
+    
+    legendToggle.addEventListener('click', () => {
+      try {
+        if (lineChart.legend) {
+          // Toggle the state
+          legendVisible = !legendVisible;
+          
+          // Apply the new state
+          lineChart.legend.setVisible(legendVisible);
+          
+          console.log('Legend toggle - new state:', legendVisible);
+          
+          // Update button appearance
+          legendToggle.classList.toggle('active', legendVisible);
+          
+          console.log('Legend button classes after toggle:', legendToggle.className);
+        }
+      } catch (error) {
+        console.error('Error toggling legend:', error);
+      }
+    });
+  }
 }
 
+// Setup bar chart controls with working recession toggle
 function setupBarChartControls() {
   if (!barChart) return;
   
@@ -465,14 +509,59 @@ function setupBarChartControls() {
     });
   }
   
-  // Recession lines toggle
+  // Recession toggle that actually works
   const recessionToggle = document.getElementById('bar-toggle-recession');
   if (recessionToggle) {
-    recessionToggle.classList.remove('active'); // Start inactive
+    // Initialize button state - recessions start disabled
+    recessionToggle.classList.remove('active');
+    let recessionVisible = false; // Track state manually like legend toggle
+    
     recessionToggle.addEventListener('click', () => {
-      const newState = barChart.toggleRecessionLines();
-      recessionToggle.classList.toggle('active', newState);
-      console.log(`Bar chart recession lines: ${newState ? 'enabled' : 'disabled'}`);
+      try {
+        // Toggle the state manually
+        recessionVisible = !recessionVisible;
+        
+        // Apply the new state
+        barChart.toggleRecessionLines();
+        
+        console.log('Bar chart recession toggle - new state:', recessionVisible);
+        
+        // Update button appearance based on manual state
+        recessionToggle.classList.toggle('active', recessionVisible);
+        
+        console.log('Bar recession button classes after toggle:', recessionToggle.className);
+      } catch (error) {
+        console.error('Error toggling bar chart recessions:', error);
+      }
+    });
+  }
+  
+  // Legend toggle with proper state tracking
+  const legendToggle = document.getElementById('bar-toggle-legend');
+  if (legendToggle) {
+    // Initialize button state - legend starts visible
+    legendToggle.classList.add('active');
+    let legendVisible = true; // Track state manually
+    
+    legendToggle.addEventListener('click', () => {
+      try {
+        if (barChart.legend) {
+          // Toggle the state
+          legendVisible = !legendVisible;
+          
+          // Apply the new state
+          barChart.legend.setVisible(legendVisible);
+          
+          console.log('Bar legend toggle - new state:', legendVisible);
+          
+          // Update button appearance
+          legendToggle.classList.toggle('active', legendVisible);
+          
+          console.log('Bar legend button classes after toggle:', legendToggle.className);
+        }
+      } catch (error) {
+        console.error('Error toggling bar legend:', error);
+      }
     });
   }
 }
@@ -516,7 +605,7 @@ function updateDatasetPreview(chartType) {
   }
 }
 
-// Load datasets
+// Load datasets with better date ranges for recession visibility
 async function loadAllDatasets() {
   const datasets = {};
   
@@ -524,22 +613,53 @@ async function loadAllDatasets() {
     // Load timeseries data
     datasets.timeseries = await fetch('../examples/data/timeseries.json')
       .then(response => response.json())
-      .catch(() => generateFallbackData('timeseries'));
+      .then(data => {
+        console.log(`Loaded timeseries data: ${data.length} points`);
+        if (data.length > 0) {
+          const firstDate = new Date(data[0].x);
+          const lastDate = new Date(data[data.length - 1].x);
+          console.log(`Timeseries date range: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`);
+        }
+        return data;
+      })
+      .catch(() => {
+        console.log('Timeseries data not found, generating fallback data with recessions');
+        return generateFallbackData('timeseries');
+      });
     
     // Load daily returns
     datasets['daily-returns'] = await fetch('../examples/data/daily-returns.json')
       .then(response => response.json())
-      .catch(() => generateFallbackData('daily-returns'));
+      .catch(() => {
+        console.log('Daily returns data not found, generating fallback data');
+        return generateFallbackData('daily-returns');
+      });
     
     // Load monthly data
     datasets.monthly = await fetch('../examples/data/timeseries-monthly.json')
       .then(response => response.json())
-      .catch(() => generateFallbackData('monthly'));
+      .catch(() => {
+        console.log('Monthly data not found, generating fallback data');
+        return generateFallbackData('monthly');
+      });
     
     // Load NASDAQ data
     datasets.nasdaq = await fetch('../examples/data/NASDAQCOM.json')
       .then(response => response.json())
-      .catch(() => generateFallbackData('nasdaq'));
+      .catch(() => {
+        console.log('NASDAQ data not found, generating fallback data');
+        return generateFallbackData('nasdaq');
+      });
+    
+    // Log overall date ranges for debugging
+    Object.keys(datasets).forEach(key => {
+      const dataset = datasets[key];
+      if (dataset && dataset.length > 0) {
+        const firstDate = new Date(dataset[0].x);
+        const lastDate = new Date(dataset[dataset.length - 1].x);
+        console.log(`${key} dataset: ${dataset.length} points from ${firstDate.getFullYear()} to ${lastDate.getFullYear()}`);
+      }
+    });
     
   } catch (error) {
     console.error('Error loading datasets:', error);
@@ -548,12 +668,20 @@ async function loadAllDatasets() {
   return datasets;
 }
 
-// Generate fallback data
+// Generate fallback data that includes recession periods
 function generateFallbackData(type) {
   const data = [];
-  const startDate = new Date('2000-01-01'); // Start from 2000 to include recession periods
+  // Start from 2000 to include multiple recession periods
+  const startDate = new Date('2000-01-01');
   const count = type === 'monthly' ? 300 : 6000; // More data points to cover recession periods
   let value = 100;
+  
+  // Define recession periods for realistic data simulation
+  const recessionPeriods = [
+    { start: new Date('2020-02-01'), end: new Date('2020-04-01') }, // COVID recession
+    { start: new Date('2007-12-01'), end: new Date('2009-06-01') }, // Great Recession
+    { start: new Date('2001-03-01'), end: new Date('2001-11-01') }  // Dot-com recession
+  ];
   
   for (let i = 0; i < count; i++) {
     const date = new Date(startDate);
@@ -564,14 +692,29 @@ function generateFallbackData(type) {
       date.setDate(date.getDate() + i);
     }
     
+    // Check if current date is in a recession period
+    const isInRecession = recessionPeriods.some(recession => 
+      date >= recession.start && date <= recession.end
+    );
+    
     if (type === 'daily-returns') {
-      value = (Math.random() - 0.5) * 0.1; // Daily returns -5% to 5%
+      // More volatile during recessions
+      const volatilityMultiplier = isInRecession ? 2.0 : 1.0;
+      value = (Math.random() - 0.5) * 0.1 * volatilityMultiplier; // Daily returns
     } else {
-      value += (Math.random() - 0.45) * 20; // Slight upward trend
+      // During recessions, add more downward pressure
+      const recessionEffect = isInRecession ? -15 : 0;
+      const baseChange = (Math.random() - 0.45) * 20;
+      value += baseChange + recessionEffect * (Math.random() * 0.5);
+      
+      // Prevent value from going below a reasonable minimum
+      value = Math.max(value, 10);
     }
     
     data.push({ x: date.getTime(), y: value });
   }
+  
+  console.log(`Generated ${type} data from ${startDate.toLocaleDateString()} to ${new Date(startDate.getTime() + (count * (type === 'monthly' ? 30 : 1) * 24 * 60 * 60 * 1000)).toLocaleDateString()}`);
   
   return data;
 }
@@ -641,7 +784,7 @@ async function initializeCharts() {
     setupTabs();
     await initLineChart(); // Initialize line chart first (default tab)
     
-    console.log('Chart initialization complete with sample recession data');
+    console.log('Chart initialization complete with working recession toggles');
     
   } catch (error) {
     console.error('Failed to initialize charts:', error);
