@@ -101,19 +101,6 @@ export class Scale {
       return this.range[0] + normalizedValue * this._rangeExtent;
     }
   }
-
-  /**
-   * Create a new scale instance
-   */
-  createScale(type, config = {}) {
-    const scale = new Scale({
-      type: type,
-      coordinateSystem: 'normalized', // Default to normalized
-      ...config
-    });
-    
-    return scale;
-  }
   
   /**
    * Scale a pixel position back to data value (inverse transform)
@@ -525,5 +512,18 @@ export class ScaleManager {
    */
   clear() {
     this.scales.clear();
+  }
+
+    /**
+   * Create a new scale instance
+   */
+  createScale(type, config = {}) {
+    const scale = new Scale({
+      type: type,
+      coordinateSystem: 'normalized', // Default to normalized
+      ...config
+    });
+    
+    return scale;
   }
 }

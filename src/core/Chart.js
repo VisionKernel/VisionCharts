@@ -865,94 +865,102 @@ _getYValue(point) {
   }
 
   /**
-   * Toggle between single chart and panel mode
-   */
-  async togglePanelMode(force = null) {
-    const newPanelMode = force !== null ? force : !this.isPanelMode;
-    
-    if (newPanelMode === this.isPanelMode) {
-      console.log(`Already in ${newPanelMode ? 'panel' : 'single'} mode`);
-      return newPanelMode;
-    }
-    
-    console.log(`Switching to ${newPanelMode ? 'panel' : 'single'} mode`);
-    
-    try {
-      if (newPanelMode) {
-        await this._switchToPanelMode();
-      } else {
-        await this._switchToSingleMode();
-      }
-      
-      this.isPanelMode = newPanelMode;
-      console.log(`Successfully switched to ${newPanelMode ? 'panel' : 'single'} mode`);
-      
-      return newPanelMode;
-      
-    } catch (error) {
-      console.error('Error toggling panel mode:', error);
-      throw error;
-    }
+ * Toggle between single chart and panel mode
+ */
+async togglePanelMode(force = null) {
+  const newPanelMode = force !== null ? force : !this.isPanelMode;
+  
+  if (newPanelMode === this.isPanelMode) {
+    console.log(`Already in ${newPanelMode ? 'panel' : 'single'} mode`);
+    return newPanelMode;
   }
   
-  /**
-   * Switch to panel mode - destroy single chart and create panels
-   * @private
-   */
-  async _switchToPanelMode() {
-    if (this.isPanelMode) return;
-    
-    // Validate we have multiple datasets
-    if (!Array.isArray(this.config.data) || this.config.data.length <= 1) {
-      throw new Error('Panel mode requires multiple datasets');
+  console.log(`Switching to ${newPanelMode ? 'panel' : 'single'} mode`);
+  
+  try {
+    if (newPanelMode) {
+      await this._switchToPanelMode();
+    } else {
+      await this._switchToSingleMode();
     }
     
-    console.log(`Creating panel mode with ${this.config.data.length} panels`);
+    // Keep this here - it's still needed for final confirmation
+    this.isPanelMode = newPanelMode;
+    console.log(`Successfully switched to ${newPanelMode ? 'panel' : 'single'} mode`);
     
-    // Store current single mode state
-    this._storeSingleModeState();
+    return newPanelMode;
     
-    // Destroy current single chart components
-    this._destroySingleModeComponents();
-    
-    // Create shared X scale
-    this._createSharedXScale();
-    
-    // Create panel container
-    this._createPanelContainer();
-    
-    // Create individual panels
-    await this._createPanels();
-    
-    // Render all panels
-    await this._renderPanels();
-    
-    console.log('Panel mode activated successfully');
+  } catch (error) {
+    console.error('Error toggling panel mode:', error);
+    throw error;
   }
+}
   
   /**
-   * Switch to single mode - destroy panels and recreate single chart
-   * @private
-   */
-  async _switchToSingleMode() {
-    if (!this.isPanelMode) return;
-    
-    console.log('Switching back to single chart mode');
-    
-    // Destroy all panels
-    this._destroyPanels();
-    
-    // Remove panel container
-    this._destroyPanelContainer();
-    
-    // Restore single mode state
-    this._restoreSingleModeState();
-    
-    // Reinitialize single chart
-    await this._reinitializeSingleChart();
-    
-    console.log('Single chart mode restored successfully');
+ * Switch to single mode - destroy panels and recreate single chart
+ * @private
+ */
+async _switchToSingleMode() {
+  if (!this.isPanelMode) return;
+  
+  console.log('Switching back to single chart mode');
+  
+  // Destroy all panels
+  this._destroyPanels();
+  
+  // Remove panel container
+  this._destroyPanelContainer();
+  
+  // Restore single mode state
+  this._restoreSingleModeState();
+  
+  // ✅ CRITICAL: Set isPanelMode to false BEFORE reinitializing single chart
+  this.isPanelMode = false;
+  
+  // Reinitialize single chart
+  await this._reinitializeSingleChart();
+  
+  console.log('Single chart mode restored successfully');
+}
+
+/**
+ * Switch to panel mode - destroy single chart and create panels
+ * @private
+ */
+async _switchToPanelMode() {
+  if (this.isPanelMode) return;
+  
+  // Validate we have multiple datasets
+  if (!Array.isArray(this.config.data) || this.config.data.length <= 1) {
+    throw new Error('Panel mode requires multiple datasets');
   }
+  
+  console.log(`Creating panel mode with ${this.config.data.length} panels`);
+  
+  // Store current single mode state
+  this._storeSingleModeState();
+  
+  // Destroy current single chart components
+  this._destroySingleModeComponents();
+  
+  // ✅ Set isPanelMode to true BEFORE creating panels
+  this.isPanelMode = true;
+  
+  // Create shared X scale
+  this._createSharedXScale();
+  
+  // Create panel container
+  this._createPanelContainer();
+  
+  // Create individual panels
+  await this._createPanels();
+  
+  // Render all panels
+  await this._renderPanels();
+  
+  console.log('Panel mode activated successfully');
+}
+  
   
   /**
    * Store single mode state for restoration
@@ -1151,34 +1159,34 @@ _getYValue(point) {
   }
   
   /**
-   * Reinitialize single chart after returning from panel mode
-   * @private
-   */
-  async _reinitializeSingleChart() {
-    // Calculate chart area
-    this._calculateChartArea();
-    
-    // Process data
-    await this._processData();
-    
-    // Create scales
-    this._createScales();
-    
-    // Create axes  
-    this._createAxes();
-    
-    // Create grid
-    this._createGrid();
-    
-    // Initialize renderer
-    await this._initializeRenderer();
-    
-    // Create SVG overlay
-    this._createSVGOverlay();
-    
-    // Full render
-    await this.render();
-  }
+ * Reinitialize single chart after returning from panel mode
+ * @private
+ */
+async _reinitializeSingleChart() {
+  // Calculate chart area and dimensions
+  this._calculateDimensions();  // ✅ Fixed: use correct method name
+  
+  // ✅ CRITICAL: Setup rendering layers (canvas, SVG) before initializing renderer
+  this._setupRenderingLayers();
+  
+  // Process data
+  await this._processData();
+  
+  // Create scales
+  this._createScales();
+  
+  // Create axes  
+  this._createAxes();
+  
+  // Create grid
+  this._createGrid();
+  
+  // Initialize renderer (now canvas exists)
+  await this._initializeRenderer();
+  
+  // Full render
+  await this.render();
+}
   
   /**
  * FIXED: Render chart - correct pipeline order

@@ -318,14 +318,21 @@ export class Panel {
     
     // Initialize appropriate renderer
     if (this.config.rendererType === 'webgl') {
-      const { WebGLRenderer } = await import('../renderers/WebGLRenderer.js');
-      this.rendererInstance = new WebGLRenderer(this.canvas);
+    const { default: WebGLRenderer } = await import('../renderers/WebGLRenderer.js');
+    this.rendererInstance = new WebGLRenderer();
+    await this.rendererInstance.initialize(this.canvas, {
+        width: this.panelContainer.offsetWidth,
+        height: this.config.height
+    });
     } else {
-      const { CanvasRenderer } = await import('../renderers/CanvasRenderer.js');
-      this.rendererInstance = new CanvasRenderer(this.canvas);
+    const { default: CanvasRenderer } = await import('../renderers/CanvasRenderer.js');
+    this.rendererInstance = new CanvasRenderer();
+    await this.rendererInstance.initialize(this.canvas, {
+        width: this.panelContainer.offsetWidth,
+        height: this.config.height
+    });
     }
     
-    await this.rendererInstance.initialize();
   }
   
   /**

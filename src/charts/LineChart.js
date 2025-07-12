@@ -292,38 +292,75 @@ export class LineChart extends Chart {
   }
 
   /**
-   * Add a new dataset to the chart (UPDATED with legend support)
-   */
-  addDataset(dataset) {
-    if (!dataset || !dataset.data) {
-      console.warn('Invalid dataset provided to addDataset');
-      return this;
-    }
-    
-    // Ensure required properties
-    const processedDataset = {
-      id: dataset.id || `dataset-${this.config.data.length + 1}`,
-      name: dataset.name || `Dataset ${this.config.data.length + 1}`,
-      color: dataset.color || this._getDefaultColor(this.config.data.length),
-      width: dataset.width || this.config.options.strokeWidth,
-      fill: dataset.fill !== undefined ? dataset.fill : false, // NEW: default fill to false
-      ...dataset
-    };
-    
-    this.config.data.push(processedDataset);
-    
-    console.log(`LineChart: Added dataset with legend support: ${processedDataset.id} (fill: ${processedDataset.fill})`);
-    
-    // NEW: Update legend
-    if (this.legend) {
-      this.legend.updateDatasets(this.config.data);
-    }
-    
-    // Update and re-render
-    this.update();
-    
+ * Add a new dataset to the chart (UPDATED with panel mode support)
+ */
+addDataset(dataset) {
+  if (!dataset || !dataset.data) {
+    console.warn('Invalid dataset provided to addDataset');
     return this;
   }
+  
+  // Ensure required properties
+  const processedDataset = {
+    id: dataset.id || `dataset-${this.config.data.length + 1}`,
+    name: dataset.name || `Dataset ${this.config.data.length + 1}`,
+    color: dataset.color || this._getDefaultColor(this.config.data.length),
+    width: dataset.width || this.config.options.strokeWidth,
+    fill: dataset.fill !== undefined ? dataset.fill : false,
+    ...dataset
+  };
+  
+  this.config.data.push(processedDataset);
+  
+  console.log(`LineChart: Added dataset with panel mode support: ${processedDataset.id} (fill: ${processedDataset.fill})`);
+  
+  // Update legend
+  if (this.legend) {
+    this.legend.updateDatasets(this.config.data);
+  }
+  
+  // Handle panel mode vs single mode differently
+  if (this.isPanelMode) {
+    // In panel mode: recreate all panels with new dataset
+    this._refreshPanelMode();
+  } else {
+    // In single mode: normal update
+    this.update();
+  }
+  
+  return this;
+}
+
+/**
+ * Refresh panel mode after dataset changes
+ * @private
+ */
+async _refreshPanelMode() {
+  try {
+    console.log('Refreshing panel mode with updated datasets');
+    
+    // Destroy existing panels
+    this._destroyPanels();
+    
+    // CRITICAL: Process new data before creating panels
+    await this._processData();
+    
+    // Recreate shared X scale with all datasets
+    this._createSharedXScale();
+    
+    // Recreate panels
+    await this._createPanels();
+    
+    // Re-render all panels
+    await this._renderPanels();
+    
+    console.log('Panel mode refreshed successfully');
+    
+  } catch (error) {
+    console.error('Error refreshing panel mode:', error);
+    throw error;
+  }
+}
   
   /**
    * Remove a dataset by ID (UPDATED with legend support)
