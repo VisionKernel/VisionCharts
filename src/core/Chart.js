@@ -193,7 +193,6 @@ export class Chart {
     // Initialize
     this._initPromise = this._initialize();
   }
-
   
   
   /**
@@ -216,59 +215,59 @@ export class Chart {
   }
   
   /**
-   * Initialize the chart infrastructure
-   */
-  async _initialize() {
-    try {
-      // Clear container
-      this.container.innerHTML = '';
-      
-      // Set up container styling
-      this.container.style.position = 'relative';
-      this.container.style.width = '100%';
-      this.container.style.height = '100%';
-      
-      // Calculate dimensions
-      this._calculateDimensions();
-      
-      // Set up rendering layers
-      this._setupRenderingLayers();
-      
-      // Process data
-      await this._processData();
-      
-      // Calculate data domains
-      this._calculateDataDomains();
-      
-      // Choose optimal renderer first (before creating coordinate system)
-      this._selectOptimalRenderer();
-      
-      // UPDATED: Create coordinate system with renderer information
-      this._createCoordinateSystem();
-      
-      // UPDATED: Create scales with unified coordinate system
-      this._createScales();
-      
-      // Create grid
-      this._createGrid();
-      
-      // Create axes
-      this._createAxes();
+ * FIXED: Remove duplicate domain calculation from _initialize
+ */
+async _initialize() {
+  try {
+    // Clear container
+    this.container.innerHTML = '';
+    
+    // Set up container styling
+    this.container.style.position = 'relative';
+    this.container.style.width = '100%';
+    this.container.style.height = '100%';
+    
+    // Calculate dimensions
+    this._calculateDimensions();
+    
+    // Set up rendering layers
+    this._setupRenderingLayers();
+    
+    // Process data (this includes domain calculation now)
+    await this._processData();
+    
+    // ✅ REMOVED: Don't calculate domains again, _processData() already does it
+    // this._calculateDataDomains();
+    
+    // Choose optimal renderer first (before creating coordinate system)
+    this._selectOptimalRenderer();
+    
+    // UPDATED: Create coordinate system with renderer information
+    this._createCoordinateSystem();
+    
+    // UPDATED: Create scales with unified coordinate system
+    this._createScales();
+    
+    // Create grid
+    this._createGrid();
+    
+    // Create axes
+    this._createAxes();
 
-      //set up crosshair
-      this._setupCrosshair();
-      
-      // Initialize the selected renderer
-      await this._initializeRenderer();
-      
-      this.isInitialized = true;
-      console.log('Chart initialization complete with unified coordinate system and', this.activeRenderer, 'renderer');
-      
-    } catch (error) {
-      console.error('Chart initialization failed:', error);
-      throw error;
-    }
+    //set up crosshair
+    this._setupCrosshair();
+    
+    // Initialize the selected renderer
+    await this._initializeRenderer();
+    
+    this.isInitialized = true;
+    console.log('Chart initialization complete with unified coordinate system and', this.activeRenderer, 'renderer');
+    
+  } catch (error) {
+    console.error('Chart initialization failed:', error);
+    throw error;
   }
+}
   
   /**
    * Calculate chart dimensions based on container
@@ -336,7 +335,7 @@ export class Chart {
   }
   
   /**
- * Process raw data into usable format
+ * FIXED: Process data and calculate domains in correct order
  * @private
  */
 async _processData() {
@@ -348,22 +347,19 @@ async _processData() {
   try {
     console.log('Processing raw data with DataProcessor...');
     
-    // ✅ FIX: Create proper options object with all required DataProcessor fields
+    // ✅ FIX: Use DataProcessor to normalize ALL data to standard x/y fields
     const processingOptions = {
-      xField: this.config.options.xField,
-      yField: this.config.options.yField,
-      xType: this.config.options.xType,
-      yType: this.config.options.yType,
-      // ✅ CRITICAL: Include missing DataProcessor options
-      gapThreshold: '1d',           // Prevent the undefined error
-      fillGaps: false,
-      strictValidation: false,
+      // DataProcessor will normalize any time field → x, any value field → y
       autoDetectTimeFormat: true,
       sortByTime: true,
       removeDuplicates: true,
+      strictValidation: false,
+      fillGaps: false,
       timeZone: 'UTC',
       enableCaching: true,
-      batchSize: 10000
+      batchSize: 10000,
+      normalizeTimeStamps: true,
+      gapThreshold: '1d'
     };
     
     const processedDatasets = [];
@@ -377,31 +373,34 @@ async _processData() {
         continue;
       }
 
-      // ✅ FIX: Use DataProcessor with complete options
-      const processedData = await this.dataProcessor.processDataset(dataset, processingOptions);
-
-      processedDatasets.push({
-        ...dataset,
-        data: processedData
-      });
+      // ✅ CRITICAL FIX: DataProcessor.processDataset returns the whole processed dataset object
+      const processedDataset = await this.dataProcessor.processDataset(dataset, processingOptions);
+      
+      // ✅ CRITICAL FIX: Just push the processed dataset directly (it already has the structure we need)
+      processedDatasets.push(processedDataset);
     }
 
-    // Update data point count for renderer selection
-    this.dataPointCount = processedDatasets.reduce((count, dataset) => 
-      count + (dataset.data ? dataset.data.length : 0), 0);
-
-    // Store processed data back
+    // ✅ FIX: Store processed data BEFORE domain calculation
     this.config.data = processedDatasets;
     
+    // ✅ FIX: Calculate data point count from PROCESSED data (use processedDataCount from DataProcessor)
+    this.dataPointCount = processedDatasets.reduce((count, dataset) => {
+      // DataProcessor adds processedDataCount to the dataset
+      const dataLength = dataset.processedDataCount || (dataset.data && Array.isArray(dataset.data) ? dataset.data.length : 0);
+      return count + dataLength;
+    }, 0);
+    
     console.log(`DataProcessor: Successfully processed ${processedDatasets.length} datasets`);
-    console.log(`DataProcessor: Cleaned data, ${this.dataPointCount} total points`);
+    console.log(`DataProcessor: Total points for rendering: ${this.dataPointCount}`);
+
+    // ✅ CRITICAL: Calculate domains AFTER data processing using normalized data
+    this._calculateDataDomains();
 
   } catch (error) {
     console.error('Error processing data:', error);
     throw error;
   }
 }
-
   /**
  * Update scales with new data domains
  * @private
@@ -458,7 +457,7 @@ _updateAxes() {
 }
   
   /**
- * Calculate data domains from current datasets
+ * FIXED: Calculate domains using normalized data from DataProcessor
  * @private
  */
 _calculateDataDomains() {
@@ -472,17 +471,22 @@ _calculateDataDomains() {
   let xMax = -Infinity;
   let yMin = Infinity;
   let yMax = -Infinity;
+  let totalPoints = 0;
   
-  // Iterate through all datasets
+  // ✅ FIX: Use normalized data from DataProcessor (always has x/y fields)
   for (const dataset of this.config.data) {
     if (!dataset.data || !Array.isArray(dataset.data) || dataset.data.length === 0) {
       continue;
     }
     
-    // Find min/max for each axis
+    // ✅ FIX: DataProcessor guarantees x/y fields exist and are normalized
     for (const point of dataset.data) {
-      const xValue = this._getXValue(point);
-      const yValue = this._getYValue(point);
+      totalPoints++;
+      
+      // DataProcessor normalizes all time fields → point.x (numeric timestamp)
+      // DataProcessor normalizes all value fields → point.y (numeric value)
+      const xValue = point.x;
+      const yValue = point.y;
       
       if (xValue != null && isFinite(xValue)) {
         xMin = Math.min(xMin, xValue);
@@ -498,11 +502,13 @@ _calculateDataDomains() {
   
   // Handle edge cases
   if (xMin === Infinity || xMax === -Infinity) {
+    console.warn('No valid X values found in processed data');
     xMin = 0;
     xMax = 1;
   }
   
   if (yMin === Infinity || yMax === -Infinity) {
+    console.warn('No valid Y values found in processed data');
     yMin = 0;
     yMax = 1;
   }
@@ -516,7 +522,7 @@ _calculateDataDomains() {
     y: [yMin - yPadding, yMax + yPadding]
   };
   
-  console.log('Data domains calculated:', this.dataDomains);
+  console.log(`Data domains calculated from ${totalPoints} processed points:`, this.dataDomains);
 }
   
   /**
@@ -545,52 +551,49 @@ _calculateDataDomains() {
   }
   
   /**
-   * UPDATED: Create scale instances with unified coordinate system
-   */
-  _createScales() {
-    // Determine scale types
-    const xScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
-    const yScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
-    
-    // UPDATED: X Scale with unified coordinate system
-    this.scales.x = new Scale({
-      type: xScaleType,
-      domain: [...this.dataDomains.x],
-      range: [this.chartArea.x, this.chartArea.x + this.chartArea.width], // Standard left-to-right
-      dataType: this.config.options.xType,
-      coordinateSystem: 'normalized', // Use unified coordinate system
-      orientation: 'horizontal',
-      options: {
-        nice: true,
-        padding: 0.05
-      }
-    });
-    
-    // UPDATED: Y Scale with unified coordinate system (NO manual inversion)
-    this.scales.y = new Scale({
-      type: yScaleType,
-      domain: [...this.dataDomains.y],
-      range: [this.chartArea.y, this.chartArea.y + this.chartArea.height], // Bottom-to-top for unified system
-      dataType: this.config.options.yType,
-      coordinateSystem: 'normalized', // Use unified coordinate system
-      orientation: 'vertical',
-      options: {
-        nice: true,
-        padding: 0.05
-      }
-    });
-    
-    // Register scales with manager
-    this.scaleManager.setScale('x', this.scales.x);
-    this.scaleManager.setScale('y', this.scales.y);
-    
-    // UPDATED: Set scales in coordinate system for transformation
-    if (this.coordinateSystem) {
-      this.coordinateSystem.setScales(this.scales);
-    }
-    
-    console.log('Scales created with unified coordinate system');
+ * UPDATED: Create scales with proper domains from processed data
+ * @private
+ */
+_createScales() {
+  // ✅ FIX: Ensure domains are calculated from processed data first
+  if (!this.dataDomains || !this.dataDomains.x || !this.dataDomains.y) {
+    console.warn('Data domains not available, recalculating...');
+    this._calculateDataDomains();
   }
+  
+  // Determine scale types - DataProcessor handles time detection
+  const xScaleType = this.config.options.xType === 'time' ? 'time' : 'linear';
+  const yScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
+  
+  // Create X scale with UNIFIED coordinate system
+  this.scales.x = new Scale({
+    type: xScaleType,
+    domain: [...this.dataDomains.x],
+    range: [this.chartArea.x, this.chartArea.x + this.chartArea.width],
+    coordinateSystem: 'unified',
+    orientation: 'horizontal',
+    dataType: this.config.options.xType,
+    options: { nice: true }
+  });
+  
+  // Create Y scale with UNIFIED coordinate system (mathematical Y-up)
+  this.scales.y = new Scale({
+    type: yScaleType,
+    domain: [...this.dataDomains.y],
+    range: [this.chartArea.y, this.chartArea.y + this.chartArea.height],
+    coordinateSystem: 'unified',
+    orientation: 'vertical',
+    dataType: this.config.options.yType,
+    options: { nice: true }
+  });
+  
+  // Update scale manager
+  this.scaleManager.setScale('x', this.scales.x);
+  this.scaleManager.setScale('y', this.scales.y);
+  
+  console.log('Scales created with unified coordinate system and processed data domains');
+}
+
   
   /**
    * Create grid instance
@@ -737,31 +740,54 @@ _calculateDataDomains() {
   }
   
   /**
- * Extract X value from data point (can be overridden by subclasses)
+ * UPDATED: Extract X value - use normalized data from DataProcessor
  * @private
  */
 _getXValue(point) {
-  const xField = this.config.options.xField;
-  let value = point[xField];
+  // ✅ FIX: After DataProcessor, all time data is normalized to point.x
+  // DataProcessor guarantees point.x exists and is a numeric timestamp
+  let value = point.x;
   
-  // Convert Date objects to timestamps for calculations
-  if (value instanceof Date) {
-    value = value.getTime();
+  // Fallback for unprocessed data (shouldn't happen in normal flow)
+  if (value == null) {
+    value = point.date || point.time || point.timestamp;
+    
+    // Convert Date objects to timestamps
+    if (value instanceof Date) {
+      value = value.getTime();
+    } else if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!isNaN(parsed.getTime())) {
+        value = parsed.getTime();
+      } else {
+        value = parseFloat(value);
+      }
+    }
   }
   
-  return typeof value === 'number' ? value : null;
+  return typeof value === 'number' && isFinite(value) ? value : null;
 }
 
 /**
- * Extract Y value from data point (can be overridden by subclasses)  
+ * UPDATED: Extract Y value - use normalized data from DataProcessor
  * @private
  */
 _getYValue(point) {
-  const yField = this.config.options.yField;
-  const value = point[yField];
-  return typeof value === 'number' ? value : null;
+  // ✅ FIX: After DataProcessor, all value data is normalized to point.y
+  // DataProcessor guarantees point.y exists and is a numeric value
+  let value = point.y;
+  
+  // Fallback for unprocessed data (shouldn't happen in normal flow)
+  if (value == null) {
+    value = point.value || point.price || point.close || point.amount;
+    
+    if (typeof value === 'string') {
+      value = parseFloat(value);
+    }
+  }
+  
+  return typeof value === 'number' && isFinite(value) ? value : null;
 }
-
   
   /**
    * Render chart title
@@ -1155,21 +1181,36 @@ _getYValue(point) {
   }
   
   /**
-   * Render chart - handle both single and panel modes
-   */
-  async render() {
-    if (this.isPanelMode) {
-      await this._renderPanels();
-    } else {
-      await this._renderSingleMode();
+ * FIXED: Render chart - correct pipeline order
+ */
+async render() {
+  try {
+    // Step 1: Raw Data → DataProcessor (normalize to x/y fields)
+    await this._processData();
+    
+    // Step 2: Calculate Domains (from normalized data) - already done in _processData()
+    
+    // Step 3: Create Scales (using calculated domains)
+    this._createScales();
+    
+    // Step 4: CoordinateSystem (using scales)
+    if (this.coordinateSystem) {
+      this.coordinateSystem.setScales(this.scales);
     }
+    
+    // Continue with rest of rendering...
+    await this._renderSingleMode();
+    
+  } catch (error) {
+    console.error('Error in render pipeline:', error);
+    throw error;
   }
+}
 
   /**
-   * Render single mode (original render logic)
-   * @private
-   */
-  async _renderSingleMode() {
+ * FIXED: Render single mode with correct path generation timing
+ */
+async _renderSingleMode() {
   if (!this.isInitialized) {
     console.warn('Chart not initialized, cannot render');
     return;
@@ -1178,33 +1219,32 @@ _getYValue(point) {
   console.log('Rendering chart...');
   
   try {
-    // Clear previous render
+    // ✅ FIX: Clear previous render FIRST (before generating new paths)
     this._clearRender();
+    
+    // ✅ FIX: Generate paths AFTER clearing (so they don't get deleted)
+    console.log('Generating paths for rendering...');
+    await this._preprocessDataForRenderer();
     
     // Render title
     this._renderTitle();
     
-    // ✅ FIX: Render grid with canvas context (Grid expects Canvas 2D context)
+    // Render grid
     if (this.grid && this.config.options.showGrid && this.gridCanvas) {
-      // Update grid with current chart area and scales
       this.grid.updateChartArea(this.chartArea);
       this.grid.updateScales(this.scales.x, this.scales.y);
       
-      // Get canvas context and render
       const gridCtx = this.gridCanvas.getContext('2d');
       if (gridCtx) {
-        // Apply DPI scaling to grid canvas if needed
         const devicePixelRatio = window.devicePixelRatio || 1;
         gridCtx.save();
         gridCtx.scale(devicePixelRatio, devicePixelRatio);
-        
-        this.grid.render(gridCtx);  // Pass canvas context, not SVG
-        
+        this.grid.render(gridCtx);
         gridCtx.restore();
       }
     }
     
-    // Render chart data (implemented by subclasses)
+    // ✅ FIX: Render chart data AFTER paths are generated
     await this._renderChartData();
     
     // Render axes
@@ -1232,6 +1272,7 @@ _getYValue(point) {
     throw error;
   }
 }
+
   
   /**
    * Get panel mode information
@@ -1431,6 +1472,42 @@ _getYValue(point) {
     }
   }
   
+  /**
+ * FIXED: Debug method to verify data structure
+ */
+_debugDataStructure() {
+  console.log('=== DATA STRUCTURE DEBUG ===');
+  
+  if (!this.config.data || this.config.data.length === 0) {
+    console.log('No data available');
+    return;
+  }
+  
+  const firstDataset = this.config.data[0];
+  console.log('Dataset structure:', {
+    id: firstDataset.id,
+    name: firstDataset.name,
+    hasData: !!firstDataset.data,
+    dataLength: firstDataset.data ? firstDataset.data.length : 0,
+    processed: firstDataset.processed,
+    processedDataCount: firstDataset.processedDataCount,
+    originalDataCount: firstDataset.originalDataCount
+  });
+  
+  if (firstDataset.data && firstDataset.data.length > 0) {
+    const firstPoint = firstDataset.data[0];
+    console.log('First data point structure:', {
+      keys: Object.keys(firstPoint),
+      x: firstPoint.x,
+      y: firstPoint.y,
+      hasUnifiedCoords: !!(firstPoint.unifiedX && firstPoint.unifiedY)
+    });
+  }
+  
+  console.log('Data domains:', this.dataDomains);
+  console.log('Data point count:', this.dataPointCount);
+}
+
   /**
    * Determine optimal renderer without setting it
    */
@@ -1758,48 +1835,47 @@ _getYValue(point) {
   }
 
   /**
-   * Clear previous render content
-   * @private
-   */
-  _clearRender() {
-    try {
-      // Clear the renderer (canvas/webgl)
-      if (this.rendererInstance && this.rendererInstance.clear) {
-        this.rendererInstance.clear();
-      }
-      
-      // ✅ Clear grid canvas too
-      if (this.gridCanvas) {
-        const gridCtx = this.gridCanvas.getContext('2d');
-        if (gridCtx) {
-          gridCtx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
-        }
-      }
-      
-      // Clear SVG overlay elements but preserve structure
-      if (this.svgOverlay) {
-        const children = Array.from(this.svgOverlay.children);
-        children.forEach(child => {
-          if (child.parentNode) {
-            child.parentNode.removeChild(child);
-          }
-        });
-      }
-      
-      // Clear title element if it exists separately
-      if (this.titleElement && this.titleElement.parentNode) {
-        this.titleElement.parentNode.removeChild(this.titleElement);
-        this.titleElement = null;
-      }
-      
-      // Reset any cached render state
-      this.generatedPaths = null;
-      
-    } catch (error) {
-      console.warn('Error clearing render:', error);
-      // Don't throw - allow rendering to continue
+ * FIXED: Clear render without destroying generated paths
+ */
+_clearRender() {
+  try {
+    // Clear the renderer (canvas/webgl)
+    if (this.rendererInstance && this.rendererInstance.clear) {
+      this.rendererInstance.clear();
     }
+    
+    // Clear grid canvas
+    if (this.gridCanvas) {
+      const gridCtx = this.gridCanvas.getContext('2d');
+      if (gridCtx) {
+        gridCtx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+      }
+    }
+    
+    // Clear SVG overlay elements but preserve structure
+    if (this.svgOverlay) {
+      const children = Array.from(this.svgOverlay.children);
+      children.forEach(child => {
+        if (child.parentNode) {
+          child.parentNode.removeChild(child);
+        }
+      });
+    }
+    
+    // Clear title element if it exists separately
+    if (this.titleElement && this.titleElement.parentNode) {
+      this.titleElement.parentNode.removeChild(this.titleElement);
+      this.titleElement = null;
+    }
+    
+    // ✅ FIX: DON'T clear generated paths here - they'll be regenerated when needed
+    // this.generatedPaths = null;  // ❌ REMOVED: This was causing the bug
+    
+  } catch (error) {
+    console.warn('Error clearing render:', error);
+    // Don't throw - allow rendering to continue
   }
+}
 
 /**
  * Public method to ensure chart is ready before use

@@ -300,7 +300,7 @@ async function initLineChart() {
       options: {
         title: 'Time Series Data',
         xField: 'date',
-        yField: 'price',
+        yField: 'value',
         xType: 'time',
         yType: 'number',
         xAxisName: document.getElementById('line-x-name')?.value || 'Date',
