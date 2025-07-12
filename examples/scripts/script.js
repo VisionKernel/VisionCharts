@@ -537,6 +537,57 @@ function setupLineChartControls() {
       }
     });
   }
+
+  const averageToggle = document.getElementById('line-toggle-average');
+  if (averageToggle) {
+    // Initialize button state - average line starts disabled
+    averageToggle.classList.remove('active');
+    let averageVisible = false;
+    
+    averageToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        averageVisible = !averageVisible;
+        
+        // Apply the new state
+        lineChart.toggleAverageLine();
+        
+        console.log('Line chart average line toggle - new state:', averageVisible);
+        
+        // Update button appearance
+        averageToggle.classList.toggle('active', averageVisible);
+        
+      } catch (error) {
+        console.error('Error toggling line chart average line:', error);
+      }
+    });
+  }
+
+  // Median line toggle
+  const medianToggle = document.getElementById('line-toggle-median');
+  if (medianToggle) {
+    // Initialize button state - median line starts disabled
+    medianToggle.classList.remove('active');
+    let medianVisible = false;
+    
+    medianToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        medianVisible = !medianVisible;
+        
+        // Apply the new state
+        lineChart.toggleMedianLine();
+        
+        console.log('Line chart median line toggle - new state:', medianVisible);
+        
+        // Update button appearance
+        medianToggle.classList.toggle('active', medianVisible);
+        
+      } catch (error) {
+        console.error('Error toggling line chart median line:', error);
+      }
+    });
+  }
 }
 
 // Setup bar chart controls with working recession toggle

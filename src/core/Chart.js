@@ -18,7 +18,9 @@ import { Legend } from '../components/Legend.js';
 import { EndingLabels } from '../components/EndingLabels.js';
 import { Crosshair } from '../components/Crosshair.js';
 import { ZeroLine } from '../components/ZeroLine.js';
-import {CrosshairTooltip} from '../components/CrosshairTooltip.js';
+import { AverageLine } from '../components/AverageLine.js';
+import { MedianLine } from '../components/MedianLine.js';
+import { CrosshairTooltip } from '../components/CrosshairTooltip.js';
 import { RecessionLines } from '../components/RecessionLines.js'; 
 
 
@@ -155,6 +157,30 @@ export class Chart {
       strokeOpacity: 1,
       strokeDash: [3, 3],
       showLabel: false
+    });
+
+    this.averageLine = new AverageLine({
+      enabled: false,
+      strokeColor: '#FF6B35',
+      strokeWidth: 2,
+      strokeOpacity: 0.8,
+      strokeDash: [5, 5],
+      showLabel: true,
+      labelText: 'Avg',
+      labelPosition: 'right',
+      useAllDatasets: true
+    });
+
+    this.medianLine = new MedianLine({
+      enabled: false,
+      strokeColor: '#9C27B0',
+      strokeWidth: 2,
+      strokeOpacity: 0.8,
+      strokeDash: [8, 4],
+      showLabel: true,
+      labelText: 'Median',
+      labelPosition: 'right',
+      useAllDatasets: true
     });
     
     // Initialize
@@ -734,6 +760,8 @@ export class Chart {
       this._renderRecessionLines();
 
       this._renderZeroLine();
+
+      this._renderStatisticalLines();
       
       this._renderAxes();
       
@@ -839,6 +867,24 @@ export class Chart {
     // Render zero line to the container (creates dedicated SVG layer)
     this.zeroLine.render(this.container, this.chartArea, this.scales);
   }
+
+  /**
+   * Render statistical lines
+   * @private
+   */
+  _renderStatisticalLines() {
+    // Update and render average line
+    if (this.averageLine && this.scales.x && this.scales.y) {
+      this.averageLine.updateDatasets(this.config.data);
+      this.averageLine.render(this.container, this.chartArea, this.scales);
+    }
+    
+    // Update and render median line
+    if (this.medianLine && this.scales.x && this.scales.y) {
+      this.medianLine.updateDatasets(this.config.data);
+      this.medianLine.render(this.container, this.chartArea, this.scales);
+    }
+  }
   
   /**
    * Render chart data using the selected renderer - to be implemented by subclasses
@@ -911,8 +957,19 @@ export class Chart {
       this.zeroLine.updateScales(this.scales);
       this.zeroLine.updateChartArea(this.chartArea);
     }
+
+    if (this.averageLine) {
+      this.averageLine.updateScales(this.scales);
+      this.averageLine.updateChartArea(this.chartArea);
+      this.averageLine.updateDatasets(this.config.data);
+    }
+
+    if (this.medianLine) {
+      this.medianLine.updateScales(this.scales);
+      this.medianLine.updateChartArea(this.chartArea);
+      this.medianLine.updateDatasets(this.config.data);
+    }
     
-    // Update renderer
     if (this.rendererInstance) {
       this.rendererInstance.update(this.config.data);
     }
@@ -1159,6 +1216,94 @@ export class Chart {
   getEndingLabelsInfo() {
     return this.endingLabels ? this.endingLabels.getState() : { enabled: false };
   }
+
+  /**
+   * Toggle average line visibility
+   */
+  toggleAverageLine(show = null) {
+    if (!this.averageLine) {
+      console.warn('AverageLine component not available');
+      return false;
+    }
+    
+    const newState = this.averageLine.toggle(show);
+    
+    console.log(`AverageLine ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Toggle median line visibility
+   */
+  toggleMedianLine(show = null) {
+    if (!this.medianLine) {
+      console.warn('MedianLine component not available');
+      return false;
+    }
+    
+    const newState = this.medianLine.toggle(show);
+    
+    console.log(`MedianLine ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Get current statistical values (average and median)
+   */
+  getStatisticalValues() {
+    return {
+      average: this.averageLine ? this.averageLine.getAverageValue() : null,
+      median: this.medianLine ? this.medianLine.getMedianValue() : null,
+      averageInRange: this.averageLine ? this.averageLine.getState().averageInRange : false,
+      medianInRange: this.medianLine ? this.medianLine.getState().medianInRange : false
+    };
+  }
+
+  /**
+   * Configure average line appearance and behavior
+   * @param {Object} config - Configuration for average line
+   */
+  setAverageLineConfig(config) {
+    if (this.averageLine) {
+      this.averageLine.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Configure median line appearance and behavior
+   * @param {Object} config - Configuration for median line
+   */
+  setMedianLineConfig(config) {
+    if (this.medianLine) {
+      this.medianLine.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Set whether statistical lines should calculate across all datasets or just the first
+   * @param {boolean} useAllDatasets - Whether to use all datasets for calculation
+   */
+  setStatisticalDataScope(useAllDatasets) {
+    if (this.averageLine) {
+      this.averageLine.updateConfig({ useAllDatasets });
+    }
+    if (this.medianLine) {
+      this.medianLine.updateConfig({ useAllDatasets });
+    }
+    return this;
+  }
+
+  /**
+   * Get statistical lines state for debugging
+   */
+  getStatisticalLinesInfo() {
+    return {
+      average: this.averageLine ? this.averageLine.getState() : { enabled: false },
+      median: this.medianLine ? this.medianLine.getState() : { enabled: false }
+    };
+  }
   
   /**
    * Destroy the chart and clean up resources
@@ -1185,6 +1330,17 @@ export class Chart {
     if (this.zeroLine) {
       this.zeroLine.destroy();
       this.zeroLine = null;
+    }
+
+    // Cleanup average and median lines
+    if (this.averageLine) {
+      this.averageLine.destroy();
+      this.averageLine = null;
+    }
+
+    if (this.medianLine) {
+      this.medianLine.destroy();
+      this.medianLine = null;
     }
 
     // Cleanup ending labels
