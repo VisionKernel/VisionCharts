@@ -37,9 +37,16 @@ export class BarChart extends Chart {
   }
   
   /**
-   * UPDATED: Render bar chart data using unified coordinates
+   * UPDATED: Render bar chart data - handles both single and panel modes
    */
   async _renderChartData() {
+    // If in panel mode, rendering is handled by individual panels
+    if (this.isPanelMode) {
+      console.log('BarChart: Panel mode rendering handled by Panel components');
+      return;
+    }
+    
+    // Original single mode rendering logic
     if (!this.rendererInstance) {
       console.error('No renderer instance available');
       return;
@@ -58,24 +65,19 @@ export class BarChart extends Chart {
         this._validateUnifiedCoordinates();
       }
 
-      // NEW: Calculate bar positioning info for debugging
-      if (this.config.options.enableRenderingDebug) {
-        this._calculateBarPositioningInfo();
-      }
-
       // Set viewport for clipping
       this.rendererInstance.setViewport(this.chartArea);
 
-      // Render bars using the selected renderer with unified coordinates
-      await this.rendererInstance.renderBars(this.config.data, this.scales, {
+      // UPDATED: Render bars with unified coordinates
+      await this.rendererInstance.renderBars(this.transformedData, this.scales, {
         barWidth: this.config.options.barWidth,
-        barSpacing: this.config.options.barSpacing,
         showBorder: this.config.options.showBorder,
-        borderWidth: this.config.options.borderWidth
+        borderWidth: this.config.options.borderWidth,
+        chartArea: this.chartArea
       });
 
-      const totalBars = this.config.data.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
-      console.log(`BarChart: Rendered ${this.config.data.length} datasets with ${totalBars} total bars using ${this.activeRenderer} with UNIFIED coordinates`);
+      const totalBars = this.transformedData.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
+      console.log(`BarChart: Rendered ${totalBars} bars across ${this.transformedData.length} datasets using ${this.activeRenderer}`);
 
       // NEW: Collect rendering debug info
       if (this.config.options.enableRenderingDebug) {
@@ -89,39 +91,34 @@ export class BarChart extends Chart {
   }
 
   /**
-   * NEW: Validate unified coordinates across all datasets
+   * Validate unified coordinates across all datasets - panel mode aware
    * @private
    */
   _validateUnifiedCoordinates() {
+    if (this.isPanelMode) {
+      console.log('BarChart: Coordinate validation handled by individual panels');
+      return;
+    }
+    
+    // Original single mode validation logic
     this.coordinateValidationResults = [];
 
-    if (!this.config.data || this.config.data.length === 0) {
-      console.warn('BarChart: No data to validate');
+    if (!this.transformedData || this.transformedData.length === 0) {
       return;
     }
 
-    for (const dataset of this.config.data) {
-      const validationResult = this._validateDatasetCoordinates(dataset);
-      this.coordinateValidationResults.push(validationResult);
+    for (let datasetIndex = 0; datasetIndex < this.transformedData.length; datasetIndex++) {
+      const dataset = this.transformedData[datasetIndex];
+      const validation = this._validateDatasetCoordinates(dataset, datasetIndex);
+      this.coordinateValidationResults.push(validation);
     }
 
-    // Log validation summary
-    const totalDatasets = this.coordinateValidationResults.length;
-    const validDatasets = this.coordinateValidationResults.filter(r => r.isValid).length;
-    const totalPoints = this.coordinateValidationResults.reduce((sum, r) => sum + r.pointCount, 0);
-    
-    console.log(`BarChart coordinate validation:`, {
-      totalDatasets,
-      validDatasets,
-      totalPoints,
-      coordinateSystem: 'unified',
-      renderer: this.activeRenderer
-    });
-
-    // Warn about invalid coordinates
-    const invalidDatasets = this.coordinateValidationResults.filter(r => !r.isValid);
-    if (invalidDatasets.length > 0) {
-      console.warn(`BarChart: ${invalidDatasets.length} datasets have coordinate issues:`, invalidDatasets);
+    // Log validation results
+    const totalIssues = this.coordinateValidationResults.reduce((sum, result) => sum + result.issues.length, 0);
+    if (totalIssues > 0) {
+      console.warn(`BarChart coordinate validation found ${totalIssues} issues:`, this.coordinateValidationResults);
+    } else {
+      console.log('BarChart coordinate validation passed for all datasets');
     }
   }
 
@@ -253,10 +250,16 @@ export class BarChart extends Chart {
   }
 
   /**
-   * NEW: Collect rendering debug information
+   * Collect rendering debug information - panel mode aware
    * @private
    */
   _collectRenderingDebugInfo() {
+    if (this.isPanelMode) {
+      console.log('BarChart: Rendering debug info handled by individual panels');
+      return;
+    }
+    
+    // Original single mode debug info collection
     this.renderingDebugInfo = {
       timestamp: Date.now(),
       renderer: this.activeRenderer,
@@ -274,12 +277,11 @@ export class BarChart extends Chart {
           type: this.scales.y.type
         }
       },
-      datasetInfo: this.config.data.map(dataset => ({
+      datasets: this.transformedData.map(dataset => ({
         id: dataset.id,
         name: dataset.name,
-        pointCount: dataset.data?.length || 0,
-        coordinateSystem: dataset.coordinateSystem || 'unified',
-        samplePoints: dataset.data ? dataset.data.slice(0, 3).map(point => ({
+        barCount: dataset.data?.length || 0,
+        sampleBars: dataset.data ? dataset.data.slice(0, 3).map(point => ({
           unifiedX: point.unifiedX || point.screenX,
           unifiedY: point.unifiedY || point.screenY
         })) : []
@@ -394,26 +396,48 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Set spacing between bars
+   * Set bar spacing - works in both single and panel modes
    */
   setBarSpacing(spacing) {
-    if (typeof spacing !== 'number' || spacing < 0) {
-      console.warn('Bar spacing must be a non-negative number');
+    if (typeof spacing !== 'number' || spacing < 0 || spacing > 1) {
+      console.warn('Invalid bar spacing provided (should be between 0 and 1)');
       return this;
     }
     
     this.config.options.barSpacing = spacing;
-    console.log(`BarChart: Bar spacing set to: ${spacing}`);
     
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ barSpacing: spacing });
+        }
+      }
+    }
+    
+    console.log(`BarChart: Bar spacing set to: ${spacing}`);
     this.render();
     return this;
   }
   
   /**
-   * Toggle bar borders
+   * Toggle bar borders - works in both single and panel modes
    */
   toggleBorders(show = null) {
     this.config.options.showBorder = show !== null ? show : !this.config.options.showBorder;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ 
+            showBorder: this.config.options.showBorder,
+            borderWidth: this.config.options.borderWidth
+          });
+        }
+      }
+    }
+    
     console.log(`BarChart: Bar borders ${this.config.options.showBorder ? 'enabled' : 'disabled'}`);
     
     this.render();
@@ -421,7 +445,7 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Set border width for bars
+   * Set border width for bars - works in both single and panel modes
    */
   setBorderWidth(width) {
     if (typeof width !== 'number' || width <= 0) {
@@ -430,6 +454,16 @@ export class BarChart extends Chart {
     }
     
     this.config.options.borderWidth = width;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ borderWidth: width });
+        }
+      }
+    }
+    
     console.log(`BarChart: Border width set to: ${width}`);
     
     if (this.config.options.showBorder) {
@@ -479,12 +513,12 @@ export class BarChart extends Chart {
   }
   
   /**
-   * Get bar chart specific information
+   * Get bar chart specific information - includes panel mode details
    */
   getBarChartInfo() {
     const baseInfo = this.getRendererInfo();
     
-    return {
+    const info = {
       ...baseInfo,
       chartType: 'bar',
       barWidth: this.config.options.barWidth,
@@ -499,10 +533,15 @@ export class BarChart extends Chart {
         name: dataset.name,
         color: dataset.color,
         barCount: dataset.data?.length || 0
-      })),
-      validationResults: this.coordinateValidationResults.length > 0 ? this.coordinateValidationResults : null,
-      barPositioningInfo: this.barPositioningInfo
+      }))
     };
+    
+    // Add panel mode information
+    if (this.isPanelMode) {
+      info.panelMode = this.getPanelModeInfo();
+    }
+    
+    return info;
   }
   
   /**

@@ -588,6 +588,42 @@ function setupLineChartControls() {
       }
     });
   }
+
+  const linePanelToggle = document.getElementById('line-toggle-panel');
+  if (linePanelToggle) {
+    linePanelToggle.addEventListener('click', async () => {
+      try {
+        // Check if we have multiple datasets
+        if (!lineChart.config.data || lineChart.config.data.length <= 1) {
+          alert('Panel mode requires multiple datasets. Please add more datasets first.');
+          return;
+        }
+        
+        // Show loading state
+        linePanelToggle.textContent = 'Loading...';
+        linePanelToggle.disabled = true;
+        
+        // Toggle panel mode
+        const isPanelMode = await lineChart.togglePanelMode();
+        
+        // Update button appearance
+        linePanelToggle.classList.toggle('active', isPanelMode);
+        linePanelToggle.textContent = 'Toggle Panel View';
+        linePanelToggle.disabled = false;
+        
+        console.log('Line chart panel mode:', isPanelMode ? 'enabled' : 'disabled');
+        
+      } catch (error) {
+        console.error('Error toggling line chart panel mode:', error);
+        
+        // Reset button state on error
+        linePanelToggle.textContent = 'Toggle Panel View';
+        linePanelToggle.disabled = false;
+        linePanelToggle.classList.remove('active');
+        alert('Error switching panel mode. Please try again.');
+      }
+    });
+  }
 }
 
 // Setup bar chart controls with working recession toggle
@@ -771,6 +807,42 @@ function setupBarChartControls() {
         
       } catch (error) {
         console.error('Error toggling bar chart median line:', error);
+      }
+    });
+  }
+
+  const barPanelToggle = document.getElementById('bar-toggle-panel');
+  if (barPanelToggle) {
+    barPanelToggle.addEventListener('click', async () => {
+      try {
+        // Check if we have multiple datasets
+        if (!barChart.config.data || barChart.config.data.length <= 1) {
+          alert('Panel mode requires multiple datasets. Please add more datasets first.');
+          return;
+        }
+        
+        // Show loading state
+        barPanelToggle.textContent = 'Loading...';
+        barPanelToggle.disabled = true;
+        
+        // Toggle panel mode
+        const isPanelMode = await barChart.togglePanelMode();
+        
+        // Update button appearance
+        barPanelToggle.classList.toggle('active', isPanelMode);
+        barPanelToggle.textContent = 'Toggle Panel View';
+        barPanelToggle.disabled = false;
+        
+        console.log('Bar chart panel mode:', isPanelMode ? 'enabled' : 'disabled');
+        
+      } catch (error) {
+        console.error('Error toggling bar chart panel mode:', error);
+        
+        // Reset button state on error
+        barPanelToggle.textContent = 'Toggle Panel View';
+        barPanelToggle.disabled = false;
+        barPanelToggle.classList.remove('active');
+        alert('Error switching panel mode. Please try again.');
       }
     });
   }

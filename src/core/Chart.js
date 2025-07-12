@@ -14,6 +14,7 @@ import WebGLRenderer from '../renderers/WebGLRenderer.js';
 import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 import { DataProcessor } from '../utils/DataProcessor.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
+import { Panel } from '../components/Panel.js';
 import { Legend } from '../components/Legend.js';
 import { EndingLabels } from '../components/EndingLabels.js';
 import { Crosshair } from '../components/Crosshair.js';
@@ -117,6 +118,12 @@ export class Chart {
     
     // Initialization state
     this.isInitialized = false;
+
+    this.isPanelMode = false;
+    this.panels = [];
+    this.panelContainer = null;
+    this.sharedXScale = null;
+    this.originalSingleModeState = null;
     
     // Legend component
     this.legend = new Legend({
@@ -708,85 +715,391 @@ export class Chart {
       throw error;
     }
   }
-  
+
   /**
-   * Render the chart using the selected renderer (UPDATED with legend)
+   * Toggle between single chart and panel mode
    */
-  async render() {
-    if (!this.isInitialized) {
-      console.log('Waiting for chart initialization to complete...');
-      await this._initPromise;
+  async togglePanelMode(force = null) {
+    const newPanelMode = force !== null ? force : !this.isPanelMode;
+    
+    if (newPanelMode === this.isPanelMode) {
+      console.log(`Already in ${newPanelMode ? 'panel' : 'single'} mode`);
+      return newPanelMode;
     }
     
+    console.log(`Switching to ${newPanelMode ? 'panel' : 'single'} mode`);
+    
     try {
-      // Update coordinate system dimensions
-      if (this.coordinateSystem) {
-        this.coordinateSystem.setViewport({
-          x: 0,
-          y: 0,
-          width: this.config.options.width,
-          height: this.config.options.height
-        });
-        this.coordinateSystem.setChartArea(this.chartArea);
-        this.coordinateSystem.setTargetRenderer(this.activeRenderer);
+      if (newPanelMode) {
+        await this._switchToPanelMode();
+      } else {
+        await this._switchToSingleMode();
       }
       
-      // Clear renderer
-      this.rendererInstance.clear();
+      this.isPanelMode = newPanelMode;
+      console.log(`Successfully switched to ${newPanelMode ? 'panel' : 'single'} mode`);
       
-      // Transform data using unified coordinate system
-      await this._preprocessDataForRenderer();
+      return newPanelMode;
       
-      // HYBRID RENDERING ARCHITECTURE:
-      // 1. Grid: Always Canvas 2D
-      if (this.grid && this.config.options.showGrid) {
-        const ctx = this.activeRenderer === 'webgl' 
-          ? this.gridCanvas.getContext('2d')
-          : this.canvas.getContext('2d');
-        
-        if (this.activeRenderer === 'webgl') {
-          ctx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+    } catch (error) {
+      console.error('Error toggling panel mode:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Switch to panel mode - destroy single chart and create panels
+   * @private
+   */
+  async _switchToPanelMode() {
+    if (this.isPanelMode) return;
+    
+    // Validate we have multiple datasets
+    if (!Array.isArray(this.config.data) || this.config.data.length <= 1) {
+      throw new Error('Panel mode requires multiple datasets');
+    }
+    
+    console.log(`Creating panel mode with ${this.config.data.length} panels`);
+    
+    // Store current single mode state
+    this._storeSingleModeState();
+    
+    // Destroy current single chart components
+    this._destroySingleModeComponents();
+    
+    // Create shared X scale
+    this._createSharedXScale();
+    
+    // Create panel container
+    this._createPanelContainer();
+    
+    // Create individual panels
+    await this._createPanels();
+    
+    // Render all panels
+    await this._renderPanels();
+    
+    console.log('Panel mode activated successfully');
+  }
+  
+  /**
+   * Switch to single mode - destroy panels and recreate single chart
+   * @private
+   */
+  async _switchToSingleMode() {
+    if (!this.isPanelMode) return;
+    
+    console.log('Switching back to single chart mode');
+    
+    // Destroy all panels
+    this._destroyPanels();
+    
+    // Remove panel container
+    this._destroyPanelContainer();
+    
+    // Restore single mode state
+    this._restoreSingleModeState();
+    
+    // Reinitialize single chart
+    await this._reinitializeSingleChart();
+    
+    console.log('Single chart mode restored successfully');
+  }
+  
+  /**
+   * Store single mode state for restoration
+   * @private
+   */
+  _storeSingleModeState() {
+    this.originalSingleModeState = {
+      rendererInstance: this.rendererInstance,
+      canvas: this.canvas,
+      svgOverlay: this.svgOverlay,
+      scales: { ...this.scales },
+      axes: { ...this.axes },
+      chartArea: { ...this.chartArea },
+      generatedPaths: this.generatedPaths ? [...this.generatedPaths] : null,
+      transformedData: this.transformedData ? [...this.transformedData] : null
+    };
+  }
+  
+  /**
+   * Restore single mode state
+   * @private
+   */
+  _restoreSingleModeState() {
+    if (!this.originalSingleModeState) {
+      console.warn('No stored single mode state to restore');
+      return;
+    }
+    
+    // Note: We don't restore the actual instances since they were destroyed
+    // Instead, we'll reinitialize them in _reinitializeSingleChart
+    this.originalSingleModeState = null;
+  }
+  
+  /**
+   * Destroy single mode components
+   * @private
+   */
+  _destroySingleModeComponents() {
+    // Destroy renderer
+    if (this.rendererInstance) {
+      this.rendererInstance.destroy();
+      this.rendererInstance = null;
+    }
+    
+    // Remove canvas
+    if (this.canvas && this.canvas.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+      this.canvas = null;
+    }
+    
+    // Remove SVG overlay
+    if (this.svgOverlay && this.svgOverlay.parentNode) {
+      this.svgOverlay.parentNode.removeChild(this.svgOverlay);
+      this.svgOverlay = null;
+    }
+    
+    // Clear scales and axes
+    this.scales = { x: null, y: null };
+    this.axes = { x: null, y: null };
+    this.generatedPaths = null;
+    this.transformedData = null;
+  }
+  
+  /**
+   * Create shared X scale for all panels
+   * @private
+   */
+  _createSharedXScale() {
+    // Calculate combined X domain from all datasets
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    
+    for (const dataset of this.config.data) {
+      if (!dataset.data || !Array.isArray(dataset.data)) continue;
+      
+      for (const point of dataset.data) {
+        if (point.x != null) {
+          const xValue = point.x instanceof Date ? point.x.getTime() : point.x;
+          xMin = Math.min(xMin, xValue);
+          xMax = Math.max(xMax, xValue);
         }
-        
-        this.grid.render(ctx);
       }
+    }
+    
+    if (xMin === Infinity || xMax === -Infinity) {
+      throw new Error('No valid X values found in datasets');
+    }
+    
+    // Create shared X scale
+    const xDomain = [xMin, xMax];
+    const xRange = [60, this.container.offsetWidth - 20]; // Leave space for Y axes
+    
+    const scaleType = this.config.options.xType === 'time' ? 'time' : 'linear';
+    this.sharedXScale = this.scaleManager.createScale(scaleType, {
+      domain: xDomain,
+      range: xRange
+    });
+    
+    console.log('Shared X scale created:', { domain: xDomain, range: xRange });
+  }
+  
+  /**
+   * Create panel container
+   * @private
+   */
+  _createPanelContainer() {
+    this.panelContainer = document.createElement('div');
+    this.panelContainer.className = 'chart-panels-container';
+    this.panelContainer.style.width = '100%';
+    this.panelContainer.style.height = '100%';
+    this.panelContainer.style.overflow = 'auto';
+    
+    // Clear existing container content
+    while (this.container.firstChild) {
+      this.container.removeChild(this.container.firstChild);
+    }
+    
+    this.container.appendChild(this.panelContainer);
+  }
+  
+  /**
+   * Create individual panels for each dataset
+   * @private
+   */
+  async _createPanels() {
+    this.panels = [];
+    
+    const totalPanels = this.config.data.length;
+    const panelHeight = Math.max(150, Math.floor((this.container.offsetHeight - 100) / totalPanels));
+    
+    for (let i = 0; i < this.config.data.length; i++) {
+      const dataset = this.config.data[i];
       
+      const panel = new Panel({
+        dataset: dataset,
+        container: this.panelContainer,
+        panelIndex: i,
+        totalPanels: totalPanels,
+        sharedXScale: this.sharedXScale,
+        height: panelHeight,
+        chartType: this.constructor.name.toLowerCase().replace('chart', ''), // 'line' or 'bar'
+        rendererType: this.activeRenderer || 'canvas'
+      });
+      
+      await panel.initialize();
+      this.panels.push(panel);
+    }
+    
+    console.log(`Created ${this.panels.length} panels`);
+  }
+  
+  /**
+   * Render all panels
+   * @private
+   */
+  async _renderPanels() {
+    for (const panel of this.panels) {
+      await panel.render();
+    }
+    
+    console.log('All panels rendered');
+  }
+  
+  /**
+   * Destroy all panels
+   * @private
+   */
+  _destroyPanels() {
+    for (const panel of this.panels) {
+      panel.destroy();
+    }
+    
+    this.panels = [];
+    this.sharedXScale = null;
+  }
+  
+  /**
+   * Destroy panel container
+   * @private
+   */
+  _destroyPanelContainer() {
+    if (this.panelContainer && this.panelContainer.parentNode) {
+      this.panelContainer.parentNode.removeChild(this.panelContainer);
+      this.panelContainer = null;
+    }
+  }
+  
+  /**
+   * Reinitialize single chart after returning from panel mode
+   * @private
+   */
+  async _reinitializeSingleChart() {
+    // Calculate chart area
+    this._calculateChartArea();
+    
+    // Process data
+    await this._processData();
+    
+    // Create scales
+    this._createScales();
+    
+    // Create axes  
+    this._createAxes();
+    
+    // Create grid
+    this._createGrid();
+    
+    // Initialize renderer
+    await this._initializeRenderer();
+    
+    // Create SVG overlay
+    this._createSVGOverlay();
+    
+    // Full render
+    await this.render();
+  }
+  
+  /**
+   * Render chart - handle both single and panel modes
+   */
+  async render() {
+    if (this.isPanelMode) {
+      await this._renderPanels();
+    } else {
+      await this._renderSingleMode();
+    }
+  }
+
+  /**
+   * Render single mode (original render logic)
+   * @private
+   */
+  async _renderSingleMode() {
+    if (!this.isInitialized) {
+      console.warn('Chart not initialized, cannot render');
+      return;
+    }
+
+    console.log('Rendering chart...');
+    
+    try {
+      // Clear previous render
+      this._clearRender();
+      
+      // Render title
       this._renderTitle();
       
-      this._updateLegend();
-
-      this._updateEndingLabels();
-
-      this._renderRecessionLines();
-
-      this._renderZeroLine();
-
-      this._renderStatisticalLines();
-      
-      this._renderAxes();
-      
-      // Render crosshair
-      if (this.crosshair && this.svgOverlay && this.chartArea) {
-        this.crosshair.render(this.svgOverlay, this.chartArea);
-        
-        // Set up events if not already done
-        if (!this._boundMouseMove) {
-          this._setupCrosshairEvents();
-        }
+      // Render grid (if enabled)
+      if (this.grid && this.config.options.showGrid) {
+        this.grid.render(this.svgOverlay, this.chartArea);
       }
       
-      // 5. Data: Selected renderer
+      // Render chart data (implemented by subclasses)
       await this._renderChartData();
       
-      // 6. Recession Lines: Always SVG (if enabled)
+      // Render axes
+      this._renderAxes();
+      
+      // Render statistical lines
+      this._renderStatisticalLines();
+      
+      // Render recession lines  
       this._renderRecessionLines();
       
-      console.log(`Chart rendered successfully using ${this.activeRenderer} renderer with legend`);
+      // Render zero line
+      this._renderZeroLine();
+      
+      // Update legend
+      this._updateLegend();
+      
+      // Update ending labels
+      this._updateEndingLabels();
+      
+      console.log('Chart rendered successfully');
       
     } catch (error) {
       console.error('Error rendering chart:', error);
       throw error;
     }
+  }
+  
+  /**
+   * Get panel mode information
+   */
+  getPanelModeInfo() {
+    return {
+      isPanelMode: this.isPanelMode,
+      panelCount: this.panels.length,
+      panels: this.panels.map(panel => panel.getInfo()),
+      sharedXScale: this.sharedXScale ? {
+        domain: this.sharedXScale.domain,
+        range: this.sharedXScale.range,
+        type: this.sharedXScale.type
+      } : null
+    };
   }
   
   /**
@@ -894,90 +1207,70 @@ export class Chart {
   }
   
   /**
-   * Update chart with new data or options
+   * Update chart - handle both single and panel modes
    */
   async update() {
+    if (this.isPanelMode) {
+      return this._updatePanelMode();
+    } else {
+      return this._updateSingleMode();
+    }
+  }
+
+  /**
+   * Update panel mode
+   * @private
+   */
+  async _updatePanelMode() {
+    // Recreate shared X scale
+    this._createSharedXScale();
+    
+    // Update all panels
+    for (let i = 0; i < this.panels.length; i++) {
+      const panel = this.panels[i];
+      const dataset = this.config.data[i];
+      
+      if (dataset) {
+        await panel.update(dataset);
+      }
+    }
+    
+    console.log('Panel mode updated');
+  }
+  
+  /**
+   * Update single mode (original update logic)
+   * @private
+   */
+  async _updateSingleMode() {
     if (!this.isInitialized) {
       await this._initialize();
       return;
     }
+
+    console.log('Updating chart...');
     
-    const oldDataPointCount = this.dataPointCount;
-    
-    // Process data first
-    await this._processData();
-    
-    this._calculateDataDomains();
-    
-    // Check if we need to switch renderers due to data size change
-    const newOptimalRenderer = this._determineOptimalRenderer();
-    if (newOptimalRenderer !== this.activeRenderer) {
-      console.log(`Switching renderer from ${this.activeRenderer} to ${newOptimalRenderer} due to data size change`);
+    try {
+      // Process data
+      await this._processData();
       
-      // Destroy current renderer
-      if (this.rendererInstance) {
-        this.rendererInstance.destroy();
-      }
+      // Update scales
+      this._updateScales();
       
-      // Initialize new renderer
-      this.activeRenderer = newOptimalRenderer;
-      await this._initializeRenderer();
-    }
-    
-    // UPDATED: Update coordinate system with new renderer if changed
-    if (this.coordinateSystem) {
-      this.coordinateSystem.setTargetRenderer(this.activeRenderer);
-    }
-    
-    // UPDATED: Recreate scales with unified coordinate system
-    this._createScales();
-    this._createGrid();
-    
-    // Update axes with new scales
-    if (this.axes.x && this.axes.y) {
-      this.axes.x.updateScale(this.scales.x);
-      this.axes.x.updateOptions({ label: this.config.options.xAxisName });
+      // Update axes
+      this._updateAxes();
       
-      this.axes.y.updateScale(this.scales.y);
-      this.axes.y.updateOptions({ label: this.config.options.yAxisName });
+      // Re-render
+      await this.render();
+      
+      console.log('Chart updated successfully');
+      
+    } catch (error) {
+      console.error('Error updating chart:', error);
+      throw error;
     }
-    
-    // Update grid with new scales and chart area
-    if (this.grid) {
-      this.grid.updateScales(this.scales.x, this.scales.y);
-      this.grid.updateChartArea(this.chartArea);
-    }
-
-    if (this.recessionLines) {
-      this.recessionLines.updateScales(this.scales);
-      this.recessionLines.updateChartArea(this.chartArea);
-    }
-
-    if (this.zeroLine) {
-      this.zeroLine.updateScales(this.scales);
-      this.zeroLine.updateChartArea(this.chartArea);
-    }
-
-    if (this.averageLine) {
-      this.averageLine.updateScales(this.scales);
-      this.averageLine.updateChartArea(this.chartArea);
-      this.averageLine.updateDatasets(this.config.data);
-    }
-
-    if (this.medianLine) {
-      this.medianLine.updateScales(this.scales);
-      this.medianLine.updateChartArea(this.chartArea);
-      this.medianLine.updateDatasets(this.config.data);
-    }
-    
-    if (this.rendererInstance) {
-      this.rendererInstance.update(this.config.data);
-    }
-    
-    await this.render();
-    
-    console.log(`Chart updated with unified coordinates: ${oldDataPointCount} → ${this.dataPointCount} points`);
   }
+  
   
   /**
    * Determine optimal renderer without setting it

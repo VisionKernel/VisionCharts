@@ -36,9 +36,16 @@ export class LineChart extends Chart {
   }
   
   /**
-   * UPDATED: Render line chart data using unified coordinates
+   * UPDATED: Render line chart data - handles both single and panel modes
    */
   async _renderChartData() {
+    // If in panel mode, rendering is handled by individual panels
+    if (this.isPanelMode) {
+      console.log('LineChart: Panel mode rendering handled by Panel components');
+      return;
+    }
+    
+    // Original single mode rendering logic
     if (!this.rendererInstance) {
       console.error('No renderer instance available');
       return;
@@ -226,8 +233,8 @@ export class LineChart extends Chart {
     console.log('LineChart rendering debug info:', this.renderingDebugInfo);
   }
 
-  /**
-   * Set curve type for line interpolation - now updates PathGenerator
+   /**
+   * Set curve type for line interpolation - works in both single and panel modes
    */
   setCurveType(curveType) {
     const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
@@ -241,6 +248,15 @@ export class LineChart extends Chart {
     this.config.options.curve = curveType;
     this.pathGenerator.setCurveType(curveType);
     
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.setCurveType(curveType);
+        }
+      }
+    }
+    
     console.log(`LineChart curve type set to: ${curveType}`);
     
     this.render(); // Re-render with new curve type
@@ -248,10 +264,7 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Update the fill state of a specific dataset (efficient, no full update)
-   * @param {string} datasetId - ID of the dataset to update
-   * @param {boolean} fillEnabled - Whether to enable fill
-   * @returns {boolean} Success status
+   * Update the fill state of a specific dataset - works in both single and panel modes
    */
   updateDatasetFill(datasetId, fillEnabled) {
     try {
@@ -267,7 +280,7 @@ export class LineChart extends Chart {
       
       console.log(`Updated dataset ${datasetId} fill to ${fillEnabled}`);
       
-      // Efficient re-render (just visual update, no data processing)
+      // Re-render (handles both single and panel modes)
       this.render();
       
       return true;
@@ -366,10 +379,23 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Toggle point visibility
+   * Toggle point display - works in both single and panel modes
    */
   togglePoints(show = null) {
     this.config.options.showPoints = show !== null ? show : !this.config.options.showPoints;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ 
+            showPoints: this.config.options.showPoints,
+            pointRadius: this.config.options.pointRadius
+          });
+        }
+      }
+    }
+    
     console.log(`LineChart: Points ${this.config.options.showPoints ? 'enabled' : 'disabled'}`);
     
     this.render();
@@ -377,7 +403,7 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Set stroke width for all lines
+   * Set stroke width for all lines - works in both single and panel modes
    */
   setStrokeWidth(width) {
     if (typeof width !== 'number' || width <= 0) {
@@ -393,6 +419,15 @@ export class LineChart extends Chart {
         dataset.width = width;
       }
     });
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ strokeWidth: width });
+        }
+      }
+    }
     
     console.log(`LineChart: Stroke width set to: ${width}`);
     this.render();
@@ -454,12 +489,12 @@ export class LineChart extends Chart {
   }
   
   /**
-   * Get line chart specific information
+   * Get line chart specific information - includes panel mode details
    */
   getLineChartInfo() {
     const baseInfo = this.getRendererInfo();
     
-    return {
+    const info = {
       ...baseInfo,
       chartType: 'line',
       curveType: this.config.options.curve,
@@ -474,10 +509,17 @@ export class LineChart extends Chart {
         name: dataset.name,
         color: dataset.color,
         pointCount: dataset.data?.length || 0,
-        width: dataset.width
-      })),
-      validationResults: this.coordinateValidationResults.length > 0 ? this.coordinateValidationResults : null
+        width: dataset.width,
+        fill: dataset.fill || false
+      }))
     };
+    
+    // Add panel mode information
+    if (this.isPanelMode) {
+      info.panelMode = this.getPanelModeInfo();
+    }
+    
+    return info;
   }
   
   /**
