@@ -301,6 +301,13 @@ export class Chart {
     this.gridCanvas.style.left = '0';
     this.gridCanvas.style.zIndex = '0'; // Behind data layer
     
+    // Apply DPI scaling to grid canvas
+    const devicePixelRatio = window.devicePixelRatio || 1;
+    this.gridCanvas.width = this.config.options.width * devicePixelRatio;
+    this.gridCanvas.height = this.config.options.height * devicePixelRatio;
+    this.gridCanvas.style.width = this.config.options.width + 'px';
+    this.gridCanvas.style.height = this.config.options.height + 'px';
+    
     // Create canvas for data rendering
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.config.options.width;
@@ -317,84 +324,200 @@ export class Chart {
     this.svgOverlay.style.position = 'absolute';
     this.svgOverlay.style.top = '0';
     this.svgOverlay.style.left = '0';
-    this.svgOverlay.style.zIndex = '2';
-    this.svgOverlay.style.pointerEvents = 'none'; // Allow interaction to pass through to canvas
+    this.svgOverlay.style.pointerEvents = 'none';
+    this.svgOverlay.style.zIndex = '2'; // On top for UI elements
     
-    // Add to container in correct order
-    this.container.appendChild(this.gridCanvas);
-    this.container.appendChild(this.canvas);
-    this.container.appendChild(this.svgOverlay);
+    // ✅ IMPORTANT: Add all layers to the container in correct z-index order
+    this.container.appendChild(this.gridCanvas);  // Layer 0 (bottom)
+    this.container.appendChild(this.canvas);      // Layer 1 (middle) 
+    this.container.appendChild(this.svgOverlay);  // Layer 2 (top)
+    
+    console.log('Rendering layers created and added to DOM');
   }
   
   /**
-   * Process and count data points
-   */
-  async _processData() {
-    try {
-      console.log('Processing raw data with DataProcessor...');
-      
-      // Use DataProcessor to clean and validate data
-      this.config.data = await this.dataProcessor.processDatasets(this.config.data, {
-        strictValidation: false,
-        fillGaps: false,
-        removeOutliers: false
-      });
-      
-      // Count total data points after processing
-      this.dataPointCount = 0;
-      if (Array.isArray(this.config.data)) {
-        this.config.data.forEach(dataset => {
-          if (dataset.data && Array.isArray(dataset.data)) {
-            this.dataPointCount += dataset.data.length;
-          }
-        });
-      }
-      
-      console.log(`DataProcessor: Cleaned data, ${this.dataPointCount} total points`);
-      
-    } catch (error) {
-      console.error('Error processing data:', error);
-      throw error;
-    }
+ * Process raw data into usable format
+ * @private
+ */
+async _processData() {
+  if (!this.config.data || !Array.isArray(this.config.data)) {
+    console.warn('No data to process');
+    return;
   }
-  
-  /**
-   * Calculate data domains for axes
-   */
-  _calculateDataDomains() {
-    let xMin = Infinity, xMax = -Infinity;
-    let yMin = Infinity, yMax = -Infinity;
+
+  try {
+    console.log('Processing raw data with DataProcessor...');
     
-    // Collect all data points from all datasets
-    const allData = Array.isArray(this.config.data) ? 
-      this.config.data.flatMap(dataset => dataset.data || []) : 
-      [];
-    
-    for (const point of allData) {
-      const x = this._getXValue(point);
-      const y = this._getYValue(point);
-      
-      if (x != null && !isNaN(x)) {
-        xMin = Math.min(xMin, x);
-        xMax = Math.max(xMax, x);
-      }
-      
-      if (y != null && !isNaN(y)) {
-        yMin = Math.min(yMin, y);
-        yMax = Math.max(yMax, y);
-      }
-    }
-    
-    // Handle edge cases
-    if (xMin === Infinity) { xMin = 0; xMax = 1; }
-    if (yMin === Infinity) { yMin = 0; yMax = 1; }
-    
-    // Store raw domains (scales will handle padding and nice numbers)
-    this.dataDomains = {
-      x: [xMin, xMax],
-      y: [yMin, yMax]
+    // ✅ FIX: Create proper options object with all required DataProcessor fields
+    const processingOptions = {
+      xField: this.config.options.xField,
+      yField: this.config.options.yField,
+      xType: this.config.options.xType,
+      yType: this.config.options.yType,
+      // ✅ CRITICAL: Include missing DataProcessor options
+      gapThreshold: '1d',           // Prevent the undefined error
+      fillGaps: false,
+      strictValidation: false,
+      autoDetectTimeFormat: true,
+      sortByTime: true,
+      removeDuplicates: true,
+      timeZone: 'UTC',
+      enableCaching: true,
+      batchSize: 10000
     };
+    
+    const processedDatasets = [];
+    
+    for (let i = 0; i < this.config.data.length; i++) {
+      const dataset = this.config.data[i];
+      console.log(`Processing dataset ${i + 1}/${this.config.data.length}: ${dataset.name || dataset.id || 'Unknown'}`);
+      
+      if (!dataset.data || !Array.isArray(dataset.data)) {
+        console.warn(`Dataset ${i} has invalid data, skipping`);
+        continue;
+      }
+
+      // ✅ FIX: Use DataProcessor with complete options
+      const processedData = await this.dataProcessor.processDataset(dataset, processingOptions);
+
+      processedDatasets.push({
+        ...dataset,
+        data: processedData
+      });
+    }
+
+    // Update data point count for renderer selection
+    this.dataPointCount = processedDatasets.reduce((count, dataset) => 
+      count + (dataset.data ? dataset.data.length : 0), 0);
+
+    // Store processed data back
+    this.config.data = processedDatasets;
+    
+    console.log(`DataProcessor: Successfully processed ${processedDatasets.length} datasets`);
+    console.log(`DataProcessor: Cleaned data, ${this.dataPointCount} total points`);
+
+  } catch (error) {
+    console.error('Error processing data:', error);
+    throw error;
   }
+}
+
+  /**
+ * Update scales with new data domains
+ * @private
+ */
+_updateScales() {
+  if (!this.scales.x || !this.scales.y) {
+    console.warn('Scales not initialized for update');
+    return;
+  }
+
+  // Recalculate data domains based on current data
+  this._calculateDataDomains();
+
+  // Update X scale domain
+  this.scales.x.setDomain([...this.dataDomains.x]);
+  
+  // Update Y scale domain  
+  this.scales.y.setDomain([...this.dataDomains.y]);
+  
+  // Update scale manager
+  this.scaleManager.setScale('x', this.scales.x);
+  this.scaleManager.setScale('y', this.scales.y);
+  
+  // Update coordinate system with new scales
+  if (this.coordinateSystem) {
+    this.coordinateSystem.setScales(this.scales);
+  }
+  
+  console.log('Scales updated with new data domains');
+}
+
+  /**
+ * Update axes with new scales
+ * @private  
+ */
+_updateAxes() {
+  if (!this.axes.x || !this.axes.y) {
+    console.warn('Axes not initialized for update');
+    return;
+  }
+  
+  if (!this.scales.x || !this.scales.y) {
+    console.warn('Scales not available for axis update');
+    return;
+  }
+
+  // Update X axis with new scale
+  this.axes.x.scale = this.scales.x;
+  
+  // Update Y axis with new scale  
+  this.axes.y.scale = this.scales.y;
+  
+  console.log('Axes updated with new scales');
+}
+  
+  /**
+ * Calculate data domains from current datasets
+ * @private
+ */
+_calculateDataDomains() {
+  if (!this.config.data || !Array.isArray(this.config.data) || this.config.data.length === 0) {
+    console.warn('No data available for domain calculation');
+    this.dataDomains = { x: [0, 1], y: [0, 1] };
+    return;
+  }
+
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  
+  // Iterate through all datasets
+  for (const dataset of this.config.data) {
+    if (!dataset.data || !Array.isArray(dataset.data) || dataset.data.length === 0) {
+      continue;
+    }
+    
+    // Find min/max for each axis
+    for (const point of dataset.data) {
+      const xValue = this._getXValue(point);
+      const yValue = this._getYValue(point);
+      
+      if (xValue != null && isFinite(xValue)) {
+        xMin = Math.min(xMin, xValue);
+        xMax = Math.max(xMax, xValue);
+      }
+      
+      if (yValue != null && isFinite(yValue)) {
+        yMin = Math.min(yMin, yValue);
+        yMax = Math.max(yMax, yValue);
+      }
+    }
+  }
+  
+  // Handle edge cases
+  if (xMin === Infinity || xMax === -Infinity) {
+    xMin = 0;
+    xMax = 1;
+  }
+  
+  if (yMin === Infinity || yMax === -Infinity) {
+    yMin = 0;
+    yMax = 1;
+  }
+  
+  // Add padding for better visualization
+  const xPadding = (xMax - xMin) * 0.05 || 0.1;
+  const yPadding = (yMax - yMin) * 0.05 || 0.1;
+  
+  this.dataDomains = {
+    x: [xMin - xPadding, xMax + xPadding],
+    y: [yMin - yPadding, yMax + yPadding]
+  };
+  
+  console.log('Data domains calculated:', this.dataDomains);
+}
   
   /**
    * UPDATED: Create coordinate system with renderer information
@@ -614,32 +737,31 @@ export class Chart {
   }
   
   /**
-   * Extract X value from data point (to be overridden by subclasses if needed)
-   */
-  _getXValue(point) {
-    const xField = this.config.options.xField;
-    let value = point[xField];
-    
-    // Handle Date objects and timestamps
-    if (value instanceof Date) {
-      return value.getTime();
-    }
-    
-    if (typeof value === 'string' && this.config.options.xType === 'time') {
-      return new Date(value).getTime();
-    }
-    
-    return typeof value === 'number' ? value : null;
+ * Extract X value from data point (can be overridden by subclasses)
+ * @private
+ */
+_getXValue(point) {
+  const xField = this.config.options.xField;
+  let value = point[xField];
+  
+  // Convert Date objects to timestamps for calculations
+  if (value instanceof Date) {
+    value = value.getTime();
   }
   
-  /**
-   * Extract Y value from data point (to be overridden by subclasses if needed)
-   */
-  _getYValue(point) {
-    const yField = this.config.options.yField;
-    const value = point[yField];
-    return typeof value === 'number' ? value : null;
-  }
+  return typeof value === 'number' ? value : null;
+}
+
+/**
+ * Extract Y value from data point (can be overridden by subclasses)  
+ * @private
+ */
+_getYValue(point) {
+  const yField = this.config.options.yField;
+  const value = point[yField];
+  return typeof value === 'number' ? value : null;
+}
+
   
   /**
    * Render chart title
@@ -1048,53 +1170,68 @@ export class Chart {
    * @private
    */
   async _renderSingleMode() {
-    if (!this.isInitialized) {
-      console.warn('Chart not initialized, cannot render');
-      return;
-    }
-
-    console.log('Rendering chart...');
-    
-    try {
-      // Clear previous render
-      this._clearRender();
-      
-      // Render title
-      this._renderTitle();
-      
-      // Render grid (if enabled)
-      if (this.grid && this.config.options.showGrid) {
-        this.grid.render(this.svgOverlay, this.chartArea);
-      }
-      
-      // Render chart data (implemented by subclasses)
-      await this._renderChartData();
-      
-      // Render axes
-      this._renderAxes();
-      
-      // Render statistical lines
-      this._renderStatisticalLines();
-      
-      // Render recession lines  
-      this._renderRecessionLines();
-      
-      // Render zero line
-      this._renderZeroLine();
-      
-      // Update legend
-      this._updateLegend();
-      
-      // Update ending labels
-      this._updateEndingLabels();
-      
-      console.log('Chart rendered successfully');
-      
-    } catch (error) {
-      console.error('Error rendering chart:', error);
-      throw error;
-    }
+  if (!this.isInitialized) {
+    console.warn('Chart not initialized, cannot render');
+    return;
   }
+
+  console.log('Rendering chart...');
+  
+  try {
+    // Clear previous render
+    this._clearRender();
+    
+    // Render title
+    this._renderTitle();
+    
+    // ✅ FIX: Render grid with canvas context (Grid expects Canvas 2D context)
+    if (this.grid && this.config.options.showGrid && this.gridCanvas) {
+      // Update grid with current chart area and scales
+      this.grid.updateChartArea(this.chartArea);
+      this.grid.updateScales(this.scales.x, this.scales.y);
+      
+      // Get canvas context and render
+      const gridCtx = this.gridCanvas.getContext('2d');
+      if (gridCtx) {
+        // Apply DPI scaling to grid canvas if needed
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        gridCtx.save();
+        gridCtx.scale(devicePixelRatio, devicePixelRatio);
+        
+        this.grid.render(gridCtx);  // Pass canvas context, not SVG
+        
+        gridCtx.restore();
+      }
+    }
+    
+    // Render chart data (implemented by subclasses)
+    await this._renderChartData();
+    
+    // Render axes
+    this._renderAxes();
+    
+    // Render statistical lines
+    this._renderStatisticalLines();
+    
+    // Render recession lines  
+    this._renderRecessionLines();
+    
+    // Render zero line
+    this._renderZeroLine();
+    
+    // Update legend
+    this._updateLegend();
+    
+    // Update ending labels
+    this._updateEndingLabels();
+    
+    console.log('Chart rendered successfully');
+    
+  } catch (error) {
+    console.error('Error rendering chart:', error);
+    throw error;
+  }
+}
   
   /**
    * Get panel mode information
@@ -1248,39 +1385,51 @@ export class Chart {
     console.log('Panel mode updated');
   }
   
+  async _updateSingleMode() {
+  if (!this.isInitialized) {
+    await this._initialize();
+    return;
+  }
+
+  console.log('Updating chart...');
+  
+  try {
+    // Process data first
+    await this._processData();
+    
+    // Update scales with new data domains
+    this._updateScales();
+    
+    // Update axes with new scales
+    this._updateAxes();
+    
+    // Update grid with new scales
+    this._updateGrid();
+    
+    // CRITICAL: Generate paths for rendering after scales are updated
+    await this._preprocessDataForRenderer();
+    
+    // Re-render with new data
+    await this.render();
+    
+    console.log('Chart updated successfully');
+    
+  } catch (error) {
+    console.error('Error updating chart:', error);
+    throw error;
+  }
+}
+
   /**
-   * Update single mode (original update logic)
+   * Update grid with new scales and chart area
    * @private
    */
-  async _updateSingleMode() {
-    if (!this.isInitialized) {
-      await this._initialize();
-      return;
-    }
-
-    console.log('Updating chart...');
-    
-    try {
-      // Process data
-      await this._processData();
-      
-      // Update scales
-      this._updateScales();
-      
-      // Update axes
-      this._updateAxes();
-      
-      // Re-render
-      await this.render();
-      
-      console.log('Chart updated successfully');
-      
-    } catch (error) {
-      console.error('Error updating chart:', error);
-      throw error;
+  _updateGrid() {
+    if (this.grid && this.scales.x && this.scales.y) {
+      this.grid.updateScales(this.scales.x, this.scales.y);
+      this.grid.updateChartArea(this.chartArea);
     }
   }
-  
   
   /**
    * Determine optimal renderer without setting it
@@ -1607,6 +1756,61 @@ export class Chart {
       median: this.medianLine ? this.medianLine.getState() : { enabled: false }
     };
   }
+
+  /**
+   * Clear previous render content
+   * @private
+   */
+  _clearRender() {
+    try {
+      // Clear the renderer (canvas/webgl)
+      if (this.rendererInstance && this.rendererInstance.clear) {
+        this.rendererInstance.clear();
+      }
+      
+      // ✅ Clear grid canvas too
+      if (this.gridCanvas) {
+        const gridCtx = this.gridCanvas.getContext('2d');
+        if (gridCtx) {
+          gridCtx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+        }
+      }
+      
+      // Clear SVG overlay elements but preserve structure
+      if (this.svgOverlay) {
+        const children = Array.from(this.svgOverlay.children);
+        children.forEach(child => {
+          if (child.parentNode) {
+            child.parentNode.removeChild(child);
+          }
+        });
+      }
+      
+      // Clear title element if it exists separately
+      if (this.titleElement && this.titleElement.parentNode) {
+        this.titleElement.parentNode.removeChild(this.titleElement);
+        this.titleElement = null;
+      }
+      
+      // Reset any cached render state
+      this.generatedPaths = null;
+      
+    } catch (error) {
+      console.warn('Error clearing render:', error);
+      // Don't throw - allow rendering to continue
+    }
+  }
+
+/**
+ * Public method to ensure chart is ready before use
+ * Add this to your Chart class for cleaner initialization handling
+ */
+async ensureInitialized() {
+  if (this._initPromise) {
+    await this._initPromise;
+  }
+  return this.isInitialized;
+}
   
   /**
    * Destroy the chart and clean up resources

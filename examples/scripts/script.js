@@ -308,6 +308,8 @@ async function initLineChart() {
         showGrid: true
       }
     });
+
+    await lineChart._initPromise;
     
     // CRITICAL: Set up recession data after chart creation
     if (lineChart.recessionLines) {
