@@ -17,6 +17,7 @@ import { PathGenerator } from '../utils/PathGenerator.js';
 import { Legend } from '../components/Legend.js';
 import { EndingLabels } from '../components/EndingLabels.js';
 import { Crosshair } from '../components/Crosshair.js';
+import { ZeroLine } from '../components/ZeroLine.js';
 import {CrosshairTooltip} from '../components/CrosshairTooltip.js';
 import { RecessionLines } from '../components/RecessionLines.js'; 
 
@@ -145,6 +146,15 @@ export class Chart {
       enabled: this.config.options.showRecessionLines,
       fillColor: this.config.options.recessionFillColor,
       strokeColor: this.config.options.recessionStrokeColor
+    });
+
+    this.zeroLine = new ZeroLine({
+      enabled: false,
+      strokeColor: '#000000',
+      strokeWidth: 1,
+      strokeOpacity: 1,
+      strokeDash: [3, 3],
+      showLabel: false
     });
     
     // Initialize
@@ -722,10 +732,10 @@ export class Chart {
       this._updateEndingLabels();
 
       this._renderRecessionLines();
+
+      this._renderZeroLine();
       
       this._renderAxes();
-
-
       
       // Render crosshair
       if (this.crosshair && this.svgOverlay && this.chartArea) {
@@ -790,6 +800,21 @@ export class Chart {
   }
 
   /**
+   * Toggle zero line visibility
+   */
+  toggleZeroLine(show = null) {
+    if (!this.zeroLine) {
+      console.warn('ZeroLine component not available');
+      return false;
+    }
+    
+    const newState = this.zeroLine.toggle(show);
+    
+    console.log(`ZeroLine ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
    * Render recession lines
    * @private
    */
@@ -800,6 +825,19 @@ export class Chart {
     
     // Render recession lines to the container (creates dedicated SVG layer)
     this.recessionLines.render(this.container, this.chartArea, this.scales);
+  }
+
+  /**
+   * Render zero line
+   * @private
+   */
+  _renderZeroLine() {
+    if (!this.zeroLine || !this.scales.x || !this.scales.y) {
+      return;
+    }
+    
+    // Render zero line to the container (creates dedicated SVG layer)
+    this.zeroLine.render(this.container, this.chartArea, this.scales);
   }
   
   /**
@@ -867,6 +905,11 @@ export class Chart {
     if (this.recessionLines) {
       this.recessionLines.updateScales(this.scales);
       this.recessionLines.updateChartArea(this.chartArea);
+    }
+
+    if (this.zeroLine) {
+      this.zeroLine.updateScales(this.scales);
+      this.zeroLine.updateChartArea(this.chartArea);
     }
     
     // Update renderer
@@ -1138,6 +1181,13 @@ export class Chart {
       this.recessionLines = null; 
     }
 
+    // Cleanup zero line
+    if (this.zeroLine) {
+      this.zeroLine.destroy();
+      this.zeroLine = null;
+    }
+
+    // Cleanup ending labels
     if (this.endingLabels) {
       this.endingLabels.destroy();
       this.endingLabels = null;

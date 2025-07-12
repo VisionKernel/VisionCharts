@@ -512,6 +512,31 @@ function setupLineChartControls() {
       }
     });
   }
+
+  const zeroToggle = document.getElementById('line-toggle-zero');
+  if (zeroToggle) {
+    // Initialize button state - zero line starts disabled
+    zeroToggle.classList.remove('active');
+    let zeroVisible = false;
+    
+    zeroToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        zeroVisible = !zeroVisible;
+        
+        // Apply the new state
+        lineChart.toggleZeroLine();
+        
+        console.log('Line chart zero line toggle - new state:', zeroVisible);
+        
+        // Update button appearance
+        zeroToggle.classList.toggle('active', zeroVisible);
+        
+      } catch (error) {
+        console.error('Error toggling line chart zero line:', error);
+      }
+    });
+  }
 }
 
 // Setup bar chart controls with working recession toggle
@@ -613,6 +638,37 @@ function setupBarChartControls() {
         console.log('Bar ending labels button classes after toggle:', endingLabelsToggle.className);
       } catch (error) {
         console.error('Error toggling bar chart ending labels:', error);
+      }
+    });
+  }
+  const zeroToggle = document.getElementById('bar-toggle-zero');
+  if (zeroToggle) {
+    // Initialize button state - zero line starts enabled for bar charts
+    zeroToggle.classList.add('active');
+    let zeroVisible = true;
+    
+    // Enable zero line by default for bar chart
+    setTimeout(() => {
+      if (barChart && barChart.zeroLine) {
+        barChart.toggleZeroLine(true);
+      }
+    }, 100);
+    
+    zeroToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        zeroVisible = !zeroVisible;
+        
+        // Apply the new state
+        barChart.toggleZeroLine();
+        
+        console.log('Bar chart zero line toggle - new state:', zeroVisible);
+        
+        // Update button appearance
+        zeroToggle.classList.toggle('active', zeroVisible);
+        
+      } catch (error) {
+        console.error('Error toggling bar chart zero line:', error);
       }
     });
   }
