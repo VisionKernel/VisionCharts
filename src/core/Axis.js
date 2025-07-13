@@ -424,81 +424,103 @@ export class Axis {
   }
 
   /**
-   * Render shared X axis for panel mode
-   * @param {SVGElement} svgParent - Parent SVG element  
-   * @param {Object} position - Axis position
-   * @param {Array} panels - Array of panel instances for shared axis
-   */
-  renderSharedXAxis(svgParent, position, panels = []) {
-    if (this.orientation !== 'x') {
-      console.warn('renderSharedXAxis should only be called on X axis');
-      return this.render(svgParent, position);
-    }
-    
-    // Remove existing axis if present
-    if (this.svgGroup) {
-      this.svgGroup.remove();
-    }
-    
-    // Create axis group
-    this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    this.svgGroup.setAttribute('class', `axis axis-${this.orientation} shared-axis`);
-    
-    // Calculate ticks for shared axis
-    this.calculateTicks();
-    
-    // Set position transform (typically at bottom of all panels)
-    this._setAxisTransform(position);
-    
-    // Render components
-    if (this.options.showAxisLine) {
-      this._renderAxisLine();
-    }
-    
-    if (this.options.showTicks && this.options.showTickLabels) {
-      this._renderTicks();
-    }
-    
-    // Render axis label with "shared" indication
-    this._renderSharedAxisLabel(position);
-    
-    // Add to parent
-    svgParent.appendChild(this.svgGroup);
-    
-    return this.svgGroup;
+ * Render shared X axis for panel mode with enhanced positioning
+ * @param {SVGElement} svgParent - Parent SVG element  
+ * @param {Object} position - Axis position
+ * @param {Array} panels - Array of panel instances for shared axis
+ */
+renderSharedXAxis(svgParent, position, panels = []) {
+  if (this.orientation !== 'x') {
+    console.warn('renderSharedXAxis should only be called on X axis');
+    return this.render(svgParent, position);
   }
   
-  /**
-   * Render axis label for shared axis
-   * @private
-   */
-  _renderSharedAxisLabel(position) {
-    if (!this.options.label) return;
-    
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    const range = this.scale.range;
-    
-    if (this.orientation === 'x') {
-      label.setAttribute('x', (range[0] + range[1]) / 2);
-      label.setAttribute('y', position.y + 40); // Extra space for shared axis
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('dominant-baseline', 'hanging');
-    } else {
-      label.setAttribute('x', position.x - 40);
-      label.setAttribute('y', (range[0] + range[1]) / 2);
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('dominant-baseline', 'middle');
-      label.setAttribute('transform', `rotate(-90, ${position.x - 40}, ${(range[0] + range[1]) / 2})`);
-    }
-    
-    label.style.fontSize = `${this.options.fontSize + 1}px`; // Slightly larger for shared axis
-    label.style.fontFamily = this.options.fontFamily;
-    label.style.fontWeight = 'bold';
-    label.style.fill = this.options.color;
-    label.textContent = this.options.label;
-    
-    this.svgGroup.appendChild(label);
+  // Validate inputs
+  if (!svgParent || !position) {
+    console.error('renderSharedXAxis requires svgParent and position');
+    return;
   }
+  
+  // Remove existing axis if present
+  if (this.svgGroup) {
+    this.svgGroup.remove();
+  }
+  
+  // Create axis group with enhanced class
+  this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  this.svgGroup.setAttribute('class', `axis axis-${this.orientation} shared-axis visioncharts-shared-x-axis`);
+  
+  // Calculate ticks for shared axis
+  this.calculateTicks();
+  
+  // Set position transform (typically at bottom of all panels)
+  this._setAxisTransform(position);
+  
+  // Render axis line with enhanced styling
+  if (this.options.showAxisLine) {
+    this._renderAxisLine();
+    // Add subtle styling to the axis line
+    const axisLine = this.svgGroup.querySelector('line');
+    if (axisLine) {
+      axisLine.setAttribute('stroke-width', '1.5'); // Slightly thicker for shared axis
+      axisLine.setAttribute('stroke', this.options.color || '#666');
+    }
+  }
+  
+  // Render ticks and labels
+  if (this.options.showTicks && this.options.showTickLabels) {
+    this._renderTicks();
+  }
+  
+  // Render axis label with enhanced positioning
+  this._renderSharedAxisLabel(position);
+  
+  // Add to parent
+  svgParent.appendChild(this.svgGroup);
+  
+  console.log(`Shared X axis rendered with ${panels.length} associated panels`);
+  
+  return this.svgGroup;
+}
+
+ /**
+ * Render axis label for shared axis with improved positioning
+ * @private
+ */
+_renderSharedAxisLabel(position) {
+  if (!this.options.label) return;
+  
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  const range = this.scale.range;
+  
+  if (this.orientation === 'x') {
+    // Center the label horizontally across the axis range
+    label.setAttribute('x', (range[0] + range[1]) / 2);
+    // Position below the axis with extra space for shared axis
+    label.setAttribute('y', position.y + 45); // Increased from 40 to 45 for better spacing
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('dominant-baseline', 'hanging');
+  } else {
+    // Y axis positioning (unchanged)
+    label.setAttribute('x', position.x - 40);
+    label.setAttribute('y', (range[0] + range[1]) / 2);
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('dominant-baseline', 'middle');
+    label.setAttribute('transform', `rotate(-90, ${position.x - 40}, ${(range[0] + range[1]) / 2})`);
+  }
+  
+  // Enhanced styling for shared axis label
+  label.style.fontSize = `${this.options.fontSize + 1}px`; // Slightly larger for shared axis
+  label.style.fontFamily = this.options.fontFamily || 'Arial, sans-serif';
+  label.style.fontWeight = '600'; // Semi-bold for better visibility
+  label.style.fill = this.options.color || '#444';
+  label.textContent = this.options.label;
+  
+  // Add subtle class for styling
+  label.setAttribute('class', 'visioncharts-shared-axis-label');
+  
+  this.svgGroup.appendChild(label);
+}
 
   /**
    * Create a panel-specific Y axis with abbreviated labels
@@ -521,7 +543,7 @@ export class Axis {
   }
   
   /**
-   * Create a shared X axis for panel mode
+   * Create a shared X axis for panel mode with enhanced options
    * @param {Object} config - Shared axis configuration
    */
   static createSharedXAxis(config = {}) {
@@ -532,6 +554,10 @@ export class Axis {
       showAxisLine: true,
       showTicks: true,
       showTickLabels: true,
+      color: '#666',
+      fontFamily: 'Arial, sans-serif',
+      // Enhanced defaults for shared axis
+      abbreviateLabels: false, // Don't abbreviate for the main shared axis
       ...config.options
     };
     

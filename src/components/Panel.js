@@ -21,10 +21,16 @@ export class Panel {
       sharedXScale: null,               // Shared X-axis scale
       container: null,                  // Panel container element
       chartType: 'line',                // 'line' or 'bar'
-      
+      hasSharedXAxis: false,            // Whether to use shared X-axis
+
       // Panel-specific options
       height: 200,                      // Panel height in pixels
-      padding: { top: 10, bottom: 10, left: 60, right: 20 },
+      padding: { 
+        top: 10, 
+        bottom: config.hasSharedXAxis ? 5 : 10,  // Reduce bottom padding when shared axis present
+        left: 60, 
+        right: 20 
+      },
       showAxisLabels: true,
       showTitle: true,
       

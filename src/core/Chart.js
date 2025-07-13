@@ -124,6 +124,10 @@ export class Chart {
     this.panelContainer = null;
     this.sharedXScale = null;
     this.originalSingleModeState = null;
+
+    this.sharedXAxis = null;
+    this.panelSvgOverlay = null;
+    this.sharedAxisHeight = 60;
     
     // Legend component
     this.legend = new Legend({
@@ -935,7 +939,7 @@ async _switchToSingleMode() {
 }
 
 /**
- * Switch to panel mode - destroy single chart and create panels
+ * Switch to panel mode - destroy single chart and create panels with shared axis
  * @private
  */
 async _switchToPanelMode() {
@@ -946,7 +950,7 @@ async _switchToPanelMode() {
     throw new Error('Panel mode requires multiple datasets');
   }
   
-  console.log(`Creating panel mode with ${this.config.data.length} panels`);
+  console.log(`Creating panel mode with ${this.config.data.length} panels and shared X axis`);
   
   // Store current single mode state
   this._storeSingleModeState();
@@ -960,18 +964,20 @@ async _switchToPanelMode() {
   // Create shared X scale
   this._createSharedXScale();
   
-  // Create panel container
+  // Create shared X axis
+  this._createSharedXAxis();
+  
+  // Create panel container (now includes SVG overlay)
   this._createPanelContainer();
   
   // Create individual panels
   await this._createPanels();
   
-  // Render all panels
+  // Render all panels and shared axis
   await this._renderPanels();
   
-  console.log('Panel mode activated successfully');
+  console.log('Panel mode with shared X axis activated successfully');
 }
-  
   
   /**
    * Store single mode state for restoration
@@ -1082,9 +1088,36 @@ async _switchToPanelMode() {
     
     console.log('Shared X scale created:', { domain: xDomain, range: xRange });
   }
+
+  /**
+   * Create shared X axis for panel mode
+   * @private
+   */
+  _createSharedXAxis() {
+    if (!this.sharedXScale) {
+      console.error('Shared X scale must be created before shared X axis');
+      return;
+    }
+    
+    this.sharedXAxis = Axis.createSharedXAxis({
+      scale: this.sharedXScale,
+      options: {
+        label: this.config.options.xAxisName || 'Time',
+        tickCount: 'auto',
+        fontSize: 11,
+        tickPadding: 8,
+        showAxisLine: true,
+        showTicks: true,
+        showTickLabels: true,
+        color: '#666'
+      }
+    });
+    
+    console.log('Shared X axis created for panel mode');
+  }
   
   /**
-   * Create panel container
+   * Create panel container with space reserved for shared X axis
    * @private
    */
   _createPanelContainer() {
@@ -1093,6 +1126,7 @@ async _switchToPanelMode() {
     this.panelContainer.style.width = '100%';
     this.panelContainer.style.height = '100%';
     this.panelContainer.style.overflow = 'auto';
+    this.panelContainer.style.position = 'relative';
     
     // Clear existing container content
     while (this.container.firstChild) {
@@ -1100,17 +1134,31 @@ async _switchToPanelMode() {
     }
     
     this.container.appendChild(this.panelContainer);
+    
+    // Create main SVG overlay for shared axis
+    this.panelSvgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.panelSvgOverlay.style.position = 'absolute';
+    this.panelSvgOverlay.style.left = '0';
+    this.panelSvgOverlay.style.top = '0';
+    this.panelSvgOverlay.style.width = '100%';
+    this.panelSvgOverlay.style.height = '100%';
+    this.panelSvgOverlay.style.pointerEvents = 'none';
+    this.panelSvgOverlay.style.zIndex = '10';
+    
+    this.panelContainer.appendChild(this.panelSvgOverlay);
   }
   
   /**
-   * Create individual panels for each dataset
+   * Create individual panels for each dataset with space for shared axis
    * @private
    */
   async _createPanels() {
     this.panels = [];
     
     const totalPanels = this.config.data.length;
-    const panelHeight = Math.max(150, Math.floor((this.container.offsetHeight - 100) / totalPanels));
+    // Reserve space for shared X axis
+    const availableHeight = this.container.offsetHeight - this.sharedAxisHeight;
+    const panelHeight = Math.max(120, Math.floor(availableHeight / totalPanels));
     
     for (let i = 0; i < this.config.data.length; i++) {
       const dataset = this.config.data[i];
@@ -1123,35 +1171,80 @@ async _switchToPanelMode() {
         sharedXScale: this.sharedXScale,
         height: panelHeight,
         chartType: this.constructor.name.toLowerCase().replace('chart', ''), // 'line' or 'bar'
-        rendererType: this.activeRenderer || 'canvas'
+        rendererType: this.activeRenderer || 'canvas',
+        // New: indicate this is for panel mode with shared axis
+        hasSharedXAxis: true
       });
       
       await panel.initialize();
       this.panels.push(panel);
     }
     
-    console.log(`Created ${this.panels.length} panels`);
+    console.log(`Created ${this.panels.length} panels with shared axis space`);
   }
   
   /**
-   * Render all panels
+   * Render all panels and shared X axis
    * @private
    */
   async _renderPanels() {
+    // Render individual panels first
     for (const panel of this.panels) {
       await panel.render();
     }
     
-    console.log('All panels rendered');
+    // Then render the shared X axis
+    this._renderSharedXAxis();
+    
+    console.log('All panels and shared X axis rendered');
+  }
+
+  /**
+   * Render shared X axis at bottom of all panels
+   * @private
+   */
+  _renderSharedXAxis() {
+    if (!this.sharedXAxis || !this.panelSvgOverlay) {
+      console.warn('Shared X axis or SVG overlay not available');
+      return;
+    }
+    
+    // Calculate position at bottom of all panels
+    const totalPanelsHeight = this.panels.length * this.panels[0].config.height;
+    const axisY = totalPanelsHeight + 10; // 10px padding from last panel
+    
+    const axisPosition = {
+      x: 0,
+      y: axisY
+    };
+    
+    // Render the shared axis
+    this.sharedXAxis.renderSharedXAxis(this.panelSvgOverlay, axisPosition, this.panels);
+    
+    console.log('Shared X axis rendered at position:', axisPosition);
   }
   
   /**
-   * Destroy all panels
+   * Destroy all panels and shared axis
    * @private
    */
   _destroyPanels() {
+    // Destroy individual panels
     for (const panel of this.panels) {
       panel.destroy();
+    }
+    
+    // Clean up shared axis
+    if (this.sharedXAxis) {
+      this.sharedXAxis = null;
+    }
+    
+    // Clean up SVG overlay
+    if (this.panelSvgOverlay) {
+      if (this.panelSvgOverlay.parentNode) {
+        this.panelSvgOverlay.parentNode.removeChild(this.panelSvgOverlay);
+      }
+      this.panelSvgOverlay = null;
     }
     
     this.panels = [];
