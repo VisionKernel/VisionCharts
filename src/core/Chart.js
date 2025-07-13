@@ -1875,8 +1875,13 @@ _clearRender() {
     if (this.svgOverlay) {
       const children = Array.from(this.svgOverlay.children);
       children.forEach(child => {
-        if (child.parentNode) {
-          child.parentNode.removeChild(child);
+        // Don't remove crosshair or other persistent components
+        if (child.classList && 
+            !child.classList.contains('crosshair') && 
+            !child.classList.contains('tooltip')) {
+          if (child.parentNode) {
+            child.parentNode.removeChild(child);
+          }
         }
       });
     }
@@ -1983,36 +1988,44 @@ async ensureInitialized() {
     console.log('Chart destroyed and resources cleaned up');
   }
   
-  /**
-   * Set up crosshair component
-   * @private
-   */
   _setupCrosshair() {
-    if (!this.svgOverlay) {
-      console.warn('SVG overlay not available for crosshair');
-      return;
-    }
-    
-    // Create crosshair instance (always enabled)
-    this.crosshair = new Crosshair({
-      enabled: true,
-      lineColor: '#666666',
-      lineOpacity: 0.7,
-      highlightRadius: 3
-    });
-
-    this.tooltip = new CrosshairTooltip({
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
-      textColor: '#ffffff',
-      fontSize: 12,
-      dateFormat: 'medium',
-      valueDecimals: 2,
-      offsetX: 15,
-      offsetY: 15
-    });
-    
-    console.log('Crosshair component created');
+  if (!this.svgOverlay) {
+    console.warn('SVG overlay not available for crosshair');
+    return;
   }
+  
+  console.log('SVG overlay before crosshair render:', this.svgOverlay);
+  console.log('Chart area before crosshair render:', this.chartArea);
+  
+  this.crosshair = new Crosshair({
+    enabled: true,
+    lineColor: '#666666',
+    lineOpacity: 0.7,
+    highlightRadius: 3
+  });
+
+  this.tooltip = new CrosshairTooltip({
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    textColor: '#ffffff',
+    fontSize: 12,
+    dateFormat: 'medium',
+    valueDecimals: 2,
+    offsetX: 15,
+    offsetY: 15
+  });
+  
+  // Debug the render call
+  console.log('About to call crosshair.render with:', this.svgOverlay, this.chartArea);
+  this.crosshair.render(this.svgOverlay, this.chartArea);
+  console.log('Crosshair render completed');
+  
+  // Check if the crosshair group was actually added
+  const crosshairGroup = this.svgOverlay.querySelector('.crosshair');
+  console.log('Crosshair group after render:', crosshairGroup);
+  
+  this._setupCrosshairEvents();
+  console.log('Crosshair component created');
+}
 
   /**
    * Set up crosshair mouse event listeners
