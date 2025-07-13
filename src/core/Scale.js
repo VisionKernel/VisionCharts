@@ -18,9 +18,9 @@ export class Scale {
     
     // Options
     this.options = {
-      nice: config.nice !== false, // Round domain to nice numbers
-      padding: config.padding || 0.05, // Percentage padding
-      clamp: config.clamp !== false, // Clamp values to domain/range
+      nice: false,
+      padding: 0,
+      clamp: true,
       ...config.options
     };
     
@@ -37,11 +37,6 @@ export class Scale {
   _updateInternalState() {
     this._domainExtent = this.domain[1] - this.domain[0];
     this._rangeExtent = this.range[1] - this.range[0];
-    
-    // Apply nice numbers if requested (only once, prevent recursion)
-    if (this.options.nice && this.type === 'linear' && this.dataType === 'number' && !this._nicingInProgress) {
-      this._makeNice();
-    }
   }
   
   /**
@@ -280,17 +275,31 @@ export class Scale {
   }
   
   // ========================================================================
-  // TICK GENERATION (unchanged)
+  // TICK GENERATION
   // ========================================================================
   
   /**
-   * Generate linear ticks
+   * Generate linear ticks - SIMPLIFIED for no-padding mode
    */
   _getLinearTicks(count) {
     const [min, max] = this.domain;
     const range = max - min;
     
-    // Calculate nice step size
+    // ✅ SIMPLE APPROACH: If nice numbers disabled, use simple even spacing
+    if (!this.options.nice) {
+      const ticks = [];
+      for (let i = 0; i < count; i++) {
+        const ratio = i / (count - 1);
+        const value = min + ratio * range;
+        ticks.push({
+          value: value,
+          position: this.scale(value)
+        });
+      }
+      return ticks;
+    }
+    
+    // Original complex nice number logic for when nice: true
     const roughStep = range / (count - 1);
     const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
     const normalizedStep = roughStep / magnitude;
@@ -342,10 +351,28 @@ export class Scale {
   }
   
   /**
-   * Generate time ticks
+   * Generate time ticks - SIMPLIFIED for no-padding mode
    */
   _getTimeTicks(count) {
     const [minTime, maxTime] = this.domain;
+    
+    // ✅ SIMPLE APPROACH: If nice numbers disabled, use simple even spacing
+    if (!this.options.nice) {
+      const ticks = [];
+      const timeRange = maxTime - minTime;
+      
+      for (let i = 0; i < count; i++) {
+        const ratio = i / (count - 1);
+        const timestamp = minTime + ratio * timeRange;
+        ticks.push({
+          value: timestamp,
+          position: this.scale(timestamp)
+        });
+      }
+      return ticks;
+    }
+    
+    // Original complex time interval logic for when nice: true
     const timeRange = maxTime - minTime;
     
     // Determine appropriate time interval
@@ -443,17 +470,17 @@ export class Scale {
   }
   
   /**
-   * Get optimal tick count based on range size
+   * Get optimal tick count based on range size - REDUCED for cleaner axes
    */
   _getOptimalTickCount() {
     const rangeSize = Math.abs(this._rangeExtent);
     
-    // Base tick count on pixel range
-    if (rangeSize < 100) return 3;
-    if (rangeSize < 200) return 5;
-    if (rangeSize < 400) return 8;
-    if (rangeSize < 600) return 10;
-    return 12;
+    // ✅ REDUCED TICK COUNTS for cleaner axes
+    if (rangeSize < 100) return 2;
+    if (rangeSize < 200) return 3;
+    if (rangeSize < 400) return 4;
+    if (rangeSize < 600) return 5;
+    return 6;  // Maximum 6 ticks instead of 12
   }
 }
 

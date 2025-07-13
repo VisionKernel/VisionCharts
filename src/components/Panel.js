@@ -211,11 +211,7 @@ export class Panel {
     };
   }
   
-  /**
- * Create Y scale for this panel's dataset
- * @private
- */
-_createYScale() {
+  _createYScale() {
   if (!this.config.dataset || !this.config.dataset.data) {
     throw new Error('Panel dataset required for Y scale creation');
   }
@@ -232,27 +228,27 @@ _createYScale() {
   const yMin = Math.min(...yValues);
   const yMax = Math.max(...yValues);
   
-  // Add 5% padding to Y domain
-  const padding = (yMax - yMin) * 0.05;
-  const yDomain = [yMin - padding, yMax + padding];
+  // ✅ REMOVE PADDING: Use exact data bounds
+  const yDomain = [yMin, yMax];
   
   // Determine scale type (could be passed via config)
   const scaleType = this.config.scaleType || 'linear';
   
-  // ✅ FIX: Correct Y scale range order for CanvasRenderer compatibility
-  // Range should be [top, bottom] to match CanvasRenderer expectations
+  // Create Y scale with NO PADDING
   this.yScale = new Scale({
     type: scaleType,
     domain: yDomain,
-    range: [this.panelChartArea.y, this.panelChartArea.y + this.panelChartArea.height], // ✅ [TOP, BOTTOM]
-    dataType: 'number',
-    coordinateSystem: 'normalized',
+    range: [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y],
+    coordinateSystem: 'unified',
     orientation: 'vertical',
     options: {
-      nice: true,
-      padding: 0.05
+      nice: false,
+      padding: 0,
+      clamp: true
     }
   });
+  
+  console.log('Panel Y scale created with NO PADDING:', yDomain);
 }
   
   /**

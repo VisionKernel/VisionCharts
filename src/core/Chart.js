@@ -513,13 +513,9 @@ _calculateDataDomains() {
     yMax = 1;
   }
   
-  // Add padding for better visualization
-  const xPadding = (xMax - xMin) * 0.05 || 0.1;
-  const yPadding = (yMax - yMin) * 0.05 || 0.1;
-  
   this.dataDomains = {
-    x: [xMin - xPadding, xMax + xPadding],
-    y: [yMin - yPadding, yMax + yPadding]
+    x: [xMin, xMax],
+    y: [yMin, yMax]
   };
   
   console.log(`Data domains calculated from ${totalPoints} processed points:`, this.dataDomains);
@@ -565,7 +561,7 @@ _createScales() {
   const xScaleType = this.config.options.xType === 'time' ? 'time' : 'linear';
   const yScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
   
-  // Create X scale with UNIFIED coordinate system
+  // Create X scale with NO PADDING
   this.scales.x = new Scale({
     type: xScaleType,
     domain: [...this.dataDomains.x],
@@ -573,10 +569,14 @@ _createScales() {
     coordinateSystem: 'unified',
     orientation: 'horizontal',
     dataType: this.config.options.xType,
-    options: { nice: true }
+    options: { 
+      nice: false,    // ✅ DISABLE nice numbers
+      padding: 0,     // ✅ DISABLE padding
+      clamp: true 
+    }
   });
   
-  // Create Y scale with UNIFIED coordinate system (mathematical Y-up)
+  // Create Y scale with NO PADDING
   this.scales.y = new Scale({
     type: yScaleType,
     domain: [...this.dataDomains.y],
@@ -584,17 +584,20 @@ _createScales() {
     coordinateSystem: 'unified',
     orientation: 'vertical',
     dataType: this.config.options.yType,
-    options: { nice: true }
+    options: { 
+      nice: false,    // ✅ DISABLE nice numbers
+      padding: 0,     // ✅ DISABLE padding
+      clamp: true 
+    }
   });
   
   // Update scale manager
   this.scaleManager.setScale('x', this.scales.x);
   this.scaleManager.setScale('y', this.scales.y);
   
-  console.log('Scales created with unified coordinate system and processed data domains');
+  console.log('Scales created with NO PADDING and unified coordinate system');
 }
 
-  
   /**
    * Create grid instance
    */
