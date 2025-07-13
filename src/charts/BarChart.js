@@ -37,58 +37,61 @@ export class BarChart extends Chart {
   }
   
   /**
-   * UPDATED: Render bar chart data - handles both single and panel modes
-   */
-  async _renderChartData() {
-    // If in panel mode, rendering is handled by individual panels
-    if (this.isPanelMode) {
-      console.log('BarChart: Panel mode rendering handled by Panel components');
-      return;
-    }
-    
-    // Original single mode rendering logic
-    if (!this.rendererInstance) {
-      console.error('No renderer instance available');
-      return;
-    }
-
-    // For bar charts, we still pass the transformed datasets directly to renderers
-    // since bar rendering doesn't use the PathGenerator yet (bars need different geometry)
-    if (!Array.isArray(this.config.data) || this.config.data.length === 0) {
-      console.log('No data to render');
-      return;
-    }
-
-    try {
-      // NEW: Validate unified coordinates before rendering
-      if (this.config.options.enableCoordinateValidation) {
-        this._validateUnifiedCoordinates();
-      }
-
-      // Set viewport for clipping
-      this.rendererInstance.setViewport(this.chartArea);
-
-      // UPDATED: Render bars with unified coordinates
-      await this.rendererInstance.renderBars(this.transformedData, this.scales, {
-        barWidth: this.config.options.barWidth,
-        showBorder: this.config.options.showBorder,
-        borderWidth: this.config.options.borderWidth,
-        chartArea: this.chartArea
-      });
-
-      const totalBars = this.transformedData.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
-      console.log(`BarChart: Rendered ${totalBars} bars across ${this.transformedData.length} datasets using ${this.activeRenderer}`);
-
-      // NEW: Collect rendering debug info
-      if (this.config.options.enableRenderingDebug) {
-        this._collectRenderingDebugInfo();
-      }
-
-    } catch (error) {
-      console.error('Error rendering bar chart data:', error);
-      throw error;
-    }
+ * UPDATED: Render bar chart data - handles both single and panel modes
+ */
+async _renderChartData() {
+  // If in panel mode, rendering is handled by individual panels
+  if (this.isPanelMode) {
+    console.log('BarChart: Panel mode rendering handled by Panel components');
+    return;
   }
+  
+  // Original single mode rendering logic
+  if (!this.rendererInstance) {
+    console.error('No renderer instance available');
+    return;
+  }
+
+  // For bar charts, we pass the transformed datasets directly to renderers
+  // since bar rendering doesn't use the PathGenerator yet (bars need different geometry)
+  if (!Array.isArray(this.config.data) || this.config.data.length === 0) {
+    console.log('No data to render');
+    return;
+  }
+
+  try {
+    // ✅ FIX: Set transformedData to reference the transformed config.data
+    this.transformedData = this.config.data;
+
+    // NEW: Validate unified coordinates before rendering
+    if (this.config.options.enableCoordinateValidation) {
+      this._validateUnifiedCoordinates();
+    }
+
+    // Set viewport for clipping
+    this.rendererInstance.setViewport(this.chartArea);
+
+    // UPDATED: Render bars with unified coordinates
+    await this.rendererInstance.renderBars(this.transformedData, this.scales, {
+      barWidth: this.config.options.barWidth,
+      showBorder: this.config.options.showBorder,
+      borderWidth: this.config.options.borderWidth,
+      chartArea: this.chartArea
+    });
+
+    const totalBars = this.transformedData.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
+    console.log(`BarChart: Rendered ${totalBars} bars across ${this.transformedData.length} datasets using ${this.activeRenderer}`);
+
+    // NEW: Collect rendering debug info
+    if (this.config.options.enableRenderingDebug) {
+      this._collectRenderingDebugInfo();
+    }
+
+  } catch (error) {
+    console.error('Error rendering bar chart data:', error);
+    throw error;
+  }
+}
 
   /**
    * Validate unified coordinates across all datasets - panel mode aware

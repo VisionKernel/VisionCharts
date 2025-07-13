@@ -50,36 +50,40 @@ export default class PanelDataRenderer {
    * @param {Object} renderer - Canvas/WebGL renderer instance
    */
   async render(dataset, xScale, yScale, chartArea, renderer) {
-    if (!dataset || !dataset.data || !Array.isArray(dataset.data)) {
-      console.warn('PanelDataRenderer: Invalid dataset provided');
-      return;
-    }
-    
-    if (!xScale || !yScale || !chartArea || !renderer) {
-      throw new Error('PanelDataRenderer: Missing required rendering parameters');
-    }
-    
-    try {
-      // Transform data to unified coordinates
-      const transformedDataset = this._transformDatasetCoordinates(dataset, xScale, yScale, chartArea);
-      
-      // Set viewport for clipping
-      renderer.setViewport(chartArea);
-      
-      // Render based on chart type
-      if (this.config.chartType === 'line') {
-        await this._renderLineDataset(transformedDataset, renderer, chartArea);
-      } else if (this.config.chartType === 'bar') {
-        await this._renderBarDataset(transformedDataset, renderer, chartArea, { xScale, yScale });
-      }
-      
-      console.log(`PanelDataRenderer: Rendered ${this.config.chartType} dataset: ${dataset.name}`);
-      
-    } catch (error) {
-      console.error('PanelDataRenderer: Error rendering dataset:', error);
-      throw error;
-    }
+  if (!dataset || !dataset.data || !Array.isArray(dataset.data)) {
+    console.warn('PanelDataRenderer: Invalid dataset provided');
+    return;
   }
+  
+  if (!xScale || !yScale || !chartArea || !renderer) {
+    throw new Error('PanelDataRenderer: Missing required rendering parameters');
+  }
+  
+  try {
+    // Transform data to unified coordinates
+    const transformedDataset = this._transformDatasetCoordinates(dataset, xScale, yScale, chartArea);
+    
+    // Set viewport for clipping
+    renderer.setViewport(chartArea);
+    
+    // Render based on chart type
+    if (this.config.chartType === 'line') {
+      await this._renderLineDataset(transformedDataset, renderer, chartArea);
+    } else if (this.config.chartType === 'bar') {
+      // ✅ FIX: Pass scales in consistent format
+      await this._renderBarDataset(transformedDataset, renderer, chartArea, { 
+        xScale: xScale, 
+        yScale: yScale 
+      });
+    }
+    
+    console.log(`PanelDataRenderer: Rendered ${this.config.chartType} dataset: ${dataset.name}`);
+    
+  } catch (error) {
+    console.error('PanelDataRenderer: Error rendering dataset:', error);
+    throw error;
+  }
+}
   
   /**
    * Transform dataset coordinates using scales
@@ -133,49 +137,41 @@ export default class PanelDataRenderer {
   }
   
   /**
-   * Render bar dataset  
-   * @private
-   */
-  async _renderBarDataset(transformedDataset, renderer, chartArea, scales) {
-    // Calculate bar information
-    const barInfo = this._calculateBarInfo(transformedDataset, scales.xScale, chartArea);
-    
-    // Render bars
-    await renderer.renderBars([transformedDataset], scales, {
-      barWidth: barInfo.width,
-      chartArea: chartArea
-    });
-  }
+ * Render bar dataset  
+ * @private
+ */
+async _renderBarDataset(transformedDataset, renderer, chartArea, scales) {
+  // Calculate bar information - but don't pass pixel widths to renderer
+  const barInfo = this._calculateBarInfo(transformedDataset, scales.xScale, chartArea);
+  
+  // ✅ FIX: Format scales object correctly and pass percentage values, not pixel values
+  const formattedScales = {
+    x: scales.xScale,
+    y: scales.yScale
+  };
+  
+  // ✅ FIX: Pass configuration percentages, not calculated pixel widths
+  await renderer.renderBars([transformedDataset], formattedScales, {
+    barWidth: this.config.barWidth,        // ✅ Pass percentage (0.7), not pixels
+    barSpacing: this.config.barSpacing,    // ✅ Pass percentage (0.1), not pixels  
+    showBorder: this.config.showBorder,
+    borderWidth: this.config.borderWidth,
+    chartArea: chartArea
+  });
+}
   
   /**
-   * Calculate bar dimensions and spacing
-   * @private
-   */
-  _calculateBarInfo(dataset, xScale, chartArea) {
-    const data = dataset.data;
-    if (data.length < 2) {
-      return { width: 20 }; // Default width for single bar
-    }
-    
-    // Calculate average spacing between data points
-    const spacings = [];
-    for (let i = 1; i < data.length; i++) {
-      const prevX = xScale.scale(data[i - 1].x);
-      const currX = xScale.scale(data[i].x);
-      spacings.push(Math.abs(currX - prevX));
-    }
-    
-    const avgSpacing = spacings.reduce((sum, spacing) => sum + spacing, 0) / spacings.length;
-    
-    // Calculate bar width as percentage of available space
-    const barWidth = avgSpacing * this.config.barWidth;
-    
-    return {
-      width: Math.max(1, barWidth), // Minimum 1 pixel width
-      spacing: avgSpacing * this.config.barSpacing,
-      totalDatasets: 1 // Single dataset per panel
-    };
-  }
+ * Calculate bar dimensions and spacing - simplified for renderer compatibility
+ * @private
+ */
+_calculateBarInfo(dataset, xScale, chartArea) {
+  // This method can be simplified or removed since CanvasRenderer 
+  // calculates bar dimensions internally based on percentages
+  return {
+    dataPoints: dataset.data.length,
+    chartArea: chartArea
+  };
+}
   
   /**
    * Update configuration
