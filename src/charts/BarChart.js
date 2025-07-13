@@ -12,6 +12,8 @@ import { Chart } from '../core/Chart.js';
 export class BarChart extends Chart {
   constructor(config = {}) {
     super(config);
+
+    this.chartType = 'bar';
     
     // Bar-specific options
     this.config.options = {
@@ -33,7 +35,7 @@ export class BarChart extends Chart {
     this.renderingDebugInfo = null;
     this.barPositioningInfo = null;
     
-    console.log('BarChart created with unified coordinate system support');
+    console.log('BarChart created with FORCED canvas rendering and unified coordinate system support');
   }
   
   /**

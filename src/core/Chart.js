@@ -653,12 +653,20 @@ _createScales() {
   
   /**
    * Select optimal renderer based on data size and browser capabilities
+   * UPDATED: Forces canvas rendering for bar charts regardless of dataset size
    */
   _selectOptimalRenderer() {
     // Check for forced renderer
     if (this.config.options.forceRenderer) {
       this.activeRenderer = this.config.options.forceRenderer;
       console.log(`Using forced renderer: ${this.activeRenderer}`);
+      return;
+    }
+    
+    // ✅ NEW: Force canvas rendering for bar charts (both single and panel view)
+    if (this.chartType === 'bar') {
+      this.activeRenderer = 'canvas';
+      console.log(`Force-selected Canvas renderer for BarChart (${this.dataPointCount} data points)`);
       return;
     }
     

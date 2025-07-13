@@ -12,6 +12,8 @@ import { Chart } from '../core/Chart.js';
 export class LineChart extends Chart {
   constructor(config = {}) {
     super(config);
+
+    this.chartType = 'line';
     
     // Line-specific options
     this.config.options = {
