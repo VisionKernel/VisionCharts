@@ -21,9 +21,8 @@ export class PanelManager {
   constructor(chart) {
     this.chart = chart;
     
-    // ✅ NEW: Percentage-based axis area reservation
-    this.AXIS_AREA_PERCENTAGE = 0.15; // Always reserve 10% of container height for axis
-    this.PANEL_AREA_PERCENTAGE = 0.85; // Remaining 90% for panels
+    this.PANEL_AREA_PERCENTAGE = 0.85;
+    this.AXIS_AREA_PERCENTAGE = 0.15;
     
     // Panel state
     this.isPanelMode = false;
@@ -123,6 +122,8 @@ async refreshPanelMode() {
     
     // ✅ CRITICAL: Recreate panel container and SVG overlay
     this._createPanelContainer();
+
+    this._renderPanelModeTitle();
     
     // ✅ CRITICAL: Recreate panels with fresh percentage calculations
     await this._createPanels();
@@ -169,6 +170,8 @@ async refreshPanelMode() {
     
     // Create panel container
     this._createPanelContainer();
+
+    this._renderPanelModeTitle();
     
     // Create individual panels
     await this._createPanels();
@@ -562,6 +565,35 @@ _renderSharedXAxis() {
   this.sharedXAxis.render(this.panelSvgOverlay, position);
   
   console.log(`✅ Shared X axis rendered at PERCENTAGE-BASED position y: ${axisStartY}px`);
+}
+
+
+/**
+ * Render main chart title in panel mode - matches single mode positioning
+ * @private
+ */
+_renderPanelModeTitle() {
+  if (!this.chart.config.options.title || !this.panelSvgOverlay) return;
+  
+  const titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  
+  // Use EXACT same positioning as single mode
+  const centerX = this.chart.config.options.width / 2;
+  const titleY = this.chart.config.options.titlePadding + this.chart.config.options.titleFontSize;
+  
+  titleElement.setAttribute('x', centerX);
+  titleElement.setAttribute('y', titleY);
+  titleElement.setAttribute('text-anchor', 'middle');
+  titleElement.setAttribute('font-size', this.chart.config.options.titleFontSize);
+  titleElement.setAttribute('font-family', this.chart.config.options.titleFontFamily);
+  titleElement.setAttribute('font-weight', this.chart.config.options.titleFontWeight);
+  titleElement.setAttribute('fill', this.chart.config.options.titleColor);
+  titleElement.setAttribute('class', 'chart-title panel-mode');
+  titleElement.textContent = this.chart.config.options.title;
+  
+  this.panelSvgOverlay.appendChild(titleElement);
+  
+  console.log(`Panel mode title rendered with single mode positioning: "${this.chart.config.options.title}"`);
 }
 
   /**
