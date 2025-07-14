@@ -92,7 +92,7 @@ export class Chart {
     // Performance monitoring
     this.dataPointCount = 0;
     this.performanceThresholds = {
-      canvas: 50, // Switch to WebGL after 50K points
+      canvas: 50000, // Switch to WebGL after 50K points
       webgl: 100000  // WebGL upper limit
     };
     

@@ -7,11 +7,14 @@
  * - Shared axis management
  * - Container management
  * - State persistence
+ * 
+ * ✅ FIXED: Complete panel toggle functionality with debugging
  */
 
 import { Panel } from './Panel.js';
 import { Axis } from '../core/Axis.js';
 import { createScale } from '../core/Scale.js';
+import { PathGenerator } from '../utils/PathGenerator.js';
 
 export class PanelManager {
   constructor(chart) {
@@ -35,7 +38,7 @@ export class PanelManager {
   }
 
   /**
-   * Toggle between single chart and panel mode
+   * ✅ FIXED: Toggle between single chart and panel mode
    */
   async togglePanelMode(force = null) {
     const newPanelMode = force !== null ? force : !this.isPanelMode;
@@ -50,18 +53,20 @@ export class PanelManager {
     try {
       if (newPanelMode) {
         await this._switchToPanelMode();
+        this.isPanelMode = true;
       } else {
+        // ✅ FIXED: Don't set state here, let _switchToSingleMode handle it
         await this._switchToSingleMode();
       }
       
-      this.isPanelMode = newPanelMode;
-      this.chart.isPanelMode = newPanelMode; // Keep chart in sync
-      
-      console.log(`Successfully switched to ${newPanelMode ? 'panel' : 'single'} mode`);
-      return newPanelMode;
+      console.log(`Successfully switched to ${this.isPanelMode ? 'panel' : 'single'} mode`);
+      console.log(`Chart isPanelMode: ${this.chart.isPanelMode}`);
+      return this.isPanelMode;
       
     } catch (error) {
       console.error('Error toggling panel mode:', error);
+      // Reset state on error
+      this.isPanelMode = !newPanelMode;
       throw error;
     }
   }
@@ -115,8 +120,6 @@ export class PanelManager {
    * @private
    */
   async _switchToPanelMode() {
-    if (this.isPanelMode) return;
-    
     // Validate we have multiple datasets
     if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length <= 1) {
       throw new Error('Panel mode requires multiple datasets');
@@ -154,19 +157,20 @@ export class PanelManager {
   }
 
   /**
-   * Switch to single mode - destroy panels and recreate single chart
+   * ✅ FIXED: Switch to single mode with proper container restoration
    * @private
    */
   async _switchToSingleMode() {
-    if (!this.isPanelMode) return;
-    
     console.log('Switching back to single chart mode');
+    
+    // CRITICAL: Set state at the beginning
+    this.isPanelMode = false;
     
     // Destroy all panels
     this._destroyPanels();
     
-    // Remove panel container
-    this._destroyPanelContainer();
+    // ✅ CRITICAL: Properly restore container for single chart
+    this._restoreContainerForSingleMode();
     
     // Restore single mode state
     this._restoreSingleModeState();
@@ -175,6 +179,36 @@ export class PanelManager {
     await this._reinitializeSingleChart();
     
     console.log('Single chart mode restored successfully');
+  }
+
+  /**
+   * ✅ NEW: Properly restore container for single chart mode
+   * @private
+   */
+  _restoreContainerForSingleMode() {
+    console.log('Restoring container for single chart mode...');
+    
+    // Remove panel container if it exists
+    if (this.panelContainer && this.panelContainer.parentNode) {
+      this.panelContainer.parentNode.removeChild(this.panelContainer);
+      this.panelContainer = null;
+      console.log('  ✓ Panel container removed');
+    }
+    
+    // ✅ CRITICAL: Clear container completely to ensure clean state
+    const childCount = this.chart.container.children.length;
+    while (this.chart.container.firstChild) {
+      this.chart.container.removeChild(this.chart.container.firstChild);
+    }
+    console.log(`  ✓ Cleared ${childCount} children from container`);
+    
+    // ✅ CRITICAL: Restore container styling for single chart
+    this.chart.container.style.position = 'relative';
+    this.chart.container.style.width = '100%';
+    this.chart.container.style.height = '100%';
+    
+    console.log('  ✓ Container styling restored');
+    console.log('Container restored for single chart mode');
   }
 
   /**
@@ -225,14 +259,17 @@ export class PanelManager {
    * @private
    */
   _restoreSingleModeState() {
+    console.log('Restoring single mode state...');
+    
     if (!this.originalSingleModeState) {
-      console.warn('No stored single mode state to restore');
+      console.warn('  ⚠ No stored single mode state to restore');
       return;
     }
     
     // Note: We don't restore the actual instances since they were destroyed
     // Instead, we'll reinitialize them in _reinitializeSingleChart
     this.originalSingleModeState = null;
+    console.log('  ✓ Single mode state cleared');
   }
 
   /**
@@ -465,14 +502,18 @@ export class PanelManager {
    * @private
    */
   _destroyPanels() {
+    console.log(`Destroying ${this.panels.length} panels...`);
+    
     // Destroy individual panels
     for (const panel of this.panels) {
       panel.destroy();
     }
+    console.log('  ✓ Individual panels destroyed');
     
     // Clean up shared axis
     if (this.sharedXAxis) {
       this.sharedXAxis = null;
+      console.log('  ✓ Shared X axis cleared');
     }
     
     // Clean up SVG overlay
@@ -481,6 +522,7 @@ export class PanelManager {
         this.panelSvgOverlay.parentNode.removeChild(this.panelSvgOverlay);
       }
       this.panelSvgOverlay = null;
+      console.log('  ✓ Panel SVG overlay removed');
     }
     
     this.panels = [];
@@ -501,35 +543,127 @@ export class PanelManager {
   }
 
   /**
-   * Reinitialize single chart after returning from panel mode
+   * ✅ FIXED: Complete single chart reinitialization
    * @private
    */
   async _reinitializeSingleChart() {
-    // Calculate chart area and dimensions
-    this.chart._calculateDimensions();
-    
-    // Setup rendering layers (canvas, SVG) before initializing renderer
-    this.chart._setupRenderingLayers();
-    
-    // Process data
-    await this.chart._processData();
-    
-    // Create scales
-    this.chart._createScales();
-    
-    // Create axes  
-    this.chart._createAxes();
-    
-    // Create grid
-    this.chart._createGrid();
-    
-    // Initialize renderer (now canvas exists)
-    await this.chart._initializeRenderer();
-    
-    // Full render
-    await this.chart.render();
-    
-    console.log('Single chart reinitialized');
+    try {
+      console.log('Starting complete single chart reinitialization...');
+      console.log('Current isPanelMode state:', this.isPanelMode);
+      
+      // ✅ CRITICAL: Ensure panel mode is false
+      this.isPanelMode = false;
+      
+      // Phase 1: Complete cleanup
+      console.log('Phase 1: Cleanup...');
+      if (this.chart.rendererInstance) {
+        this.chart.rendererInstance.destroy();
+        this.chart.rendererInstance = null;
+        console.log('  ✓ Renderer destroyed');
+      }
+      
+      // Clear all references
+      this.chart.generatedPaths = null;
+      this.chart.transformedData = null;
+      this.chart.canvas = null;
+      this.chart.svgOverlay = null;
+      this.chart.gridCanvas = null;
+      console.log('  ✓ References cleared');
+      
+      // Clear coordinate system cache
+      if (this.chart.coordinateSystem) {
+        this.chart.coordinateSystem.clearCache();
+        console.log('  ✓ Coordinate system cache cleared');
+      }
+      
+      // ✅ CRITICAL: Use Chart's initialize method for complete recreation
+      console.log('Phase 2: Calling chart._initialize() for complete recreation...');
+      await this.chart._initialize();
+      console.log('  ✓ Chart._initialize() completed');
+      
+      // ✅ CRITICAL FIX: Call render() after initialization to actually draw the chart
+      console.log('Phase 3: Rendering chart data...');
+      await this.chart.render();
+      console.log('  ✓ Chart render completed');
+      
+      console.log('Complete single chart reinitialization successful');
+      
+    } catch (error) {
+      console.error('Complete reinitialization failed:', error);
+      
+      // Fallback: Try manual recreation
+      try {
+        console.log('Attempting manual recreation fallback...');
+        
+        // Ensure state is correct
+        this.isPanelMode = false;
+        
+        // Manual setup
+        console.log('  Manual dimensions...');
+        this.chart._calculateDimensions();
+        
+        console.log('  Manual rendering layers...');
+        this.chart._setupRenderingLayers();
+        
+        console.log('  Manual process data...');
+        await this.chart._processData();
+        
+        console.log('  Manual create scales...');
+        this.chart._createScales();
+        
+        if (this.chart.coordinateSystem) {
+          this.chart.coordinateSystem.setScales(this.chart.scales);
+          console.log('  Manual coordinate system updated...');
+        }
+        
+        console.log('  Manual create axes...');
+        this.chart._createAxes();
+        
+        console.log('  Manual create grid...');
+        this.chart._createGrid();
+        
+        console.log('  Manual initialize renderer...');
+        await this.chart._initializeRenderer();
+        
+        // Generate paths manually
+        if (this.chart.coordinateSystem && this.chart.config.data) {
+          console.log('  Manual coordinate transformation...');
+          this.chart.config.data = await this.chart.coordinateSystem.transformDatasets(this.chart.config.data, {
+            strictValidation: false
+          });
+          
+          console.log('  Manual path generation...');
+          this.chart.generatedPaths = await PathGenerator.generatePaths(this.chart.config.data, {
+            curve: this.chart.config.options.curve || 'linear',
+            strokeWidth: this.chart.config.options.strokeWidth || 2,
+            targetRenderer: this.chart.activeRenderer
+          });
+          
+          console.log(`  ✓ Manually generated ${this.chart.generatedPaths.length} paths`);
+        }
+        
+        console.log('  Manual render...');
+        await this.chart.render();
+        console.log('Manual recreation successful');
+        
+      } catch (fallbackError) {
+        console.error('Manual recreation also failed:', fallbackError);
+        
+        // Last resort: Show error message
+        this.chart.container.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+            <div style="text-align: center; padding: 20px;">
+              <div style="font-size: 20px; margin-bottom: 12px;">⚠️</div>
+              <div style="font-size: 16px; font-weight: 500; margin-bottom: 8px;">Chart Error</div>
+              <div style="font-size: 14px; color: #888;">Unable to restore single chart mode</div>
+              <div style="font-size: 12px; color: #aaa; margin-top: 12px;">Try refreshing the page</div>
+            </div>
+          </div>
+        `;
+        
+        throw fallbackError;
+      }
+    }
   }
 
   /**
