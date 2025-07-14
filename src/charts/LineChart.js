@@ -321,46 +321,11 @@ addDataset(dataset) {
     this.legend.updateDatasets(this.config.data);
   }
   
-  // Handle panel mode vs single mode differently
+  // ✅ FIX: Use PanelManager for panel mode refresh
   if (this.isPanelMode) {
-    // In panel mode: recreate all panels with new dataset
-    this._refreshPanelMode();
+    return this.panelManager.refreshPanelMode();
   } else {
-    // In single mode: normal update
-    this.update();
-  }
-  
-  return this;
-}
-
-/**
- * Refresh panel mode after dataset changes
- * @private
- */
-async _refreshPanelMode() {
-  try {
-    console.log('Refreshing panel mode with updated datasets');
-    
-    // Destroy existing panels
-    this._destroyPanels();
-    
-    // CRITICAL: Process new data before creating panels
-    await this._processData();
-    
-    // Recreate shared X scale with all datasets
-    this._createSharedXScale();
-    
-    // Recreate panels
-    await this._createPanels();
-    
-    // Re-render all panels
-    await this._renderPanels();
-    
-    console.log('Panel mode refreshed successfully');
-    
-  } catch (error) {
-    console.error('Error refreshing panel mode:', error);
-    throw error;
+    return this.update();
   }
 }
   
@@ -374,12 +339,17 @@ async _refreshPanelMode() {
     if (this.config.data.length < initialCount) {
       console.log(`LineChart: Removed dataset: ${datasetId}`);
       
-      // NEW: Update legend
+      // Update legend
       if (this.legend) {
         this.legend.updateDatasets(this.config.data);
       }
       
-      this.update();
+      // ✅ FIX: Use PanelManager for panel mode refresh
+      if (this.isPanelMode) {
+        return this.panelManager.refreshPanelMode();
+      } else {
+        return this.update();
+      }
     } else {
       console.warn(`LineChart: Dataset not found: ${datasetId}`);
     }
@@ -401,20 +371,24 @@ async _refreshPanelMode() {
     // Update dataset properties
     Object.assign(dataset, newData);
     
-    // NEW: Update legend if color changed
+    // Update legend if color changed
     if (newData.color && this.legend) {
       this.legend.updateDatasetColor(datasetId, newData.color);
     }
     
-    // NEW: Update legend if name changed
+    // Update legend if name changed
     if (newData.name && this.legend) {
       this.legend.updateDatasets(this.config.data);
     }
     
     console.log(`LineChart: Updated dataset with legend support: ${datasetId}`);
-    this.update();
     
-    return this;
+    // ✅ FIX: Use PanelManager for panel mode refresh
+    if (this.isPanelMode) {
+      return this.panelManager.refreshPanelMode();
+    } else {
+      return this.update();
+    }
   }
   
   /**

@@ -8,7 +8,6 @@
  */
 
 import { Chart } from '../core/Chart.js';
-
 export class BarChart extends Chart {
   constructor(config = {}) {
     super(config);
@@ -312,7 +311,7 @@ async _renderChartData() {
       id: dataset.id || `dataset-${this.config.data.length + 1}`,
       name: dataset.name || `Dataset ${this.config.data.length + 1}`,
       color: dataset.color || this._getDefaultColor(this.config.data.length),
-      fill: dataset.fill !== undefined ? dataset.fill : false, // Bar charts don't use fill, but keep for consistency
+      fill: dataset.fill !== undefined ? dataset.fill : false,
       ...dataset
     };
     
@@ -320,15 +319,17 @@ async _renderChartData() {
     
     console.log(`BarChart: Added dataset with legend support: ${processedDataset.id} with ${processedDataset.data.length} bars`);
     
-    // NEW: Update legend
+    // Update legend
     if (this.legend) {
       this.legend.updateDatasets(this.config.data);
     }
     
-    // Update and re-render
-    this.update();
-    
-    return this;
+    // ✅ FIX: Add panel mode support
+    if (this.isPanelMode) {
+      return this.panelManager.refreshPanelMode();
+    } else {
+      return this.update();
+    }
   }
   
   /**
@@ -341,12 +342,17 @@ async _renderChartData() {
     if (this.config.data.length < initialCount) {
       console.log(`BarChart: Removed dataset: ${datasetId}`);
       
-      // NEW: Update legend
+      // Update legend
       if (this.legend) {
         this.legend.updateDatasets(this.config.data);
       }
       
-      this.update();
+      // ✅ FIX: Add panel mode support  
+      if (this.isPanelMode) {
+        return this.panelManager.refreshPanelMode();
+      } else {
+        return this.update();
+      }
     } else {
       console.warn(`BarChart: Dataset not found: ${datasetId}`);
     }
@@ -368,20 +374,24 @@ async _renderChartData() {
     // Update dataset properties
     Object.assign(dataset, newData);
     
-    // NEW: Update legend if color changed
+    // Update legend if color changed
     if (newData.color && this.legend) {
       this.legend.updateDatasetColor(datasetId, newData.color);
     }
     
-    // NEW: Update legend if name changed
+    // Update legend if name changed
     if (newData.name && this.legend) {
       this.legend.updateDatasets(this.config.data);
     }
     
     console.log(`BarChart: Updated dataset with legend support: ${datasetId}`);
-    this.update();
     
-    return this;
+    // ✅ FIX: Add panel mode support
+    if (this.isPanelMode) {
+      return this.panelManager.refreshPanelMode();
+    } else {
+      return this.update();
+    }
   }
   
   /**

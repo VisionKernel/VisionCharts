@@ -1,0 +1,549 @@
+/**
+ * PanelManager.js - Centralized Panel Mode Management
+ * 
+ * Handles all panel mode lifecycle operations including:
+ * - Panel mode toggling
+ * - Panel creation/destruction
+ * - Shared axis management
+ * - Container management
+ * - State persistence
+ */
+
+import { Panel } from './Panel.js';
+import { Axis } from '../core/Axis.js';
+import { createScale } from '../core/Scale.js';
+
+export class PanelManager {
+  constructor(chart) {
+    this.chart = chart;
+    
+    // Panel state
+    this.isPanelMode = false;
+    this.panels = [];
+    this.panelContainer = null;
+    this.panelSvgOverlay = null;
+    
+    // Shared axis components
+    this.sharedXScale = null;
+    this.sharedXAxis = null;
+    this.sharedAxisHeight = 0;
+    
+    // Single mode state backup
+    this.originalSingleModeState = null;
+    
+    console.log('PanelManager created');
+  }
+
+  /**
+   * Toggle between single chart and panel mode
+   */
+  async togglePanelMode(force = null) {
+    const newPanelMode = force !== null ? force : !this.isPanelMode;
+    
+    if (newPanelMode === this.isPanelMode) {
+      console.log(`Already in ${newPanelMode ? 'panel' : 'single'} mode`);
+      return newPanelMode;
+    }
+    
+    console.log(`Switching to ${newPanelMode ? 'panel' : 'single'} mode`);
+    
+    try {
+      if (newPanelMode) {
+        await this._switchToPanelMode();
+      } else {
+        await this._switchToSingleMode();
+      }
+      
+      this.isPanelMode = newPanelMode;
+      this.chart.isPanelMode = newPanelMode; // Keep chart in sync
+      
+      console.log(`Successfully switched to ${newPanelMode ? 'panel' : 'single'} mode`);
+      return newPanelMode;
+      
+    } catch (error) {
+      console.error('Error toggling panel mode:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get current panel mode state
+   */
+  getState() {
+    return {
+      isPanelMode: this.isPanelMode,
+      panelCount: this.panels.length,
+      hasSharedAxis: !!this.sharedXAxis,
+      containerExists: !!this.panelContainer
+    };
+  }
+
+  /**
+   * Refresh panel mode after dataset changes
+   */
+  async refreshPanelMode() {
+    if (!this.isPanelMode) return;
+    
+    try {
+      console.log('Refreshing panel mode with updated datasets');
+      
+      // Destroy existing panels
+      this._destroyPanels();
+      
+      // Process data first
+      await this.chart._processData();
+      
+      // Recreate shared X scale with all datasets
+      this._createSharedXScale();
+      
+      // Recreate panels
+      await this._createPanels();
+      
+      // Re-render all panels
+      await this._renderPanels();
+      
+      console.log('Panel mode refreshed successfully');
+      
+    } catch (error) {
+      console.error('Error refreshing panel mode:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Switch to panel mode with validation
+   * @private
+   */
+  async _switchToPanelMode() {
+    if (this.isPanelMode) return;
+    
+    // Validate we have multiple datasets
+    if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length <= 1) {
+      throw new Error('Panel mode requires multiple datasets');
+    }
+    
+    // Validate container size
+    if (!this._validateContainerForPanelMode()) {
+      console.warn('Container size validation failed, but proceeding with panel mode');
+    }
+    
+    console.log(`Creating panel mode with ${this.chart.config.data.length} panels and shared X axis`);
+    
+    // Store current single mode state
+    this._storeSingleModeState();
+    
+    // Destroy current single chart components
+    this._destroySingleModeComponents();
+    
+    // Create shared X scale
+    this._createSharedXScale();
+    
+    // Create shared X axis
+    this._createSharedXAxis();
+    
+    // Create panel container
+    this._createPanelContainer();
+    
+    // Create individual panels
+    await this._createPanels();
+    
+    // Render all panels and shared axis
+    await this._renderPanels();
+    
+    console.log('Panel mode activated successfully');
+  }
+
+  /**
+   * Switch to single mode - destroy panels and recreate single chart
+   * @private
+   */
+  async _switchToSingleMode() {
+    if (!this.isPanelMode) return;
+    
+    console.log('Switching back to single chart mode');
+    
+    // Destroy all panels
+    this._destroyPanels();
+    
+    // Remove panel container
+    this._destroyPanelContainer();
+    
+    // Restore single mode state
+    this._restoreSingleModeState();
+    
+    // Reinitialize single chart
+    await this._reinitializeSingleChart();
+    
+    console.log('Single chart mode restored successfully');
+  }
+
+  /**
+   * Validate container size for panel mode
+   * @private
+   */
+  _validateContainerForPanelMode() {
+    const containerHeight = this.chart.container.offsetHeight;
+    const containerWidth = this.chart.container.offsetWidth;
+    const datasetCount = this.chart.config.data.length;
+    
+    // Calculate minimum required height
+    const minPanelHeight = 100; // Minimum viable panel height
+    const axisHeight = 40;      // Space for shared X axis
+    const minRequiredHeight = (datasetCount * minPanelHeight) + axisHeight;
+    
+    if (containerHeight < minRequiredHeight) {
+      console.warn(`Container height ${containerHeight}px insufficient for ${datasetCount} panels. Minimum needed: ${minRequiredHeight}px`);
+      return false;
+    }
+    
+    if (containerWidth < 300) {
+      console.warn(`Container width ${containerWidth}px may be too small for readable axis labels`);
+    }
+    
+    return true;
+  }
+
+  /**
+   * Store single mode state for restoration
+   * @private
+   */
+  _storeSingleModeState() {
+    this.originalSingleModeState = {
+      rendererInstance: this.chart.rendererInstance,
+      canvas: this.chart.canvas,
+      svgOverlay: this.chart.svgOverlay,
+      scales: { ...this.chart.scales },
+      axes: { ...this.chart.axes },
+      chartArea: { ...this.chart.chartArea },
+      generatedPaths: this.chart.generatedPaths ? [...this.chart.generatedPaths] : null,
+      transformedData: this.chart.transformedData ? [...this.chart.transformedData] : null
+    };
+  }
+
+  /**
+   * Restore single mode state
+   * @private
+   */
+  _restoreSingleModeState() {
+    if (!this.originalSingleModeState) {
+      console.warn('No stored single mode state to restore');
+      return;
+    }
+    
+    // Note: We don't restore the actual instances since they were destroyed
+    // Instead, we'll reinitialize them in _reinitializeSingleChart
+    this.originalSingleModeState = null;
+  }
+
+  /**
+   * Destroy single mode components
+   * @private
+   */
+  _destroySingleModeComponents() {
+    // Destroy renderer
+    if (this.chart.rendererInstance) {
+      this.chart.rendererInstance.destroy();
+      this.chart.rendererInstance = null;
+    }
+    
+    // Remove canvas
+    if (this.chart.canvas && this.chart.canvas.parentNode) {
+      this.chart.canvas.parentNode.removeChild(this.chart.canvas);
+      this.chart.canvas = null;
+    }
+    
+    // Remove SVG overlay
+    if (this.chart.svgOverlay && this.chart.svgOverlay.parentNode) {
+      this.chart.svgOverlay.parentNode.removeChild(this.chart.svgOverlay);
+      this.chart.svgOverlay = null;
+    }
+    
+    // Clear scales and axes
+    this.chart.scales = { x: null, y: null };
+    this.chart.axes = { x: null, y: null };
+    this.chart.generatedPaths = null;
+    this.chart.transformedData = null;
+  }
+
+  /**
+   * Create shared X scale for all panels
+   * @private
+   */
+  _createSharedXScale() {
+    // Calculate combined X domain from all datasets
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    
+    for (const dataset of this.chart.config.data) {
+      if (!dataset.data || !Array.isArray(dataset.data)) continue;
+      
+      for (const point of dataset.data) {
+        if (point.x != null) {
+          const xValue = point.x instanceof Date ? point.x.getTime() : point.x;
+          xMin = Math.min(xMin, xValue);
+          xMax = Math.max(xMax, xValue);
+        }
+      }
+    }
+    
+    if (xMin === Infinity || xMax === -Infinity) {
+      throw new Error('No valid X values found in datasets');
+    }
+    
+    // Create shared X scale
+    const xDomain = [xMin, xMax];
+    const xRange = [60, this.chart.container.offsetWidth - 20]; // Leave space for Y axes
+    
+    const scaleType = this.chart.config.options.xType === 'time' ? 'time' : 'linear';
+    this.sharedXScale = createScale(scaleType, xDomain, xRange);
+    
+    console.log(`Created shared X scale: ${scaleType} with domain [${xMin}, ${xMax}]`);
+  }
+
+  /**
+   * Create shared X axis
+   * @private
+   */
+  _createSharedXAxis() {
+    if (!this.sharedXScale) {
+      throw new Error('Shared X scale must be created before axis');
+    }
+    
+    this.sharedXAxis = new Axis({
+      scale: this.sharedXScale,
+      type: 'x',
+      position: 'bottom',
+      label: this.chart.config.options.xAxisName || 'X Axis',
+      labelPadding: 20,
+      tickCount: Math.min(8, Math.max(4, Math.floor(this.chart.container.offsetWidth / 100))),
+      tickFormat: this.chart.config.options.xType === 'time' ? 'time' : 'number'
+    });
+    
+    console.log('Created shared X axis');
+  }
+
+  /**
+   * Calculate shared axis height
+   * @private
+   */
+  _calculateSharedAxisHeight() {
+    // Standard height for X axis with labels
+    this.sharedAxisHeight = 50;
+  }
+
+  /**
+   * Create panel container
+   * @private
+   */
+  _createPanelContainer() {
+    this.panelContainer = document.createElement('div');
+    this.panelContainer.className = 'chart-panel-container';
+    this.panelContainer.style.cssText = `
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      box-sizing: border-box;
+    `;
+    
+    // Clear existing container content
+    while (this.chart.container.firstChild) {
+      this.chart.container.removeChild(this.chart.container.firstChild);
+    }
+    
+    this.chart.container.appendChild(this.panelContainer);
+    
+    // Create main SVG overlay for shared axis
+    this.panelSvgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.panelSvgOverlay.style.cssText = `
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      overflow: hidden;
+    `;
+    
+    this.panelContainer.appendChild(this.panelSvgOverlay);
+    
+    console.log('Panel container created');
+  }
+
+  /**
+   * Create individual panels with strict height enforcement
+   * @private
+   */
+  async _createPanels() {
+    this.panels = [];
+    
+    const totalPanels = this.chart.config.data.length;
+    
+    // Calculate axis space first
+    this._calculateSharedAxisHeight();
+    
+    // Reserve space with buffer to prevent overflow
+    const containerHeight = this.chart.container.offsetHeight;
+    const reservedSpace = this.sharedAxisHeight + 2; // 2px buffer
+    const availableHeight = containerHeight - reservedSpace;
+    
+    // Ensure available height is positive
+    if (availableHeight <= 0) {
+      throw new Error(`Container too small: ${containerHeight}px height needs ${reservedSpace}px for axis`);
+    }
+    
+    // Calculate panel height and ensure total doesn't exceed container
+    const panelHeight = Math.floor(availableHeight / totalPanels);
+    
+    console.log(`Creating ${totalPanels} panels with ${panelHeight}px height each`);
+    
+    // Create panels
+    for (let i = 0; i < totalPanels; i++) {
+      const dataset = this.chart.config.data[i];
+      
+      const panel = new Panel({
+        dataset: dataset,
+        panelIndex: i,
+        totalPanels: totalPanels,
+        height: panelHeight,
+        container: this.panelContainer,
+        sharedXScale: this.sharedXScale,
+        chartType: this.chart.chartType || 'line',
+        hasSharedXAxis: true,
+        rendererType: this.chart.activeRenderer || 'canvas'
+      });
+      
+      await panel.initialize();
+      this.panels.push(panel);
+    }
+    
+    console.log(`Created ${this.panels.length} panels`);
+  }
+
+  /**
+   * Render all panels and shared axis
+   * @private
+   */
+  async _renderPanels() {
+    if (this.panels.length === 0) {
+      console.warn('No panels to render');
+      return;
+    }
+    
+    // Render each panel
+    for (const panel of this.panels) {
+      await panel.render();
+    }
+    
+    // Render shared X axis at the bottom
+    this._renderSharedXAxis();
+    
+    console.log(`Rendered ${this.panels.length} panels with shared X axis`);
+  }
+
+  /**
+   * Render shared X axis at the bottom
+   * @private
+   */
+  _renderSharedXAxis() {
+    if (!this.sharedXAxis || !this.panelSvgOverlay) return;
+    
+    const containerHeight = this.chart.container.offsetHeight;
+    const axisY = containerHeight - this.sharedAxisHeight;
+    
+    this.sharedXAxis.render(this.panelSvgOverlay, {
+      x: 0,
+      y: axisY
+    });
+    
+    console.log(`Shared X axis rendered at y: ${axisY}`);
+  }
+
+  /**
+   * Destroy all panels and shared axis
+   * @private
+   */
+  _destroyPanels() {
+    // Destroy individual panels
+    for (const panel of this.panels) {
+      panel.destroy();
+    }
+    
+    // Clean up shared axis
+    if (this.sharedXAxis) {
+      this.sharedXAxis = null;
+    }
+    
+    // Clean up SVG overlay
+    if (this.panelSvgOverlay) {
+      if (this.panelSvgOverlay.parentNode) {
+        this.panelSvgOverlay.parentNode.removeChild(this.panelSvgOverlay);
+      }
+      this.panelSvgOverlay = null;
+    }
+    
+    this.panels = [];
+    this.sharedXScale = null;
+    
+    console.log('All panels destroyed');
+  }
+
+  /**
+   * Destroy panel container
+   * @private
+   */
+  _destroyPanelContainer() {
+    if (this.panelContainer && this.panelContainer.parentNode) {
+      this.panelContainer.parentNode.removeChild(this.panelContainer);
+      this.panelContainer = null;
+    }
+  }
+
+  /**
+   * Reinitialize single chart after returning from panel mode
+   * @private
+   */
+  async _reinitializeSingleChart() {
+    // Calculate chart area and dimensions
+    this.chart._calculateDimensions();
+    
+    // Setup rendering layers (canvas, SVG) before initializing renderer
+    this.chart._setupRenderingLayers();
+    
+    // Process data
+    await this.chart._processData();
+    
+    // Create scales
+    this.chart._createScales();
+    
+    // Create axes  
+    this.chart._createAxes();
+    
+    // Create grid
+    this.chart._createGrid();
+    
+    // Initialize renderer (now canvas exists)
+    await this.chart._initializeRenderer();
+    
+    // Full render
+    await this.chart.render();
+    
+    console.log('Single chart reinitialized');
+  }
+
+  /**
+   * Cleanup and destroy panel manager
+   */
+  destroy() {
+    if (this.isPanelMode) {
+      this._destroyPanels();
+      this._destroyPanelContainer();
+    }
+    
+    this.chart = null;
+    this.originalSingleModeState = null;
+    
+    console.log('PanelManager destroyed');
+  }
+}
