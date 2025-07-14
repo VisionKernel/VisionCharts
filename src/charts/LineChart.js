@@ -239,31 +239,30 @@ export class LineChart extends Chart {
    * Set curve type for line interpolation - works in both single and panel modes
    */
   setCurveType(curveType) {
-    const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
-    
-    if (!validCurves.includes(curveType)) {
-      console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
-      return this;
-    }
-    
-    // Update both config and PathGenerator
-    this.config.options.curve = curveType;
-    this.pathGenerator.setCurveType(curveType);
-    
-    // If in panel mode, update all panel renderers
-    if (this.isPanelMode) {
-      for (const panel of this.panels) {
-        if (panel.panelDataRenderer) {
-          panel.panelDataRenderer.setCurveType(curveType);
-        }
-      }
-    }
-    
-    console.log(`LineChart curve type set to: ${curveType}`);
-    
-    this.render(); // Re-render with new curve type
+  const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
+  
+  if (!validCurves.includes(curveType)) {
+    console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
     return this;
   }
+  
+  // ✅ FIXED: Update config only, PathGenerator handles centrally
+  this.config.options.curve = curveType;
+  
+  // ✅ FIXED: Update panel renderers configuration (not PathGenerator instances)
+  if (this.isPanelMode) {
+    for (const panel of this.panels) {
+      if (panel.panelDataRenderer) {
+        panel.panelDataRenderer.setCurveType(curveType);
+      }
+    }
+  }
+  
+  console.log(`LineChart curve type set to: ${curveType}`);
+  
+  this.render(); // Re-render with new curve type
+  return this;
+}
   
   /**
    * Update the fill state of a specific dataset - works in both single and panel modes

@@ -1,97 +1,114 @@
-// import { StudiesRenderer } from './StudiesRenderer.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
 import { EndingLabels } from './EndingLabels.js';
 
 /**
- * PanelDataRenderer - Centralized component for rendering data in panel mode
- * Handles rendering for both LineChart and BarChart in panel contexts
+ * PanelDataRenderer - Simplified to use centralized PathGenerator (FIXED)
+ * 
+ * ✅ REMOVED: this.pathGenerator instance
+ * ✅ USES: PathGenerator static methods instead
+ * ✅ ELIMINATED: Duplicate configuration management
  */
 export default class PanelDataRenderer {
   constructor(config = {}) {
     this.config = {
-      chartType: 'line',              // 'line' or 'bar'
-      rendererType: 'canvas',         // 'canvas' or 'webgl'
-      
-      // Line-specific options
+      chartType: 'line',
+      rendererType: 'canvas',
       strokeWidth: 2,
       showPoints: false,
       pointRadius: 3,
       curve: 'monotone',
-      
-      // Bar-specific options
       barWidth: 0.7,
       barSpacing: 0.1,
-      
       ...config
     };
     
-    // Components
-    this.pathGenerator = null;
-    this.coordinateSystem = null;
-    
-    // Initialize path generator for line charts
-    if (this.config.chartType === 'line') {
-      this.pathGenerator = new PathGenerator({
-        curve: this.config.curve,
-        targetRenderer: this.config.rendererType,
-        enableCoordinateValidation: true
-      });
-    }
+    // ✅ REMOVED: this.pathGenerator = new PathGenerator(...)
+    // ✅ REMOVED: this.coordinateSystem = null
     
     console.log(`PanelDataRenderer created for ${this.config.chartType} charts`);
   }
-  
+
   /**
-   * Render dataset in panel
-   * @param {Object} dataset - Single dataset to render
-   * @param {Object} xScale - Shared X scale
-   * @param {Object} yScale - Panel-specific Y scale  
-   * @param {Object} chartArea - Panel chart area
-   * @param {Object} renderer - Canvas/WebGL renderer instance
+   * ✅ FIXED: Render using centralized PathGenerator
    */
   async render(dataset, xScale, yScale, chartArea, renderer) {
-  if (!dataset || !dataset.data || !Array.isArray(dataset.data)) {
-    console.warn('PanelDataRenderer: Invalid dataset provided');
-    return;
-  }
+    if (!dataset || !dataset.data || !Array.isArray(dataset.data)) {
+      console.warn('PanelDataRenderer: Invalid dataset provided');
+      return;
+    }
   
-  if (!xScale || !yScale || !chartArea || !renderer) {
-    throw new Error('PanelDataRenderer: Missing required rendering parameters');
-  }
+    if (!xScale || !yScale || !chartArea || !renderer) {
+      throw new Error('PanelDataRenderer: Missing required rendering parameters');
+    }
   
-  try {
-    // Transform data to unified coordinates
-    const transformedDataset = this._transformDatasetCoordinates(dataset, xScale, yScale, chartArea);
+    try {
+      // Transform data to unified coordinates
+      const transformedDataset = this._transformDatasetCoordinates(dataset, xScale, yScale, chartArea);
+      
+      // Set viewport for clipping
+      renderer.setViewport(chartArea);
+      
+      // Render based on chart type
+      if (this.config.chartType === 'line') {
+        await this._renderLineDataset(transformedDataset, renderer, chartArea);
+      } else if (this.config.chartType === 'bar') {
+        await this._renderBarDataset(transformedDataset, renderer, chartArea, { 
+          xScale: xScale, 
+          yScale: yScale 
+        });
+      }
+      
+      console.log(`PanelDataRenderer: Rendered ${this.config.chartType} dataset: ${dataset.name}`);
+      
+    } catch (error) {
+      console.error('PanelDataRenderer: Error rendering dataset:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ FIXED: Use centralized PathGenerator instead of instance
+   */
+  async _renderLineDataset(transformedDataset, renderer, chartArea) {
+    // ✅ Use static PathGenerator method instead of instance
+    const pathData = await PathGenerator.generatePath(transformedDataset, {
+      curve: this.config.curve,
+      targetRenderer: this.config.rendererType,
+      enableCoordinateValidation: true
+    });
     
-    // Set viewport for clipping
-    renderer.setViewport(chartArea);
-    
-    // Render based on chart type
-    if (this.config.chartType === 'line') {
-      await this._renderLineDataset(transformedDataset, renderer, chartArea);
-    } else if (this.config.chartType === 'bar') {
-      // ✅ FIX: Pass scales in consistent format
-      await this._renderBarDataset(transformedDataset, renderer, chartArea, { 
-        xScale: xScale, 
-        yScale: yScale 
-      });
+    if (!pathData || !pathData.vertices || pathData.vertices.length === 0) {
+      console.warn('PanelDataRenderer: No path data generated for line dataset');
+      return;
     }
     
-    console.log(`PanelDataRenderer: Rendered ${this.config.chartType} dataset: ${dataset.name}`);
-    
-  } catch (error) {
-    console.error('PanelDataRenderer: Error rendering dataset:', error);
-    throw error;
+    // Render the path
+    await renderer.renderLines([pathData], null, {
+      showPoints: this.config.showPoints,
+      pointRadius: this.config.pointRadius,
+      enableFill: transformedDataset.fill || false,
+      chartArea: chartArea,
+      fillOpacity: 0.3
+    });
   }
-}
-  
-  /**
-   * Transform dataset coordinates using scales
-   * @private
-   */
+
+  async _renderBarDataset(transformedDataset, renderer, chartArea, scales) {
+    const formattedScales = {
+      x: scales.xScale,
+      y: scales.yScale
+    };
+    
+    await renderer.renderBars([transformedDataset], formattedScales, {
+      barWidth: this.config.barWidth,
+      barSpacing: this.config.barSpacing,  
+      showBorder: this.config.showBorder,
+      borderWidth: this.config.borderWidth,
+      chartArea: chartArea
+    });
+  }
+
   _transformDatasetCoordinates(dataset, xScale, yScale, chartArea) {
     const transformedData = dataset.data.map(point => {
-      // Convert data values to screen coordinates
       const screenX = xScale.scale(point.x);
       const screenY = yScale.scale(point.y);
       
@@ -109,91 +126,15 @@ export default class PanelDataRenderer {
       data: transformedData
     };
   }
-  
+
   /**
-   * Render line dataset
-   * @private
-   */
-  async _renderLineDataset(transformedDataset, renderer, chartArea) {
-    // Generate path using PathGenerator
-    const pathData = await this.pathGenerator.generatePath(transformedDataset, {
-      curve: this.config.curve,
-      targetRenderer: this.config.rendererType
-    });
-    
-    if (!pathData || !pathData.vertices || pathData.vertices.length === 0) {
-      console.warn('PanelDataRenderer: No path data generated for line dataset');
-      return;
-    }
-    
-    // Render the path
-    await renderer.renderLines([pathData], null, {
-      showPoints: this.config.showPoints,
-      pointRadius: this.config.pointRadius,
-      enableFill: transformedDataset.fill || false,
-      chartArea: chartArea,
-      fillOpacity: 0.3
-    });
-  }
-  
-  /**
- * Render bar dataset  
- * @private
- */
-async _renderBarDataset(transformedDataset, renderer, chartArea, scales) {
-  // Calculate bar information - but don't pass pixel widths to renderer
-  const barInfo = this._calculateBarInfo(transformedDataset, scales.xScale, chartArea);
-  
-  // ✅ FIX: Format scales object correctly and pass percentage values, not pixel values
-  const formattedScales = {
-    x: scales.xScale,
-    y: scales.yScale
-  };
-  
-  // ✅ FIX: Pass configuration percentages, not calculated pixel widths
-  await renderer.renderBars([transformedDataset], formattedScales, {
-    barWidth: this.config.barWidth,        // ✅ Pass percentage (0.7), not pixels
-    barSpacing: this.config.barSpacing,    // ✅ Pass percentage (0.1), not pixels  
-    showBorder: this.config.showBorder,
-    borderWidth: this.config.borderWidth,
-    chartArea: chartArea
-  });
-}
-  
-  /**
- * Calculate bar dimensions and spacing - simplified for renderer compatibility
- * @private
- */
-_calculateBarInfo(dataset, xScale, chartArea) {
-  // This method can be simplified or removed since CanvasRenderer 
-  // calculates bar dimensions internally based on percentages
-  return {
-    dataPoints: dataset.data.length,
-    chartArea: chartArea
-  };
-}
-  
-  /**
-   * Update configuration
+   * ✅ SIMPLIFIED: Configuration methods (no more PathGenerator management)
    */
   updateConfig(newConfig) {
     Object.assign(this.config, newConfig);
-    
-    // Update path generator if configuration changed
-    if (this.pathGenerator && newConfig.curve) {
-      this.pathGenerator.setCurveType(newConfig.curve);
-    }
-    
-    if (this.pathGenerator && newConfig.rendererType) {
-      this.pathGenerator.setTargetRenderer(newConfig.rendererType);
-    }
-    
     console.log('PanelDataRenderer: Configuration updated');
   }
-  
-  /**
-   * Set chart type (line or bar)
-   */
+
   setChartType(chartType) {
     if (!['line', 'bar'].includes(chartType)) {
       console.warn(`Invalid chart type: ${chartType}`);
@@ -201,55 +142,25 @@ _calculateBarInfo(dataset, xScale, chartArea) {
     }
     
     this.config.chartType = chartType;
-    
-    // Create/destroy path generator based on chart type
-    if (chartType === 'line' && !this.pathGenerator) {
-      this.pathGenerator = new PathGenerator({
-        curve: this.config.curve,
-        targetRenderer: this.config.rendererType,
-        enableCoordinateValidation: true
-      });
-    } else if (chartType === 'bar') {
-      this.pathGenerator = null; // Bars don't use path generator
-    }
-    
     console.log(`PanelDataRenderer: Chart type set to ${chartType}`);
   }
-  
-  /**
-   * Set curve type for line charts
-   */
+
+  // ✅ SIMPLIFIED: These methods now only update local config
+  // PathGenerator configuration is handled centrally
   setCurveType(curveType) {
     this.config.curve = curveType;
-    
-    if (this.pathGenerator) {
-      this.pathGenerator.setCurveType(curveType);
-    }
-    
     console.log(`PanelDataRenderer: Curve type set to ${curveType}`);
   }
-  
-  /**
-   * Set renderer type
-   */
+
   setRendererType(rendererType) {
     this.config.rendererType = rendererType;
-    
-    if (this.pathGenerator) {
-      this.pathGenerator.setTargetRenderer(rendererType);
-    }
-    
     console.log(`PanelDataRenderer: Renderer type set to ${rendererType}`);
   }
-  
-  /**
-   * Get renderer information
-   */
+
   getInfo() {
     return {
       chartType: this.config.chartType,
       rendererType: this.config.rendererType,
-      hasPathGenerator: !!this.pathGenerator,
       config: this.config
     };
   }

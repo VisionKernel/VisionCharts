@@ -92,7 +92,7 @@ export class Chart {
     // Performance monitoring
     this.dataPointCount = 0;
     this.performanceThresholds = {
-      canvas: 50000, // Switch to WebGL after 50K points
+      canvas: 50, // Switch to WebGL after 50K points
       webgl: 100000  // WebGL upper limit
     };
     
@@ -857,35 +857,37 @@ _getYValue(point) {
    * UPDATED: Preprocess data for rendering using unified coordinate system
    */
   async _preprocessDataForRenderer() {
-    if (!Array.isArray(this.config.data) || !this.coordinateSystem) {
-      return;
-    }
-
-    try {
-      console.log('Transforming coordinates with UNIFIED CoordinateSystem...');
-      
-      // Step 1: Use CoordinateSystem to transform data to UNIFIED pixel coordinates
-      this.config.data = await this.coordinateSystem.transformDatasets(this.config.data, {
-        strictValidation: false
-      });
-
-      console.log('Data transformed to UNIFIED coordinates for', this.activeRenderer, 'renderer');
-
-      // Step 2: Use PathGenerator to create standardized rendering paths
-      console.log('Generating standardized paths with PathGenerator...');
-      
-      this.generatedPaths = await this.pathGenerator.generatePaths(this.config.data, {
-        curve: this.config.options.curve || 'linear',
-        strokeWidth: this.config.options.strokeWidth || 2
-      });
-
-      console.log('Standardized paths generated from UNIFIED coordinates for', this.activeRenderer, 'renderer');
-      
-    } catch (error) {
-      console.error('Error in preprocessing data for renderer:', error);
-      throw error;
-    }
+  if (!Array.isArray(this.config.data) || !this.coordinateSystem) {
+    return;
   }
+
+  try {
+    console.log('Transforming coordinates with UNIFIED CoordinateSystem...');
+    
+    // Step 1: Use CoordinateSystem to transform data to UNIFIED pixel coordinates
+    this.config.data = await this.coordinateSystem.transformDatasets(this.config.data, {
+      strictValidation: false
+    });
+
+    console.log('Data transformed to UNIFIED coordinates for', this.activeRenderer, 'renderer');
+
+    // ✅ FIXED: Use centralized PathGenerator instead of instance
+    console.log('Generating standardized paths with centralized PathGenerator...');
+    
+    this.generatedPaths = await PathGenerator.generatePaths(this.config.data, {
+      curve: this.config.options.curve || 'linear',
+      strokeWidth: this.config.options.strokeWidth || 2,
+      targetRenderer: this.activeRenderer
+    });
+
+    console.log('Standardized paths generated from UNIFIED coordinates for', this.activeRenderer, 'renderer');
+    
+  } catch (error) {
+    console.error('Error in preprocessing data for renderer:', error);
+    throw error;
+  }
+}
+
   
   /**
  * FIXED: Render chart - correct pipeline order
