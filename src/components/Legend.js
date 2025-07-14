@@ -54,40 +54,34 @@ export class Legend {
    * @param {Object} options - Additional options
    */
   render(svgContainer, chartArea, options = {}) {
-    if (!svgContainer || !chartArea) {
-      console.warn('Legend: SVG container and chart area required for rendering');
-      return;
-    }
-
-    // Remove existing legend
-    this._remove();
-
-    // Don't render if no datasets
-    if (!this.datasets || this.datasets.length === 0) {
-      return;
-    }
-
-    // Create legend group
-    this.element = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    this.element.setAttribute('class', 'chart-legend');
-
-    // Calculate initial legend dimensions and position
-    const legendData = this._calculateLegendLayout(chartArea);
-    
-    // Create legend items first
-    this._createLegendItems(legendData);
-    
-    // Measure actual dimensions of the created items
-    const actualDimensions = this._measureLegendItems();
-    
-    // Create background with actual dimensions
-    this._createBackground(legendData, actualDimensions);
-
-    // Add to SVG
-    svgContainer.appendChild(this.element);
-    
-    console.log(`Legend rendered with ${this.datasets.length} datasets`);
+  if (!svgContainer || !chartArea) {
+    console.warn('Legend: SVG container and chart area required for rendering');
+    return;
   }
+
+  // Remove existing legend
+  this._remove();
+
+  // Don't render if no datasets
+  if (!this.datasets || this.datasets.length === 0) {
+    return;
+  }
+
+  // Create legend group
+  this.element = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  this.element.setAttribute('class', 'chart-legend');
+
+  // Calculate initial legend dimensions and position
+  const legendData = this._calculateLegendLayout(chartArea);
+  
+  // Create legend items only (skip background creation)
+  this._createLegendItems(legendData);
+
+  // Add to SVG
+  svgContainer.appendChild(this.element);
+  
+  console.log(`Legend rendered with ${this.datasets.length} datasets (no background)`);
+}
 
   /**
    * Measure the actual dimensions of all legend items
@@ -125,15 +119,20 @@ export class Legend {
    */
   _calculateLegendLayout(chartArea) {
     const itemWidth = this._estimateItemWidth();
+    
+    // Calculate total width needed for all items
+    const totalItemsWidth = this.datasets.length * itemWidth + (this.datasets.length - 1) * this.config.itemSpacing;
+    
+    // ✅ FIXED: Better width calculation that doesn't exceed chart area
     const totalWidth = Math.min(
-      this.datasets.length * itemWidth + (this.datasets.length - 1) * this.config.itemSpacing,
-      chartArea.width - 40 // Leave margin on sides
+      totalItemsWidth,
+      chartArea.width - 40 // Leave 20px margin on each side
     );
     
     // Center horizontally in chart area
     const x = chartArea.x + (chartArea.width - totalWidth) / 2;
     
-    // Position under title with margin, now 15px lower
+    // Position below title, above chart
     const y = chartArea.y - this.config.marginBottom + 15;
     
     return {
@@ -145,14 +144,27 @@ export class Legend {
     };
   }
 
+
   /**
    * Estimate width needed for each legend item
    * @private
    */
   _estimateItemWidth() {
-    // Rough estimation: indicator + spacing + average text width
-    const avgTextWidth = 60; // Rough estimate for "Dataset X"
-    return this.config.indicatorSize + this.config.indicatorSpacing + avgTextWidth;
+    if (!this.datasets || this.datasets.length === 0) {
+      return 80; // Default fallback
+    }
+    
+    // Calculate average text width more accurately
+    const avgNameLength = this.datasets.reduce((sum, dataset) => {
+      const name = dataset.name || dataset.id || 'Dataset';
+      return sum + name.length;
+    }, 0) / this.datasets.length;
+    
+    // More accurate estimation: ~0.6em per character for Arial
+    const charWidth = this.config.fontSize * 0.6;
+    const textWidth = avgNameLength * charWidth;
+    
+    return this.config.indicatorSize + this.config.indicatorSpacing + textWidth;
   }
 
   /**
@@ -199,25 +211,33 @@ export class Legend {
   }
 
   /**
-   * Create legend background
-   * @private
-   */
-  _createBackground(legendData, actualDimensions) {
-    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    
-    // Position and size based on actual dimensions plus padding
-    background.setAttribute('x', actualDimensions.x - this.config.padding);
-    background.setAttribute('y', actualDimensions.y - this.config.padding);
-    background.setAttribute('width', actualDimensions.width + this.config.padding * 2);
-    background.setAttribute('height', actualDimensions.height + this.config.padding * 2);
-    background.setAttribute('fill', this.config.backgroundColor);
-    background.setAttribute('stroke', this.config.border.split(' ')[2]); // Extract color
-    background.setAttribute('stroke-width', '1');
-    background.setAttribute('rx', this.config.borderRadius);
-    
-    // Insert at the beginning so it's behind the text
-    this.element.insertBefore(background, this.element.firstChild);
-  }
+ * ✅ FIXED: Create legend background with proper positioning
+ * @private
+ */
+_createBackground(legendData, actualDimensions) {
+  const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  
+  // ✅ CRITICAL FIX: Ensure coordinates are never negative
+  const bgX = Math.max(0, actualDimensions.x - this.config.padding);
+  const bgY = Math.max(0, actualDimensions.y - this.config.padding);
+  const bgWidth = actualDimensions.width + this.config.padding * 2;
+  const bgHeight = actualDimensions.height + this.config.padding * 2;
+  
+  // Position and size based on actual dimensions plus padding
+  background.setAttribute('x', bgX);
+  background.setAttribute('y', bgY);
+  background.setAttribute('width', bgWidth);
+  background.setAttribute('height', bgHeight);
+  background.setAttribute('fill', this.config.backgroundColor);
+  background.setAttribute('stroke', this.config.border.split(' ')[2] || '#e0e0e0'); // Extract color with fallback
+  background.setAttribute('stroke-width', '1');
+  background.setAttribute('rx', this.config.borderRadius);
+  
+  // Insert at the beginning so it's behind the text
+  this.element.insertBefore(background, this.element.firstChild);
+  
+  console.log(`Legend background positioned: x=${bgX}, y=${bgY}, width=${bgWidth}, height=${bgHeight}`);
+}
 
   /**
    * Remove legend from DOM
