@@ -127,7 +127,7 @@ export class Chart {
 
     this.sharedXAxis = null;
     this.panelSvgOverlay = null;
-    this.sharedAxisHeight = 60;
+    this.sharedAxisHeight = 0;
     
     // Legend component
     this.legend = new Legend({
@@ -290,6 +290,27 @@ async _initialize() {
       height: this.config.options.height - margin.top - margin.bottom
     };
   }
+
+  /**
+ * Calculate required space for shared X axis more precisely
+ * @private
+ */
+_calculateSharedAxisHeight() {
+  if (!this.sharedXAxis) {
+    this.sharedAxisHeight = 0;
+    return;
+  }
+  
+  const axisOptions = this.sharedXAxis.options;
+  const fontSize = axisOptions.fontSize || 11;
+  const tickPadding = axisOptions.tickPadding || 8;
+  const labelPadding = axisOptions.label ? 18 : 0; // Reduced from 20 to 18
+  
+  // ✅ More conservative calculation to ensure we don't exceed container
+  this.sharedAxisHeight = fontSize + tickPadding + labelPadding + 10; // Reduced margin from 15 to 10
+  
+  console.log(`Calculated shared axis height: ${this.sharedAxisHeight}px (more conservative)`);
+}
   
   /**
    * Set up the hybrid rendering layers
@@ -939,7 +960,7 @@ async _switchToSingleMode() {
 }
 
 /**
- * Switch to panel mode - destroy single chart and create panels with shared axis
+ * Switch to panel mode with size validation
  * @private
  */
 async _switchToPanelMode() {
@@ -948,6 +969,11 @@ async _switchToPanelMode() {
   // Validate we have multiple datasets
   if (!Array.isArray(this.config.data) || this.config.data.length <= 1) {
     throw new Error('Panel mode requires multiple datasets');
+  }
+  
+  // ✅ Validate container size before proceeding
+  if (!this._validateContainerForPanelMode()) {
+    console.warn('Container size validation failed, but proceeding with panel mode');
   }
   
   console.log(`Creating panel mode with ${this.config.data.length} panels and shared X axis`);
@@ -964,19 +990,19 @@ async _switchToPanelMode() {
   // Create shared X scale
   this._createSharedXScale();
   
-  // Create shared X axis
+  // Create shared X axis (now with limited tick count)
   this._createSharedXAxis();
   
-  // Create panel container (now includes SVG overlay)
+  // Create panel container (now with overflow:hidden)
   this._createPanelContainer();
   
-  // Create individual panels
+  // Create individual panels (now with strict height control)
   await this._createPanels();
   
-  // Render all panels and shared axis
+  // Render all panels and shared axis (now with height clamping)
   await this._renderPanels();
   
-  console.log('Panel mode with shared X axis activated successfully');
+  console.log('✅ Panel mode with controlled sizing activated successfully');
 }
   
   /**
@@ -1090,98 +1116,139 @@ async _switchToPanelMode() {
   }
 
   /**
-   * Create shared X axis for panel mode
-   * @private
-   */
-  _createSharedXAxis() {
-    if (!this.sharedXScale) {
-      console.error('Shared X scale must be created before shared X axis');
-      return;
+ * Create shared X axis for panel mode with proper tick count limiting
+ * @private
+ */
+_createSharedXAxis() {
+  if (!this.sharedXScale) {
+    console.error('Shared X scale must be created before shared X axis');
+    return;
+  }
+  
+  // ✅ Calculate optimal tick count based on container width (similar to single mode fix)
+  const containerWidth = this.container.offsetWidth;
+  const minTickSpacing = 120; // Minimum 120px between ticks to prevent crowding
+  const maxTicks = Math.max(3, Math.floor(containerWidth / minTickSpacing));
+  const optimalTickCount = Math.min(8, maxTicks); // Cap at 8 ticks maximum
+  
+  console.log(`Shared axis: container width ${containerWidth}px, optimal ticks: ${optimalTickCount}`);
+  
+  this.sharedXAxis = Axis.createSharedXAxis({
+    scale: this.sharedXScale,
+    options: {
+      label: this.config.options.xAxisName || 'Time',
+      tickCount: optimalTickCount,
+      fontSize: 11,
+      tickPadding: 8,
+      showAxisLine: true,
+      showTicks: true,
+      showTickLabels: true,
+      color: '#666'
     }
+  });
+  
+  console.log(`Shared X axis created with ${optimalTickCount} ticks (was using 'auto')`);
+}
+  
+  /**
+ * Create panel container with proper sizing to prevent scrollbars
+ * @private
+ */
+_createPanelContainer() {
+  this.panelContainer = document.createElement('div');
+  this.panelContainer.className = 'chart-panels-container';
+  this.panelContainer.style.cssText = `
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+  `;
+  
+  // Clear existing container content
+  while (this.container.firstChild) {
+    this.container.removeChild(this.container.firstChild);
+  }
+  
+  this.container.appendChild(this.panelContainer);
+  
+  // Create main SVG overlay for shared axis
+  this.panelSvgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  this.panelSvgOverlay.style.cssText = `
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    overflow: hidden;
+  `;
+  
+  this.panelContainer.appendChild(this.panelSvgOverlay);
+}
+  
+ /**
+ * Create individual panels with strict height enforcement
+ * @private
+ */
+async _createPanels() {
+  this.panels = [];
+  
+  const totalPanels = this.config.data.length;
+  
+  // ✅ Calculate axis space FIRST
+  this._calculateSharedAxisHeight();
+  
+  // ✅ Reserve space with buffer to prevent overflow
+  const containerHeight = this.container.offsetHeight;
+  const reservedSpace = this.sharedAxisHeight + 2; // 2px buffer
+  const availableHeight = containerHeight - reservedSpace;
+  
+  // ✅ Ensure available height is positive
+  if (availableHeight <= 0) {
+    throw new Error(`Container too small: ${containerHeight}px height needs ${reservedSpace}px for axis`);
+  }
+  
+  // ✅ Calculate panel height and ensure total doesn't exceed container
+  const panelHeight = Math.floor(availableHeight / totalPanels);
+  const totalPanelsHeight = panelHeight * totalPanels;
+  const totalHeight = totalPanelsHeight + this.sharedAxisHeight;
+  
+  // ✅ Verification check
+  if (totalHeight > containerHeight) {
+    console.warn(`Height overflow detected: ${totalHeight}px > ${containerHeight}px, adjusting...`);
+    // Reduce panel height slightly to ensure fit
+    const adjustedPanelHeight = Math.floor((containerHeight - this.sharedAxisHeight - 1) / totalPanels);
+    console.log(`Adjusted panel height from ${panelHeight}px to ${adjustedPanelHeight}px`);
+  }
+  
+  const finalPanelHeight = Math.min(panelHeight, Math.floor((containerHeight - this.sharedAxisHeight - 1) / totalPanels));
+  
+  console.log(`Creating ${totalPanels} panels: ${finalPanelHeight}px each, axis: ${this.sharedAxisHeight}px, total: ${(finalPanelHeight * totalPanels) + this.sharedAxisHeight}px, container: ${containerHeight}px`);
+  
+  for (let i = 0; i < this.config.data.length; i++) {
+    const dataset = this.config.data[i];
     
-    this.sharedXAxis = Axis.createSharedXAxis({
-      scale: this.sharedXScale,
-      options: {
-        label: this.config.options.xAxisName || 'Time',
-        tickCount: 'auto',
-        fontSize: 11,
-        tickPadding: 8,
-        showAxisLine: true,
-        showTicks: true,
-        showTickLabels: true,
-        color: '#666'
-      }
+    const panel = new Panel({
+      dataset: dataset,
+      container: this.panelContainer,
+      panelIndex: i,
+      totalPanels: totalPanels,
+      sharedXScale: this.sharedXScale,
+      height: finalPanelHeight, // ✅ Use strictly calculated height
+      chartType: this.constructor.name.toLowerCase().replace('chart', ''),
+      rendererType: this.activeRenderer || 'canvas',
+      hasSharedXAxis: true
     });
     
-    console.log('Shared X axis created for panel mode');
+    await panel.initialize();
+    this.panels.push(panel);
   }
   
-  /**
-   * Create panel container with space reserved for shared X axis
-   * @private
-   */
-  _createPanelContainer() {
-    this.panelContainer = document.createElement('div');
-    this.panelContainer.className = 'chart-panels-container';
-    this.panelContainer.style.width = '100%';
-    this.panelContainer.style.height = '100%';
-    this.panelContainer.style.overflow = 'auto';
-    this.panelContainer.style.position = 'relative';
-    
-    // Clear existing container content
-    while (this.container.firstChild) {
-      this.container.removeChild(this.container.firstChild);
-    }
-    
-    this.container.appendChild(this.panelContainer);
-    
-    // Create main SVG overlay for shared axis
-    this.panelSvgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    this.panelSvgOverlay.style.position = 'absolute';
-    this.panelSvgOverlay.style.left = '0';
-    this.panelSvgOverlay.style.top = '0';
-    this.panelSvgOverlay.style.width = '100%';
-    this.panelSvgOverlay.style.height = '100%';
-    this.panelSvgOverlay.style.pointerEvents = 'none';
-    this.panelSvgOverlay.style.zIndex = '10';
-    
-    this.panelContainer.appendChild(this.panelSvgOverlay);
-  }
-  
-  /**
-   * Create individual panels for each dataset with space for shared axis
-   * @private
-   */
-  async _createPanels() {
-    this.panels = [];
-    
-    const totalPanels = this.config.data.length;
-    // Reserve space for shared X axis
-    const availableHeight = this.container.offsetHeight - this.sharedAxisHeight;
-    const panelHeight = Math.max(120, Math.floor(availableHeight / totalPanels));
-    
-    for (let i = 0; i < this.config.data.length; i++) {
-      const dataset = this.config.data[i];
-      
-      const panel = new Panel({
-        dataset: dataset,
-        container: this.panelContainer,
-        panelIndex: i,
-        totalPanels: totalPanels,
-        sharedXScale: this.sharedXScale,
-        height: panelHeight,
-        chartType: this.constructor.name.toLowerCase().replace('chart', ''), // 'line' or 'bar'
-        rendererType: this.activeRenderer || 'canvas',
-        // New: indicate this is for panel mode with shared axis
-        hasSharedXAxis: true
-      });
-      
-      await panel.initialize();
-      this.panels.push(panel);
-    }
-    
-    console.log(`Created ${this.panels.length} panels with shared axis space`);
-  }
+  console.log(`✅ Created ${this.panels.length} panels - total height strictly controlled`);
+}
+
   
   /**
    * Render all panels and shared X axis
@@ -1199,30 +1266,70 @@ async _switchToPanelMode() {
     console.log('All panels and shared X axis rendered');
   }
 
-  /**
-   * Render shared X axis at bottom of all panels
-   * @private
-   */
-  _renderSharedXAxis() {
-    if (!this.sharedXAxis || !this.panelSvgOverlay) {
-      console.warn('Shared X axis or SVG overlay not available');
-      return;
-    }
-    
-    // Calculate position at bottom of all panels
-    const totalPanelsHeight = this.panels.length * this.panels[0].config.height;
-    const axisY = totalPanelsHeight + 10; // 10px padding from last panel
-    
-    const axisPosition = {
-      x: 0,
-      y: axisY
-    };
-    
-    // Render the shared axis
-    this.sharedXAxis.renderSharedXAxis(this.panelSvgOverlay, axisPosition, this.panels);
-    
-    console.log('Shared X axis rendered at position:', axisPosition);
+/**
+ * Render shared X axis with strict height control to prevent scrollbars
+ * @private
+ */
+_renderSharedXAxis() {
+  if (!this.sharedXAxis || !this.panelSvgOverlay) {
+    console.warn('Shared X axis or SVG overlay not available');
+    return;
   }
+  
+  // ✅ Calculate position based on actual panel heights
+  const totalPanelsHeight = this.panels.reduce((sum, panel) => sum + panel.config.height, 0);
+  const axisY = totalPanelsHeight + 2; // Minimal 2px padding
+  
+  // ✅ Strict container height enforcement
+  const containerHeight = this.container.offsetHeight;
+  const axisBottomPosition = axisY + this.sharedAxisHeight;
+  
+  // ✅ CRITICAL: Never allow SVG to exceed container height
+  const maxAllowedSvgHeight = containerHeight;
+  
+  if (axisBottomPosition > containerHeight) {
+    console.warn(`Axis would overflow container: ${axisBottomPosition}px > ${containerHeight}px`);
+    console.warn(`Clamping SVG height to container height: ${containerHeight}px`);
+  }
+  
+  const axisPosition = {
+    x: 0,
+    y: Math.min(axisY, containerHeight - this.sharedAxisHeight) // Ensure axis fits
+  };
+  
+  // ✅ STRICT: SVG overlay height never exceeds container
+  this.panelSvgOverlay.style.height = `${maxAllowedSvgHeight}px`;
+  
+  console.log(`✅ Rendering shared X axis at y=${axisPosition.y}px (SVG height: ${maxAllowedSvgHeight}px, container: ${containerHeight}px)`);
+  
+  // Render the shared axis
+  this.sharedXAxis.renderSharedXAxis(this.panelSvgOverlay, axisPosition, this.panels);
+}
+
+/**
+ * Validate container size for panel mode (call this in togglePanelMode)
+ * @private
+ */
+_validateContainerForPanelMode() {
+  const containerHeight = this.container.offsetHeight;
+  const containerWidth = this.container.offsetWidth;
+  const panelCount = this.config.data.length;
+  
+  const minAxisHeight = 40; // Minimum space needed for axis
+  const minPanelHeight = 20; // Absolute minimum per panel
+  const minRequiredHeight = (panelCount * minPanelHeight) + minAxisHeight;
+  
+  if (containerHeight < minRequiredHeight) {
+    console.warn(`Container height ${containerHeight}px is too small for ${panelCount} panels. Minimum needed: ${minRequiredHeight}px`);
+    return false;
+  }
+  
+  if (containerWidth < 300) {
+    console.warn(`Container width ${containerWidth}px may be too small for readable axis labels`);
+  }
+  
+  return true;
+}
   
   /**
    * Destroy all panels and shared axis

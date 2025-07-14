@@ -24,11 +24,11 @@ export class Panel {
       hasSharedXAxis: false,            // Whether to use shared X-axis
 
       // Panel-specific options
-      height: 200,                      // Panel height in pixels
+      height: 200,
       padding: { 
-        top: 10, 
-        bottom: config.hasSharedXAxis ? 5 : 10,  // Reduce bottom padding when shared axis present
-        left: 60, 
+        top: Math.max(5, Math.floor(config.height * 0.05) || 8),  // 5% of height, min 5px
+        bottom: config.hasSharedXAxis ? 2 : Math.max(5, Math.floor(config.height * 0.05) || 8),
+        left: 60,  // Keep space for Y axis labels
         right: 20 
       },
       showAxisLabels: true,
@@ -39,6 +39,11 @@ export class Panel {
       
       ...config
     };
+
+    if (config.height) {
+      this.config.padding.top = Math.max(5, Math.floor(config.height * 0.05));
+      this.config.padding.bottom = config.hasSharedXAxis ? 2 : Math.max(5, Math.floor(config.height * 0.05));
+    }
     
     // Panel state
     this.isInitialized = false;
@@ -187,17 +192,20 @@ export class Panel {
   }
   
   /**
-   * Create panel container element
+   * Create panel container with dynamic sizing
    * @private
    */
   _createPanelContainer() {
     this.panelContainer = document.createElement('div');
-    this.panelContainer.className = 'chart-panel';
-    this.panelContainer.style.position = 'relative';
-    this.panelContainer.style.width = '100%';
-    this.panelContainer.style.height = `${this.config.height}px`;
-    this.panelContainer.style.marginBottom = '10px';
-    this.panelContainer.style.borderBottom = this.config.panelIndex < this.config.totalPanels - 1 ? '1px solid #eee' : 'none';
+    this.panelContainer.className = 'chart-panel-container';
+    this.panelContainer.style.cssText = `
+      position: relative;
+      width: 100%;
+      height: ${this.config.height}px;
+      overflow: hidden;
+      border-bottom: ${this.config.panelIndex < this.config.totalPanels - 1 ? '1px solid #eee' : 'none'};
+      box-sizing: border-box;
+    `;
     
     this.config.container.appendChild(this.panelContainer);
   }
@@ -258,22 +266,33 @@ export class Panel {
 }
   
   /**
-   * Create Y axis for this panel
+   * Create Y axis for this panel with height-aware tick count
    * @private
    */
   _createYAxis() {
+    // ✅ Calculate optimal tick count based on panel height
+    const availableHeight = this.panelChartArea.height;
+    const minTickSpacing = 20; // Minimum pixels between ticks
+    const maxTicks = Math.max(2, Math.floor(availableHeight / minTickSpacing));
+    const optimalTicks = Math.min(5, maxTicks); // Cap at 5 ticks max
+    
     this.yAxis = new Axis({
       orientation: 'y',
       scale: this.yScale,
       options: {
         label: this.config.dataset.name || '',
-        fontSize: 11,
+        fontSize: Math.max(9, Math.min(11, this.config.height / 20)), // Scale font with panel height
         color: '#666',
         showAxisLine: true,
         showTicks: true,
-        showTickLabels: true
+        showTickLabels: true,
+        tickCount: optimalTicks, // ✅ Dynamic tick count
+        abbreviateLabels: true,
+        tickPadding: 4 // Reduce padding for small panels
       }
     });
+    
+    console.log(`Panel Y axis created with ${optimalTicks} ticks for ${availableHeight}px height`);
   }
   
   /**
