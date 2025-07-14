@@ -484,24 +484,48 @@ async refreshPanelMode() {
     
     // Create panels
     for (let i = 0; i < totalPanels; i++) {
-      const dataset = this.chart.config.data[i];
-      
-      const panel = new Panel({
-        dataset: dataset,
-        panelIndex: i,
-        totalPanels: totalPanels,
-        height: panelHeight,
-        container: this.panelContainer,
-        sharedXScale: this.sharedXScale,
-        chartType: this.chart.chartType || 'line',
-        hasSharedXAxis: true,
-        rendererType: this.chart.activeRenderer || 'canvas',
-        yAxisName: this.chart.config.options.yAxisName || 'Value'
-      });
-      
-      await panel.initialize();
-      this.panels.push(panel);
-    }
+  const dataset = this.chart.config.data[i];
+  
+  console.log(`Creating panel ${i} with grid options:`, {
+    showGrid: this.chart.config.options.showGrid,
+    showXGrid: this.chart.config.options.showXGrid,
+    showYGrid: this.chart.config.options.showYGrid,
+    gridColor: this.chart.config.options.gridColor,
+    gridOpacity: this.chart.config.options.gridOpacity
+  });
+  
+  const panel = new Panel({
+    dataset: dataset,
+    panelIndex: i,
+    totalPanels: totalPanels,
+    height: panelHeight,
+    container: this.panelContainer,
+    sharedXScale: this.sharedXScale,
+    chartType: this.chart.chartType || 'line',
+    hasSharedXAxis: true,
+    rendererType: this.chart.activeRenderer || 'canvas',
+    yAxisName: this.chart.config.options.yAxisName || 'Value',
+    
+    // ← ADD THESE GRID OPTIONS:
+    showGrid: this.chart.config.options.showGrid,
+    showXGrid: this.chart.config.options.showXGrid,
+    showYGrid: this.chart.config.options.showYGrid,
+    gridColor: this.chart.config.options.gridColor,
+    gridOpacity: this.chart.config.options.gridOpacity,
+    gridOptions: {
+  xGridColor: '#f0f0f0',      // Light gray
+  yGridColor: '#f0f0f0',      // Light gray  
+  xGridOpacity: 0.4,          // More transparent
+  yGridOpacity: 0.4,          // More transparent
+  xGridWidth: 0.5,            // Thinner
+  yGridWidth: 0.5,            // Thinner
+  skipEdgeLines: true
+}
+  });
+  
+  await panel.initialize();
+  this.panels.push(panel);
+}
     
     console.log(`✅ Created ${this.panels.length} panels with percentage-based allocation`);
   }

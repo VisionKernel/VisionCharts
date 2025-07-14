@@ -1293,12 +1293,19 @@ _debugDataStructure() {
    */
   toggleGrid(show = null) {
     this.config.options.showGrid = show !== null ? show : !this.config.options.showGrid;
+    
     if (this.grid) {
       this.grid.updateOptions({
         showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
         showYGrid: this.config.options.showYGrid && this.config.options.showGrid
       });
     }
+    
+    // ← ADD: Update panel grids if in panel mode
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
     this.render();
     return this.config.options.showGrid;
   }
@@ -1308,33 +1315,53 @@ _debugDataStructure() {
    */
   toggleXGrid(show = null) {
     this.config.options.showXGrid = show !== null ? show : !this.config.options.showXGrid;
+    
     if (this.grid) {
       this.grid.toggleXGrid(this.config.options.showXGrid && this.config.options.showGrid);
     }
+    
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
     this.render();
     return this.config.options.showXGrid;
   }
+
   
   /**
    * Toggle Y grid lines
    */
   toggleYGrid(show = null) {
     this.config.options.showYGrid = show !== null ? show : !this.config.options.showYGrid;
+    
     if (this.grid) {
       this.grid.toggleYGrid(this.config.options.showYGrid && this.config.options.showGrid);
     }
+    
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
     this.render();
     return this.config.options.showYGrid;
   }
+
   
   /**
    * Set grid color
    */
   setGridColor(color) {
     this.config.options.gridColor = color;
+    
     if (this.grid) {
       this.grid.setGridColor(color);
     }
+
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
     this.render();
     return this;
   }
@@ -1344,11 +1371,53 @@ _debugDataStructure() {
    */
   setGridOpacity(opacity) {
     this.config.options.gridOpacity = opacity;
+    
     if (this.grid) {
       this.grid.setGridOpacity(opacity);
     }
+    
+    // ← ADD: Update panel grids if in panel mode
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
     this.render();
     return this;
+  }
+
+  /**
+   * Update all panel grids with current grid options
+   * @private
+   */
+  _updatePanelGrids() {
+    if (!this.panelManager || !this.panelManager.panels) return;
+    
+    const gridOptions = {
+      showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
+      showYGrid: this.config.options.showYGrid && this.config.options.showGrid,
+      xGridColor: this.config.options.gridColor || '#e0e0e0',
+      yGridColor: this.config.options.gridColor || '#e0e0e0',
+      xGridOpacity: this.config.options.gridOpacity || 0.5,
+      yGridOpacity: this.config.options.gridOpacity || 0.5
+    };
+    
+    // Update each panel's grid
+    for (const panel of this.panelManager.panels) {
+      if (panel.grid) {
+        panel.grid.updateOptions(gridOptions);
+        
+        // Update panel config for future renders
+        Object.assign(panel.config, {
+          showGrid: this.config.options.showGrid,
+          showXGrid: this.config.options.showXGrid,
+          showYGrid: this.config.options.showYGrid,
+          gridColor: this.config.options.gridColor,
+          gridOpacity: this.config.options.gridOpacity
+        });
+      }
+    }
+    
+    console.log('Updated grid options for all panels');
   }
 
   /**
