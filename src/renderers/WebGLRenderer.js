@@ -1,9 +1,13 @@
 import AbstractRenderer from './AbstractRenderer.js';
+import { browserSupport } from '../utils/BrowserSupport.js';
+
 /**
  * WebGLRenderer - High-performance WebGL implementation (Updated for Unified Coordinates)
  * 
  * Optimized for large datasets (50K+ points) with GPU acceleration.
  * NOW WORKS WITH UNIFIED COORDINATE SYSTEM - no more coordinate system inconsistencies!
+ * 
+ * UPDATED: Uses centralized BrowserSupport utility for all browser capability detection
  */
 export default class WebGLRenderer extends AbstractRenderer {
   constructor(config = {}) {
@@ -22,16 +26,16 @@ export default class WebGLRenderer extends AbstractRenderer {
     this.currentProgram = null;
     this.viewport = { x: 0, y: 0, width: 800, height: 600 };
     
-    // UPDATED: Device pixel ratio handling to match Canvas
-    this.devicePixelRatio = window.devicePixelRatio || 1;
+    // UPDATED: Use centralized browser support for device pixel ratio
+    this.devicePixelRatio = browserSupport.getDevicePixelRatio();
     
-    // UPDATED: Canvas and logical dimensions 
+    // Canvas and logical dimensions 
     this.logicalWidth = 800;
     this.logicalHeight = 600;
     this.canvasWidth = 800;
     this.canvasHeight = 600;
     
-    // UPDATED: Shader sources for unified coordinate system
+    // Shader sources for unified coordinate system
     this.shaderSources = {
       line: {
         vertex: `
@@ -72,7 +76,7 @@ export default class WebGLRenderer extends AbstractRenderer {
         `
       },
       
-      // NEW: Area fill shader
+      // Area fill shader
       area: {
         vertex: `
           precision highp float;
@@ -147,7 +151,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * Convert unified path data to WebGL vertex format (SIMPLIFIED)
+   * Convert unified path data to WebGL vertex format
    */
   _convertUnifiedPathToWebGL(pathData) {
     const positions = [];
@@ -163,7 +167,7 @@ export default class WebGLRenderer extends AbstractRenderer {
         // Add position (unified coordinates in pixels)
         positions.push(vertex.x, vertex.y);
 
-        // SIMPLIFIED: Use pathData color or default
+        // Use pathData color or default
         let color;
         if (pathColors && pathColors[i]) {
           color = pathColors[i];
@@ -186,14 +190,11 @@ export default class WebGLRenderer extends AbstractRenderer {
     try {
       this.canvas = canvas;
       
-      // UPDATED: Standardized DPI handling to match Canvas renderer
-      this.devicePixelRatio = window.devicePixelRatio || 1;
-      
       // Store logical dimensions (coordinate system uses these)
       this.logicalWidth = dimensions.width;
       this.logicalHeight = dimensions.height;
       
-      // UPDATED: Set actual canvas size in memory (scaled up for high DPI)
+      // Set actual canvas size in memory (scaled up for high DPI)
       this.canvasWidth = dimensions.width * this.devicePixelRatio;
       this.canvasHeight = dimensions.height * this.devicePixelRatio;
       
@@ -248,12 +249,12 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Set up initial WebGL state with proper viewport
+   * Set up initial WebGL state with proper viewport
    */
   _setupWebGLState() {
     const gl = this.gl;
 
-    // UPDATED: Set viewport to physical canvas size (includes device pixel ratio)
+    // Set viewport to physical canvas size (includes device pixel ratio)
     gl.viewport(0, 0, this.canvasWidth, this.canvasHeight);
     
     // Enable blending for transparency
@@ -380,7 +381,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Render line paths with fill support using unified coordinate system
+   * Render line paths with fill support using unified coordinate system
    */
   async renderLines(generatedPaths, scales, options = {}) {
     if (!this.isInitialized || !generatedPaths || generatedPaths.length === 0) {
@@ -390,7 +391,7 @@ export default class WebGLRenderer extends AbstractRenderer {
     const gl = this.gl;
     
     try {
-      // NEW: Render fills first (so lines appear on top)
+      // Render fills first (so lines appear on top)
       if (options.enableFill) {
         const areaProgram = this.programs.get('area');
         if (areaProgram) {
@@ -427,7 +428,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * Calculate line width based on color brightness (SIMPLIFIED)
+   * Calculate line width based on color brightness
    */
   _getSmartLineWidth(pathData) {
     const baseWidth = pathData.lineWidth || 2;
@@ -443,13 +444,13 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Render a single path using UNIFIED coordinate system
+   * Render a single path using UNIFIED coordinate system
    */
   async _renderUnifiedPath(pathData, options) {
     const gl = this.gl;
     const program = this.currentProgram;
 
-    // UPDATED: Convert unified path data to WebGL format
+    // Convert unified path data to WebGL format
     const webglData = this._convertUnifiedPathToWebGL(pathData);
     
     if (webglData.positions.length === 0) return;
@@ -490,7 +491,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * NEW: Render area fill using WebGL triangulation
+   * Render area fill using WebGL triangulation
    */
   async _renderUnifiedAreaFill(pathData, options) {
     const gl = this.gl;
@@ -536,14 +537,14 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * NEW: Convert path to triangulated area (SIMPLIFIED - no ColorUtils)
+   * Convert path to triangulated area
    */
   _triangulateArea(pathData, options, chartBottom) {
     const vertices = pathData.vertices;
     const positions = [];
     const colors = [];
     
-    // SIMPLIFIED: Parse fill color with opacity using existing _parseColor method
+    // Parse fill color with opacity using existing _parseColor method
     const baseColor = this._parseColor(pathData.color || '#1468a8');
     const fillOpacity = pathData.fillOpacity || options.fillOpacity || 0.3;
     const fillColor = { ...baseColor, a: fillOpacity };
@@ -581,12 +582,12 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * UPDATED: Set shader uniforms with logical canvas dimensions
+   * Set shader uniforms with logical canvas dimensions
    */
   _setUniforms(program, scales) {
     const gl = this.gl;
 
-    // UPDATED: Pass logical canvas resolution (coordinate system dimensions)
+    // Pass logical canvas resolution (coordinate system dimensions)
     // This ensures consistent coordinate transformation between Canvas and WebGL
     if (program.uniforms.u_resolution) {
       gl.uniform2f(program.uniforms.u_resolution, this.logicalWidth, this.logicalHeight);
@@ -614,7 +615,7 @@ export default class WebGLRenderer extends AbstractRenderer {
   }
 
   /**
-   * Parse color string to normalized RGBA (SIMPLIFIED - no external dependencies)
+   * Parse color string to normalized RGBA (no external dependencies)
    */
   _parseColor(colorString) {
     if (typeof colorString !== 'string') {
@@ -694,40 +695,6 @@ export default class WebGLRenderer extends AbstractRenderer {
       batchSize: this.batchSize,
       coordinateSystem: 'unified',
       devicePixelRatio: this.devicePixelRatio
-    };
-  }
-
-  /**
-   * Check WebGL support and capabilities
-   */
-  static isSupported() {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      return !!gl;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /**
-   * Get WebGL capabilities
-   */
-  static getCapabilities() {
-    if (!WebGLRenderer.isSupported()) {
-      return null;
-    }
-
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    
-    return {
-      version: gl.getParameter(gl.VERSION),
-      vendor: gl.getParameter(gl.VENDOR),
-      renderer: gl.getParameter(gl.RENDERER),
-      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-      maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
-      maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS)
     };
   }
 

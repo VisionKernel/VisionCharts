@@ -6,6 +6,7 @@
  * NOW WITH UNIFIED COORDINATE SYSTEM for consistent rendering across all renderers.
  */
 
+import { browserSupport } from '../utils/BrowserSupport.js';
 import { Axis } from './Axis.js';
 import { Scale, ScaleManager } from './Scale.js';
 import { Grid } from '../components/Grid.js';
@@ -22,7 +23,7 @@ import { ZeroLine } from '../components/ZeroLine.js';
 import { AverageLine } from '../components/AverageLine.js';
 import { MedianLine } from '../components/MedianLine.js';
 import { CrosshairTooltip } from '../components/CrosshairTooltip.js';
-import { RecessionLines } from '../components/RecessionLines.js'; 
+import { RecessionLines } from '../components/RecessionLines.js';
 
 
 
@@ -93,7 +94,7 @@ export class Chart {
     // Performance monitoring
     this.dataPointCount = 0;
     this.performanceThresholds = {
-      canvas: 50000, // Switch to WebGL after 50K points
+      canvas: 50, // Switch to WebGL after 50K points
       webgl: 100000  // WebGL upper limit
     };
     
@@ -680,8 +681,7 @@ _createScales() {
   }
   
   /**
-   * Select optimal renderer based on data size and browser capabilities
-   * UPDATED: Forces canvas rendering for bar charts regardless of dataset size
+   * UPDATED: Determine optimal renderer based on data size and browser capabilities
    */
   _selectOptimalRenderer() {
     // Check for forced renderer
@@ -691,7 +691,7 @@ _createScales() {
       return;
     }
     
-    // ✅ NEW: Force canvas rendering for bar charts (both single and panel view)
+    // Force canvas rendering for bar charts
     if (this.chartType === 'bar') {
       this.activeRenderer = 'canvas';
       console.log(`Force-selected Canvas renderer for BarChart (${this.dataPointCount} data points)`);
@@ -700,8 +700,8 @@ _createScales() {
     
     const dataPoints = this.dataPointCount;
     
-    // Check WebGL support first
-    const webglSupported = WebGLRenderer.isSupported();
+    // UPDATED: Use centralized browser support
+    const webglSupported = browserSupport.hasWebGL();
     
     if (dataPoints > this.performanceThresholds.canvas && webglSupported) {
       this.activeRenderer = 'webgl';
@@ -1728,14 +1728,14 @@ _debugDataStructure() {
 }
 
   /**
-   * Determine optimal renderer without setting it
+   * UPDATED: Determine optimal renderer without setting it
    */
   _determineOptimalRenderer() {
     if (this.config.options.forceRenderer) {
       return this.config.options.forceRenderer;
     }
     
-    const webglSupported = WebGLRenderer.isSupported();
+    const webglSupported = browserSupport.hasWebGL();
     
     if (this.dataPointCount > this.performanceThresholds.canvas && webglSupported) {
       return 'webgl';
@@ -1745,7 +1745,7 @@ _debugDataStructure() {
   }
   
   /**
-   * Get renderer performance information
+   * UPDATED: Get renderer performance information
    */
   getRendererInfo() {
     return {
@@ -1753,21 +1753,22 @@ _debugDataStructure() {
       dataPointCount: this.dataPointCount,
       thresholds: this.performanceThresholds,
       rendererCapabilities: this.rendererInstance ? this.rendererInstance.getPerformanceProfile() : null,
-      webglSupported: WebGLRenderer.isSupported(),
-      webglCapabilities: WebGLRenderer.getCapabilities(),
+      webglSupported: browserSupport.hasWebGL(),
+      webglCapabilities: browserSupport.getWebGLCapabilities(),
       coordinateSystem: this.coordinateSystem ? this.coordinateSystem.getCoordinateInfo() : null
     };
   }
   
   /**
-   * Force switch to a specific renderer
+   * UPDATED: Force switch to a specific renderer
    */
   async switchRenderer(rendererType) {
     if (!['canvas', 'webgl'].includes(rendererType)) {
       throw new Error(`Invalid renderer type: ${rendererType}`);
     }
     
-    if (rendererType === 'webgl' && !WebGLRenderer.isSupported()) {
+    // UPDATED: Use centralized browser support
+    if (rendererType === 'webgl' && !browserSupport.hasWebGL()) {
       throw new Error('WebGL is not supported in this browser');
     }
     
