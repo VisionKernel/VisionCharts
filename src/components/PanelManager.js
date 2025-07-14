@@ -9,6 +9,7 @@
  * - State persistence
  * 
  * ✅ FIXED: Complete panel toggle functionality with debugging
+ * ✅ NEW: Fixed-axis positioning for consistent layout
  */
 
 import { Panel } from './Panel.js';
@@ -20,6 +21,10 @@ export class PanelManager {
   constructor(chart) {
     this.chart = chart;
     
+    // ✅ NEW: Percentage-based axis area reservation
+    this.AXIS_AREA_PERCENTAGE = 0.15; // Always reserve 10% of container height for axis
+    this.PANEL_AREA_PERCENTAGE = 0.85; // Remaining 90% for panels
+    
     // Panel state
     this.isPanelMode = false;
     this.panels = [];
@@ -29,12 +34,12 @@ export class PanelManager {
     // Shared axis components
     this.sharedXScale = null;
     this.sharedXAxis = null;
-    this.sharedAxisHeight = 0;
+    this.sharedAxisHeight = 0; // Still used for internal calculations
     
     // Single mode state backup
     this.originalSingleModeState = null;
     
-    console.log('PanelManager created');
+    console.log('PanelManager created with 10% axis area, 90% panel area');
   }
 
   /**
@@ -79,41 +84,59 @@ export class PanelManager {
       isPanelMode: this.isPanelMode,
       panelCount: this.panels.length,
       hasSharedAxis: !!this.sharedXAxis,
-      containerExists: !!this.panelContainer
+      containerExists: !!this.panelContainer,
+      axisAreaPercentage: this.AXIS_AREA_PERCENTAGE,
+      panelAreaPercentage: this.PANEL_AREA_PERCENTAGE
     };
   }
 
   /**
-   * Refresh panel mode after dataset changes
-   */
-  async refreshPanelMode() {
-    if (!this.isPanelMode) return;
+ * ✅ FIXED: Refresh panel mode after dataset changes with proper cleanup and recreation
+ */
+async refreshPanelMode() {
+  if (!this.isPanelMode) return;
+  
+  try {
+    console.log('Refreshing panel mode with updated datasets');
+    console.log(`Current dataset count: ${this.chart.config.data.length}`);
     
-    try {
-      console.log('Refreshing panel mode with updated datasets');
-      
-      // Destroy existing panels
-      this._destroyPanels();
-      
-      // Process data first
-      await this.chart._processData();
-      
-      // Recreate shared X scale with all datasets
-      this._createSharedXScale();
-      
-      // Recreate panels
-      await this._createPanels();
-      
-      // Re-render all panels
-      await this._renderPanels();
-      
-      console.log('Panel mode refreshed successfully');
-      
-    } catch (error) {
-      console.error('Error refreshing panel mode:', error);
-      throw error;
+    // ✅ CRITICAL: Completely destroy and recreate panel infrastructure
+    this._destroyPanels();
+    
+    // ✅ CRITICAL: Also destroy and recreate the panel container and SVG overlay
+    this._destroyPanelContainer();
+    
+    // ✅ CRITICAL: Ensure we have valid datasets before proceeding
+    if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
+      console.warn('No datasets available for panel mode refresh');
+      return;
     }
+    
+    // Process data first
+    await this.chart._processData();
+    
+    // Recreate shared X scale with all datasets
+    this._createSharedXScale();
+    
+    // ✅ CRITICAL: Recreate shared X axis
+    this._createSharedXAxis();
+    
+    // ✅ CRITICAL: Recreate panel container and SVG overlay
+    this._createPanelContainer();
+    
+    // ✅ CRITICAL: Recreate panels with fresh percentage calculations
+    await this._createPanels();
+    
+    // Re-render all panels
+    await this._renderPanels();
+    
+    console.log(`Panel mode refreshed successfully with ${this.panels.length} panels`);
+    
+  } catch (error) {
+    console.error('Error refreshing panel mode:', error);
+    throw error;
   }
+}
 
   /**
    * Switch to panel mode with validation
@@ -212,7 +235,7 @@ export class PanelManager {
   }
 
   /**
-   * Validate container size for panel mode
+   * ✅ IMPROVED: Validate container size for panel mode with percentage-based axis
    * @private
    */
   _validateContainerForPanelMode() {
@@ -220,19 +243,29 @@ export class PanelManager {
     const containerWidth = this.chart.container.offsetWidth;
     const datasetCount = this.chart.config.data.length;
     
-    // Calculate minimum required height
-    const minPanelHeight = 100; // Minimum viable panel height
-    const axisHeight = 40;      // Space for shared X axis
-    const minRequiredHeight = (datasetCount * minPanelHeight) + axisHeight;
+    // Calculate areas using percentages
+    const axisAreaHeight = Math.floor(containerHeight * this.AXIS_AREA_PERCENTAGE);
+    const panelAreaHeight = Math.floor(containerHeight * this.PANEL_AREA_PERCENTAGE);
+    const panelHeight = Math.floor(panelAreaHeight / datasetCount);
     
-    if (containerHeight < minRequiredHeight) {
-      console.warn(`Container height ${containerHeight}px insufficient for ${datasetCount} panels. Minimum needed: ${minRequiredHeight}px`);
+    // Check minimum panel height
+    const minPanelHeight = 60; // Minimum viable panel height
+    
+    if (panelHeight < minPanelHeight) {
+      console.warn(`Panel height ${panelHeight}px too small for ${datasetCount} panels. Minimum needed: ${minPanelHeight}px per panel`);
       return false;
     }
     
     if (containerWidth < 300) {
       console.warn(`Container width ${containerWidth}px may be too small for readable axis labels`);
     }
+    
+    // Log the percentage-based space allocation
+    console.log(`✅ Container validation passed (percentage-based):`);
+    console.log(`  - Container height: ${containerHeight}px`);
+    console.log(`  - Axis area (${this.AXIS_AREA_PERCENTAGE * 100}%): ${axisAreaHeight}px`);
+    console.log(`  - Panel area (${this.PANEL_AREA_PERCENTAGE * 100}%): ${panelAreaHeight}px`);
+    console.log(`  - Panel height (${datasetCount} panels): ${panelHeight}px each (${(panelHeight/containerHeight*100).toFixed(1)}% each)`);
     
     return true;
   }
@@ -346,26 +379,30 @@ export class PanelManager {
       throw new Error('Shared X scale must be created before axis');
     }
     
-    this.sharedXAxis = new Axis({
+    // Use the static factory method which ensures correct configuration
+    this.sharedXAxis = Axis.createSharedXAxis({
       scale: this.sharedXScale,
-      type: 'x',
-      position: 'bottom',
-      label: this.chart.config.options.xAxisName || 'X Axis',
-      labelPadding: 20,
-      tickCount: Math.min(8, Math.max(4, Math.floor(this.chart.container.offsetWidth / 100))),
-      tickFormat: this.chart.config.options.xType === 'time' ? 'time' : 'number'
+      options: {
+        label: this.chart.config.options.xAxisName || 'Date',
+        labelPadding: 20,
+        tickCount: Math.min(8, Math.max(4, Math.floor(this.chart.container.offsetWidth / 100))),
+        tickFormat: this.chart.config.options.xType === 'time' ? 'time' : 'number'
+      }
     });
     
-    console.log('Created shared X axis');
+    console.log('Created shared X axis using static factory method');
   }
 
   /**
-   * Calculate shared axis height
+   * ✅ FIXED: Calculate percentage-based axis height
    * @private
    */
   _calculateSharedAxisHeight() {
-    // Standard height for X axis with labels
-    this.sharedAxisHeight = 50;
+    // Calculate axis height as percentage of container
+    const containerHeight = this.chart.container.offsetHeight;
+    this.sharedAxisHeight = Math.floor(containerHeight * this.AXIS_AREA_PERCENTAGE);
+    
+    console.log(`Percentage-based axis height: ${this.sharedAxisHeight}px (${this.AXIS_AREA_PERCENTAGE * 100}% of ${containerHeight}px)`);
   }
 
   /**
@@ -409,31 +446,38 @@ export class PanelManager {
   }
 
   /**
-   * Create individual panels with strict height enforcement
+   * ✅ FIXED: Create panels with percentage-based area allocation
    * @private
    */
   async _createPanels() {
     this.panels = [];
     
     const totalPanels = this.chart.config.data.length;
+    const containerHeight = this.chart.container.offsetHeight;
     
-    // Calculate axis space first
+    // Calculate axis space using percentage
     this._calculateSharedAxisHeight();
     
-    // Reserve space with buffer to prevent overflow
-    const containerHeight = this.chart.container.offsetHeight;
-    const reservedSpace = this.sharedAxisHeight + 2; // 2px buffer
-    const availableHeight = containerHeight - reservedSpace;
+    // ✅ CRITICAL: Use percentage-based calculation for panel space
+    const panelAreaHeight = Math.floor(containerHeight * this.PANEL_AREA_PERCENTAGE);
+    const axisAreaHeight = Math.floor(containerHeight * this.AXIS_AREA_PERCENTAGE);
     
-    // Ensure available height is positive
-    if (availableHeight <= 0) {
-      throw new Error(`Container too small: ${containerHeight}px height needs ${reservedSpace}px for axis`);
+    // Ensure we have space for panels
+    if (panelAreaHeight <= 0) {
+      throw new Error(`Container too small: ${containerHeight}px height needs ${axisAreaHeight}px for axis area`);
     }
     
-    // Calculate panel height and ensure total doesn't exceed container
-    const panelHeight = Math.floor(availableHeight / totalPanels);
+    // Calculate individual panel height - evenly distributed
+    const panelHeight = Math.floor(panelAreaHeight / totalPanels);
     
-    console.log(`Creating ${totalPanels} panels with ${panelHeight}px height each`);
+    console.log(`✅ PERCENTAGE-BASED LAYOUT:`);
+    console.log(`  - Container height: ${containerHeight}px`);
+    console.log(`  - Axis area (${this.AXIS_AREA_PERCENTAGE * 100}%): ${axisAreaHeight}px`);
+    console.log(`  - Panel area (${this.PANEL_AREA_PERCENTAGE * 100}%): ${panelAreaHeight}px`);
+    console.log(`  - Creating ${totalPanels} panels with ${panelHeight}px height each`);
+    console.log(`  - Panel height per panel: ${(panelHeight/containerHeight*100).toFixed(1)}% of container`);
+    console.log(`  - Total panel space used: ${totalPanels * panelHeight}px`);
+    console.log(`  - Remaining panel space: ${panelAreaHeight - (totalPanels * panelHeight)}px`);
     
     // Create panels
     for (let i = 0; i < totalPanels; i++) {
@@ -448,14 +492,15 @@ export class PanelManager {
         sharedXScale: this.sharedXScale,
         chartType: this.chart.chartType || 'line',
         hasSharedXAxis: true,
-        rendererType: this.chart.activeRenderer || 'canvas'
+        rendererType: this.chart.activeRenderer || 'canvas',
+        yAxisName: this.chart.config.options.yAxisName || 'Value'
       });
       
       await panel.initialize();
       this.panels.push(panel);
     }
     
-    console.log(`Created ${this.panels.length} panels`);
+    console.log(`✅ Created ${this.panels.length} panels with percentage-based allocation`);
   }
 
   /**
@@ -479,23 +524,45 @@ export class PanelManager {
     console.log(`Rendered ${this.panels.length} panels with shared X axis`);
   }
 
-  /**
-   * Render shared X axis at the bottom
-   * @private
-   */
-  _renderSharedXAxis() {
-    if (!this.sharedXAxis || !this.panelSvgOverlay) return;
-    
-    const containerHeight = this.chart.container.offsetHeight;
-    const axisY = containerHeight - this.sharedAxisHeight;
-    
-    this.sharedXAxis.render(this.panelSvgOverlay, {
-      x: 0,
-      y: axisY
-    });
-    
-    console.log(`Shared X axis rendered at y: ${axisY}`);
-  }
+/**
+ * ✅ FIXED: Render shared X axis at percentage-based position with fresh dimensions
+ * @private
+ */
+_renderSharedXAxis() {
+  if (!this.sharedXAxis || !this.panelSvgOverlay) return;
+  
+  // ✅ CRITICAL: Force fresh container dimensions during refresh
+  const containerHeight = this.chart.container.offsetHeight;
+  
+  // ✅ CRITICAL: Use percentage-based positioning - axis starts at 85% of container height
+  const panelAreaHeight = Math.floor(containerHeight * this.PANEL_AREA_PERCENTAGE);
+  const axisStartY = panelAreaHeight; // Axis starts right after panel area
+  
+  const position = {
+    x: 60, // Align with panel left padding (for Y-axis space)
+    y: axisStartY
+  };
+  
+  console.log(`✅ PERCENTAGE-BASED AXIS POSITIONING (DURING REFRESH):`);
+  console.log(`  - Container height: ${containerHeight}px`);
+  console.log(`  - Panel area (${this.PANEL_AREA_PERCENTAGE * 100}%): ${panelAreaHeight}px`);
+  console.log(`  - Axis area (${this.AXIS_AREA_PERCENTAGE * 100}%): ${containerHeight - panelAreaHeight}px`);
+  console.log(`  - Axis Y position: ${axisStartY}px (${(axisStartY/containerHeight*100).toFixed(1)}% from top)`);
+  console.log(`  - Axis position:`, position);
+  
+  // Clear any existing axis elements in the SVG overlay
+  const existingAxes = this.panelSvgOverlay.querySelectorAll('.axis');
+  existingAxes.forEach(axis => {
+    if (axis.getAttribute('class').includes('axis-x') || 
+        axis.getAttribute('class').includes('axis-undefined')) {
+      axis.remove();
+    }
+  });
+  
+  this.sharedXAxis.render(this.panelSvgOverlay, position);
+  
+  console.log(`✅ Shared X axis rendered at PERCENTAGE-BASED position y: ${axisStartY}px`);
+}
 
   /**
    * Destroy all panels and shared axis

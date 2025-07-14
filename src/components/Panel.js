@@ -280,7 +280,7 @@ export class Panel {
       orientation: 'y',
       scale: this.yScale,
       options: {
-        label: this.config.dataset.name || '',
+        label: this.config.yAxisName || 'Value',
         fontSize: Math.max(9, Math.min(11, this.config.height / 20)), // Scale font with panel height
         color: '#666',
         showAxisLine: true,
@@ -388,17 +388,19 @@ export class Panel {
   }
   
   /**
-   * Render panel title
+   * ✅ FIXED: Render panel title in top left of chart area
    * @private
    */
   _renderPanelTitle() {
     if (!this.svgOverlay || !this.config.dataset.name) return;
     
     const titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    titleElement.setAttribute('x', this.panelChartArea.x + this.panelChartArea.width + 5);
-    titleElement.setAttribute('y', this.panelChartArea.y + this.panelChartArea.height / 2);
+    
+    // ✅ CHANGED: Position in top left of chart area instead of right side
+    titleElement.setAttribute('x', this.panelChartArea.x + 8); // Left edge + 8px padding
+    titleElement.setAttribute('y', this.panelChartArea.y + 8); // Top edge + 16px padding
     titleElement.setAttribute('text-anchor', 'start');
-    titleElement.setAttribute('dominant-baseline', 'middle');
+    titleElement.setAttribute('dominant-baseline', 'hanging'); // ✅ CHANGED: Top alignment instead of middle
     titleElement.style.fontSize = '12px';
     titleElement.style.fontWeight = '500';
     titleElement.style.fill = this.config.dataset.color || '#333';
