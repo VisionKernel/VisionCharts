@@ -103,71 +103,71 @@ export class Panel {
   }
   
   /**
- * Render the panel
- */
-async render() {
-  if (!this.isInitialized) {
-    await this.initialize();
-  }
-  
-  try {
-    // Clear previous render
-    this._clearPanel();
-    
-    // Render grid FIRST (background layer)
-    if (this.grid && this.config.showGrid !== false) {
-      console.log(`Rendering grid for panel: ${this.config.dataset.name}`);
-      this._renderGrid();
+   * Render the panel
+   */
+  async render() {
+    if (!this.isInitialized) {
+      await this.initialize();
     }
     
-    // Render Y axis
-    this._renderYAxis();
-    
-    // Render data using panel data renderer
-    await this.panelDataRenderer.render(
-      this.config.dataset,
-      this.config.sharedXScale,
-      this.yScale,
-      this.panelChartArea,
-      this.rendererInstance
-    );
-    
-    // Render panel title if enabled
-    if (this.config.showTitle) {
-      this._renderPanelTitle();
+    try {
+      // Clear previous render
+      this._clearPanel();
+      
+      // Render grid FIRST (background layer)
+      if (this.grid && this.config.showGrid !== false) {
+        console.log(`Rendering grid for panel: ${this.config.dataset.name}`);
+        this._renderGrid();
+      }
+      
+      // Render Y axis
+      this._renderYAxis();
+      
+      // Render data using panel data renderer
+      await this.panelDataRenderer.render(
+        this.config.dataset,
+        this.config.sharedXScale,
+        this.yScale,
+        this.panelChartArea,
+        this.rendererInstance
+      );
+      
+      // Render panel title if enabled
+      if (this.config.showTitle) {
+        this._renderPanelTitle();
+      }
+      
+      this.isRendered = true;
+      console.log(`Panel rendered: ${this.config.dataset.name}`);
+      
+    } catch (error) {
+      console.error('Error rendering panel:', error);
+      throw error;
     }
-    
-    this.isRendered = true;
-    console.log(`Panel rendered: ${this.config.dataset.name}`);
-    
-  } catch (error) {
-    console.error('Error rendering panel:', error);
-    throw error;
   }
-}
   
   /**
    * Update panel with new data
    */
   async update(newDataset = null) {
-  if (newDataset) {
-    this.config.dataset = newDataset;
-    
-    // Recreate Y scale for new data domain
-    this._createYScale();
-    this._createYAxis();
-    
-    // Update grid with new Y scale
-    if (this.grid) {
-      console.log(`Updating grid for panel: ${this.config.dataset.name}`);
-      this.grid.updateScales(this.config.sharedXScale, this.yScale);
-      this.grid.updateChartArea(this.panelChartArea);
+    if (newDataset) {
+      this.config.dataset = newDataset;
+      
+      // Recreate Y scale for new data domain
+      this._createYScale();
+      this._createYAxis();
+      
+      // Update grid with new Y scale
+      if (this.grid) {
+        console.log(`Updating grid for panel: ${this.config.dataset.name}`);
+        this.grid.updateScales(this.config.sharedXScale, this.yScale);
+        this.grid.updateChartArea(this.panelChartArea);
+      }
     }
+    
+    // Re-render
+    await this.render();
   }
-  
-  // Re-render
-  await this.render();
-}
   
   /**
    * Destroy panel and cleanup
@@ -243,52 +243,56 @@ async render() {
     };
   }
   
+  /**
+   * Create Y scale for this panel
+   * @private
+   */
   _createYScale() {
-  if (!this.config.dataset || !this.config.dataset.data) {
-    throw new Error('Panel dataset required for Y scale creation');
-  }
-  
-  // Calculate Y domain for this dataset only
-  const yValues = this.config.dataset.data
-    .map(d => d.y)
-    .filter(y => y != null && !isNaN(y));
-  
-  if (yValues.length === 0) {
-    throw new Error('No valid Y values found in panel dataset');
-  }
-  
-  const yMin = Math.min(...yValues);
-  const yMax = Math.max(...yValues);
-  
-  // ✅ REMOVE PADDING: Use exact data bounds
-  const yDomain = [yMin, yMax];
-  
-  // Determine scale type (could be passed via config)
-  const scaleType = this.config.scaleType || 'linear';
-  
-  // Create Y scale with NO PADDING
-  this.yScale = new Scale({
-    type: scaleType,
-    domain: yDomain,
-    range: [this.panelChartArea.y, this.panelChartArea.y + this.panelChartArea.height],
-    coordinateSystem: 'unified',
-    orientation: 'vertical',
-    options: {
-      nice: false,
-      padding: 0,
-      clamp: true
+    if (!this.config.dataset || !this.config.dataset.data) {
+      throw new Error('Panel dataset required for Y scale creation');
     }
-  });
-  
-  console.log('Panel Y scale created with NO PADDING:', yDomain);
-}
+    
+    // Calculate Y domain for this dataset only
+    const yValues = this.config.dataset.data
+      .map(d => d.y)
+      .filter(y => y != null && !isNaN(y));
+    
+    if (yValues.length === 0) {
+      throw new Error('No valid Y values found in panel dataset');
+    }
+    
+    const yMin = Math.min(...yValues);
+    const yMax = Math.max(...yValues);
+    const yDomain = [yMin, yMax];
+    
+    // Determine scale type
+    const scaleType = this.config.scaleType || 'linear';
+    
+    // Y scale range: flip for canvas coordinate system (Y increases downward)
+    const yRange = [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y];
+    
+    this.yScale = new Scale({
+      type: scaleType,
+      domain: yDomain,
+      range: yRange,
+      coordinateSystem: 'unified',
+      orientation: 'vertical',
+      options: {
+        nice: false,
+        padding: 0,
+        clamp: true
+      }
+    });
+    
+    console.log(`Panel Y scale created for ${this.config.dataset.name}`);
+  }
   
   /**
    * Create Y axis for this panel with height-aware tick count
    * @private
    */
   _createYAxis() {
-    // ✅ Calculate optimal tick count based on panel height
+    // Calculate optimal tick count based on panel height
     const availableHeight = this.panelChartArea.height;
     const minTickSpacing = 20; // Minimum pixels between ticks
     const maxTicks = Math.max(2, Math.floor(availableHeight / minTickSpacing));
@@ -304,7 +308,7 @@ async render() {
         showAxisLine: true,
         showTicks: true,
         showTickLabels: true,
-        tickCount: optimalTicks, // ✅ Dynamic tick count
+        tickCount: optimalTicks,
         abbreviateLabels: true,
         tickPadding: 4 // Reduce padding for small panels
       }
@@ -358,65 +362,54 @@ async render() {
     
     // Initialize appropriate renderer
     if (this.config.rendererType === 'webgl') {
-    const { default: WebGLRenderer } = await import('../renderers/WebGLRenderer.js');
-    this.rendererInstance = new WebGLRenderer();
-    await this.rendererInstance.initialize(this.canvas, {
-        width: this.panelContainer.offsetWidth,
-        height: this.config.height
-    });
+      const { default: WebGLRenderer } = await import('../renderers/WebGLRenderer.js');
+      this.rendererInstance = new WebGLRenderer();
+      await this.rendererInstance.initialize(this.canvas, {
+          width: this.panelContainer.offsetWidth,
+          height: this.config.height
+      });
     } else {
-    const { default: CanvasRenderer } = await import('../renderers/CanvasRenderer.js');
-    this.rendererInstance = new CanvasRenderer();
-    await this.rendererInstance.initialize(this.canvas, {
-        width: this.panelContainer.offsetWidth,
-        height: this.config.height
-    });
+      const { default: CanvasRenderer } = await import('../renderers/CanvasRenderer.js');
+      this.rendererInstance = new CanvasRenderer();
+      await this.rendererInstance.initialize(this.canvas, {
+          width: this.panelContainer.offsetWidth,
+          height: this.config.height
+      });
     }
-    
   }
 
   /**
    * Create grid for this panel
    * @private
    */
-  
-/**
- * Create grid for this panel
- * @private
- */
-_createGrid() {
-  console.log(`Creating grid for panel: ${this.config.dataset.name}`);
-  
-  // Keep the working logic, just improve visual appearance
-  const gridOptions = {
-    showXGrid: this.config.showXGrid !== false,
-    showYGrid: this.config.showYGrid !== false,
+  _createGrid() {
+    console.log(`Creating grid for panel: ${this.config.dataset.name}`);
     
-    // ONLY change visual properties - keep logic the same
-    xGridColor: '#f0f0f0',              // Lighter color
-    yGridColor: '#f0f0f0',              // Lighter color
-    xGridOpacity: 0.8,                  // More transparent
-    yGridOpacity: 0.8,                  // More transparent
-    xGridWidth: 0.5,                    // Thinner lines
-    yGridWidth: 0.5,                    // Thinner lines
-    
-    skipEdgeLines: true,                // Keep clean edges
-    
-    // Don't override tick counts - let Grid calculate automatically
-    // ...this.config.gridOptions        // Don't override for now
-  };
+    const gridOptions = {
+      showXGrid: this.config.showXGrid !== false,
+      showYGrid: this.config.showYGrid !== false,
+      
+      // Visual properties
+      xGridColor: '#000000',
+      yGridColor: '#000000',
+      xGridOpacity: 0.8,
+      yGridOpacity: 0.8,
+      xGridWidth: 0.5,
+      yGridWidth: 0.5,
+      
+      skipEdgeLines: false,
+    };
 
-  this.grid = new Grid({
-    xScale: this.config.sharedXScale,
-    yScale: this.yScale,
-    chartArea: this.panelChartArea,
-    ...gridOptions
-  });
-  
-  console.log(`Panel grid created for: ${this.config.dataset.name} with visual improvements`);
-}
+    this.grid = new Grid({
+      xScale: this.config.sharedXScale,
+      yScale: this.yScale,
+      chartArea: this.panelChartArea,
+      ...gridOptions
+    });
+    
+    console.log(`Panel grid created for: ${this.config.dataset.name}`);
+  }
 
-  
   /**
    * Clear panel content
    * @private
@@ -448,7 +441,7 @@ _createGrid() {
   }
   
   /**
-   * ✅ FIXED: Render panel title in top left of chart area
+   * Render panel title
    * @private
    */
   _renderPanelTitle() {
@@ -456,11 +449,10 @@ _createGrid() {
     
     const titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     
-    // ✅ CHANGED: Position in top left of chart area instead of right side
-    titleElement.setAttribute('x', this.panelChartArea.x + 8); // Left edge + 8px padding
-    titleElement.setAttribute('y', this.panelChartArea.y + 8); // Top edge + 16px padding
+    titleElement.setAttribute('x', this.panelChartArea.x + 8);
+    titleElement.setAttribute('y', this.panelChartArea.y + 8);
     titleElement.setAttribute('text-anchor', 'start');
-    titleElement.setAttribute('dominant-baseline', 'hanging'); // ✅ CHANGED: Top alignment instead of middle
+    titleElement.setAttribute('dominant-baseline', 'hanging');
     titleElement.style.fontSize = '12px';
     titleElement.style.fontWeight = '500';
     titleElement.style.fill = this.config.dataset.color || '#333';
@@ -470,42 +462,40 @@ _createGrid() {
   }
 
   /**
- * Render grid for this panel
- * @private
- */
-_renderGrid() {
-  if (!this.grid || !this.canvas) {
-    console.log('No grid or canvas available for rendering');
-    return;
+   * Render grid for this panel
+   * @private
+   */
+  _renderGrid() {
+    if (!this.grid || !this.canvas) {
+      console.log('No grid or canvas available for rendering');
+      return;
+    }
+    
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) {
+      console.log('No canvas context available for grid rendering');
+      return;
+    }
+    
+    console.log(`Grid rendering for panel: ${this.config.dataset.name}`);
+    
+    // Update grid with current scales and chart area
+    this.grid.updateScales(this.config.sharedXScale, this.yScale);
+    this.grid.updateChartArea(this.panelChartArea);
+    
+    ctx.save();
+    
+    
+    try {
+      this.grid.render(ctx);
+      console.log(`Grid rendered successfully for panel: ${this.config.dataset.name}`);
+    } catch (error) {
+      console.error('Error rendering grid:', error);
+    }
+    
+    ctx.restore();
   }
-  
-  const ctx = this.canvas.getContext('2d');
-  if (!ctx) {
-    console.log('No canvas context available for grid rendering');
-    return;
-  }
-  
-  console.log(`Grid rendering for panel: ${this.config.dataset.name}`);
-  
-  // Update grid with current scales and chart area
-  this.grid.updateScales(this.config.sharedXScale, this.yScale);
-  this.grid.updateChartArea(this.panelChartArea);
-  
-  // Render grid with device pixel ratio scaling
-  const devicePixelRatio = window.devicePixelRatio || 1;
-  ctx.save();
-  ctx.scale(devicePixelRatio, devicePixelRatio);
-  
-  try {
-    this.grid.render(ctx);
-    console.log(`Grid rendered successfully for panel: ${this.config.dataset.name}`);
-  } catch (error) {
-    console.error('Error rendering grid:', error);
-  }
-  
-  ctx.restore();
-}
-  
+
   /**
    * Get panel information for debugging
    */
