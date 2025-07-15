@@ -390,14 +390,14 @@ export class Panel {
       showYGrid: this.config.showYGrid !== false,
       
       // Visual properties
-      xGridColor: '#000000',
-      yGridColor: '#000000',
-      xGridOpacity: 0.8,
-      yGridOpacity: 0.8,
+      xGridColor: '#e0e0e0',
+      yGridColor: '#e0e0e0',
+      xGridOpacity: 1,
+      yGridOpacity: 1,
       xGridWidth: 0.5,
       yGridWidth: 0.5,
       
-      skipEdgeLines: false,
+      skipEdgeLines: true,
     };
 
     this.grid = new Grid({

@@ -1736,6 +1736,13 @@ async ensureInitialized() {
   }
   
   _setupCrosshair() {
+  // Skip crosshair creation in panel mode - PanelManager handles it
+  if (this.isPanelMode) {
+    console.log('Crosshair setup skipped - panel mode uses PanelManager crosshair');
+    return;
+  }
+  
+  // Original single mode crosshair setup
   if (!this.svgOverlay) {
     console.warn('SVG overlay not available for crosshair');
     return;
