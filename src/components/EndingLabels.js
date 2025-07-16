@@ -177,82 +177,89 @@ export class EndingLabels {
   }
 
   /**
-   * Create ending label for a single dataset
-   * @private
-   */
-  _createDatasetLabel(dataset, datasetIndex) {
-    if (!dataset || !dataset.data || dataset.data.length === 0) {
-      return null;
-    }
-
-    // Get the last data point
-    const lastPoint = dataset.data[dataset.data.length - 1];
-    if (!lastPoint) return null;
-
-    // Extract coordinates - check for unified coordinates first
-    const endX = lastPoint.unifiedX || lastPoint.screenX || lastPoint.pixelX;
-    const endY = lastPoint.unifiedY || lastPoint.screenY || lastPoint.pixelY;
-
-    if (endX == null || endY == null || !isFinite(endX) || !isFinite(endY)) {
-      console.warn(`EndingLabels: Invalid coordinates for dataset ${dataset.id || datasetIndex}`);
-      return null;
-    }
-
-    // Check if point is within chart area (with some tolerance for labels extending beyond)
-    const tolerance = 50;
-    if (endX < this.chartArea.x - tolerance || 
-        endX > this.chartArea.x + this.chartArea.width + tolerance ||
-        endY < this.chartArea.y - tolerance || 
-        endY > this.chartArea.y + this.chartArea.height + tolerance) {
-      console.log(`EndingLabels: Point outside chart area for dataset ${dataset.id || datasetIndex}`);
-      return null;
-    }
-
-    // Extract and format the value
-    const value = this._extractValue(lastPoint);
-    if (value == null) {
-      console.warn(`EndingLabels: No valid value for dataset ${dataset.id || datasetIndex}`);
-      return null;
-    }
-
-    const formattedValue = this._formatValue(value);
-
-    // Get dataset color
-    const color = dataset.color || '#1468a8';
-
-    // Create label group
-    const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    labelGroup.setAttribute('class', 'ending-label');
-    labelGroup.setAttribute('data-dataset-id', dataset.id || datasetIndex);
-
-    // Calculate label position
-    const labelX = endX + this.config.offsetX;
-    const labelY = endY + this.config.offsetY;
-
-    // Create background if enabled
-    if (this.config.showBackground) {
-      const background = this._createLabelBackground(labelGroup, labelX, labelY, formattedValue, color);
-      if (background) {
-        labelGroup.appendChild(background);
-      }
-    }
-
-    // Create text element
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', labelX + this.config.backgroundPadding);
-    text.setAttribute('y', labelY);
-    text.setAttribute('font-size', this.config.fontSize);
-    text.setAttribute('font-family', this.config.fontFamily);
-    text.setAttribute('font-weight', this.config.fontWeight);
-    text.setAttribute('fill', this._getTextColor(color));
-    text.setAttribute('dominant-baseline', 'central');
-    text.setAttribute('text-anchor', 'start');
-    text.textContent = formattedValue;
-
-    labelGroup.appendChild(text);
-
-    return labelGroup;
+ * Create ending label for a single dataset - UPDATED for global coordinates
+ * @private
+ */
+_createDatasetLabel(dataset, datasetIndex) {
+  if (!dataset || !dataset.data || dataset.data.length === 0) {
+    return null;
   }
+
+  // Get the last data point
+  const lastPoint = dataset.data[dataset.data.length - 1];
+  if (!lastPoint) return null;
+
+  // Extract coordinates - check for unified coordinates first
+  const endX = lastPoint.unifiedX || lastPoint.screenX || lastPoint.pixelX;
+  const endY = lastPoint.unifiedY || lastPoint.screenY || lastPoint.pixelY;
+
+  if (endX == null || endY == null || !isFinite(endX) || !isFinite(endY)) {
+    console.warn(`EndingLabels: Invalid coordinates for dataset ${dataset.id || datasetIndex}`);
+    return null;
+  }
+
+  // ✅ UPDATED: More flexible chart area validation for global coordinates
+  // In panel mode, the chart area represents the entire container, so we need more lenient bounds checking
+  const tolerance = 100; // Increased tolerance for global coordinate system
+  const minX = Math.min(this.chartArea.x - tolerance, 0);
+  const maxX = this.chartArea.x + this.chartArea.width + tolerance;
+  const minY = Math.min(this.chartArea.y - tolerance, 0);
+  const maxY = this.chartArea.y + this.chartArea.height + tolerance;
+  
+  if (endX < minX || endX > maxX || endY < minY || endY > maxY) {
+    console.log(`EndingLabels: Point outside extended chart area for dataset ${dataset.id || datasetIndex}`, {
+      point: { x: endX, y: endY },
+      bounds: { minX, maxX, minY, maxY },
+      chartArea: this.chartArea
+    });
+    return null;
+  }
+
+  // Extract and format the value
+  const value = this._extractValue(lastPoint);
+  if (value == null) {
+    console.warn(`EndingLabels: No valid value for dataset ${dataset.id || datasetIndex}`);
+    return null;
+  }
+
+  const formattedValue = this._formatValue(value);
+
+  // Get dataset color
+  const color = dataset.color || '#1468a8';
+
+  // Create label group
+  const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  labelGroup.setAttribute('class', 'ending-label');
+  labelGroup.setAttribute('data-dataset-id', dataset.id || datasetIndex);
+
+  // Calculate label position
+  const labelX = endX + this.config.offsetX;
+  const labelY = endY + this.config.offsetY;
+
+  // Create background if enabled
+  if (this.config.showBackground) {
+    const background = this._createLabelBackground(labelGroup, labelX, labelY, formattedValue, color);
+    if (background) {
+      labelGroup.appendChild(background);
+    }
+  }
+
+  // Create text element
+  const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  text.setAttribute('x', labelX + this.config.backgroundPadding);
+  text.setAttribute('y', labelY);
+  text.setAttribute('font-size', this.config.fontSize);
+  text.setAttribute('font-family', this.config.fontFamily);
+  text.setAttribute('font-weight', this.config.fontWeight);
+  text.setAttribute('fill', this._getTextColor(color));
+  text.setAttribute('dominant-baseline', 'central');
+  text.setAttribute('text-anchor', 'start');
+  text.textContent = formattedValue;
+
+  labelGroup.appendChild(text);
+
+  return labelGroup;
+}
 
   /**
    * Create background rectangle for label
@@ -396,6 +403,7 @@ export class EndingLabels {
     this.chartArea = null;
     this.svgContainer = null;
     this.isVisible = false;
+    this.isRendered = false;
 
     console.log('EndingLabels destroyed');
   }

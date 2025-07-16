@@ -16,6 +16,7 @@ import { Panel } from './Panel.js';
 import { Axis } from '../core/Axis.js';
 import { createScale } from '../core/Scale.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
+import { EndingLabels } from './EndingLabels.js';
 
 export class PanelManager {
   constructor(chart) {
@@ -35,6 +36,9 @@ export class PanelManager {
     this.sharedXAxis = null;
     this.sharedAxisHeight = 0; // Still used for internal calculations
     
+    // Ending labels management
+    this.endingLabels = null;
+
     // Single mode state backup
     this.originalSingleModeState = null;
     
@@ -145,47 +149,6 @@ async refreshPanelMode() {
   }
 }
 
-
-  /**
-   *  Toggle ending labels visibility for all panels
-   */
-toggleEndingLabels(show = null) {
-  if (!this.isPanelMode || this.panels.length === 0) return false;
-  
-  if (show === null) {
-    const firstPanelState = this.panels[0].getEndingLabelsState();
-    show = firstPanelState ? !firstPanelState.isVisible : true;
-  }
-  
-  let newState = false;
-  for (const panel of this.panels) {
-    newState = panel.toggleEndingLabels(show);
-  }
-  return newState;
-}
-
-  /**
-   * Check if a tick is valid for grid lines
-   */
-updateEndingLabels() {
-  if (!this.isPanelMode || this.panels.length === 0) return;
-  for (const panel of this.panels) {
-    panel.updateEndingLabels();
-  }
-}
-
-  /*
-    * Check if a tick is valid for grid lines
-    */
-  getEndingLabelsState() {
-    if (!this.isPanelMode || this.panels.length === 0) return null;
-    return this.panels.map(panel => ({
-      datasetName: panel.config.dataset?.name || 'Unknown',
-      panelIndex: panel.config.panelIndex,
-      endingLabelsState: panel.getEndingLabelsState()
-    }));
-  }
-
   /**
    * Switch to panel mode with validation
    * @private
@@ -235,6 +198,14 @@ updateEndingLabels() {
    */
   async _switchToSingleMode() {
     console.log('Switching back to single chart mode');
+
+    if (this.endingLabels) {
+      if (this.endingLabels.destroy) {
+        this.endingLabels.destroy();
+      }
+      this.endingLabels = null;
+      console.log('  ✓ Panel EndingLabels cleaned up');
+    }
     
     // CRITICAL: Set state at the beginning
     this.isPanelMode = false;
@@ -386,39 +357,55 @@ updateEndingLabels() {
   }
 
   /**
-   * Create shared X scale for all panels
-   * @private
-   */
-  _createSharedXScale() {
-    // Calculate combined X domain from all datasets
-    let xMin = Infinity;
-    let xMax = -Infinity;
+ * Create shared X scale for all panels - FIXED range calculation
+ * @private
+ */
+_createSharedXScale() {
+  // Calculate combined X domain from all datasets
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  
+  for (const dataset of this.chart.config.data) {
+    if (!dataset.data || !Array.isArray(dataset.data)) continue;
     
-    for (const dataset of this.chart.config.data) {
-      if (!dataset.data || !Array.isArray(dataset.data)) continue;
-      
-      for (const point of dataset.data) {
-        if (point.x != null) {
-          const xValue = point.x instanceof Date ? point.x.getTime() : point.x;
-          xMin = Math.min(xMin, xValue);
-          xMax = Math.max(xMax, xValue);
-        }
+    for (const point of dataset.data) {
+      if (point.x != null) {
+        const xValue = point.x instanceof Date ? point.x.getTime() : point.x;
+        xMin = Math.min(xMin, xValue);
+        xMax = Math.max(xMax, xValue);
       }
     }
-    
-    if (xMin === Infinity || xMax === -Infinity) {
-      throw new Error('No valid X values found in datasets');
-    }
-    
-    // Create shared X scale
-    const xDomain = [xMin, xMax];
-    const xRange = [60, this.chart.container.offsetWidth - 20]; // Leave space for Y axes
-    
-    const scaleType = this.chart.config.options.xType === 'time' ? 'time' : 'linear';
-    this.sharedXScale = createScale(scaleType, xDomain, xRange);
-    
-    console.log(`Created shared X scale: ${scaleType} with domain [${xMin}, ${xMax}]`);
   }
+  
+  if (xMin === Infinity || xMax === -Infinity) {
+    throw new Error('No valid X values found in datasets');
+  }
+  
+  // ✅ FIXED: Calculate range based on actual panel chart area width
+  // Panels will have standard padding: left=60, right=20
+  const panelLeftPadding = 60;  // Space for Y axis
+  const panelRightPadding = 20; // Right margin
+  
+  // Calculate available width for chart area
+  const containerWidth = this.chart.container.offsetWidth;
+  const chartAreaWidth = containerWidth - panelLeftPadding - panelRightPadding;
+  
+  // Create shared X scale with correct range
+  const xDomain = [xMin, xMax];
+  const xRange = [panelLeftPadding, panelLeftPadding + chartAreaWidth]; // [60, 1138] instead of [60, 1180]
+  
+  const scaleType = this.chart.config.options.xType === 'time' ? 'time' : 'linear';
+  this.sharedXScale = createScale(scaleType, xDomain, xRange);
+  
+  console.log(`✅ FIXED shared X scale created:`, {
+    scaleType: scaleType,
+    domain: xDomain,
+    range: xRange,
+    containerWidth: containerWidth,
+    chartAreaWidth: chartAreaWidth,
+    calculatedMaxX: this.sharedXScale.scale(xMax) // Should now be around 1138
+  });
+}
 
   /**
    * Create shared X axis
@@ -466,7 +453,7 @@ updateEndingLabels() {
       position: relative;
       width: 100%;
       height: 100%;
-      overflow: hidden;
+      overflow: visible;
       box-sizing: border-box;
     `;
     
@@ -487,10 +474,12 @@ updateEndingLabels() {
       height: 100%;
       pointer-events: none;
       z-index: 10;
-      overflow: hidden;
+      overflow: visible;
     `;
     
     this.panelContainer.appendChild(this.panelSvgOverlay);
+
+    this._createEndingLabels();
     
     console.log('Panel container created');
   }
@@ -586,14 +575,16 @@ updateEndingLabels() {
       console.warn('No panels to render');
       return;
     }
-    
-    // Render each panel
+
     for (const panel of this.panels) {
       await panel.render();
     }
     
-    // Render shared X axis at the bottom
     this._renderSharedXAxis();
+
+    if (this.endingLabels && this.endingLabels.config.enabled) {
+      this._renderEndingLabels();
+    }
     
     console.log(`Rendered ${this.panels.length} panels with shared X axis`);
   }
@@ -667,12 +658,294 @@ _renderPanelModeTitle() {
   console.log(`Panel mode title rendered with single mode positioning: "${this.chart.config.options.title}"`);
 }
 
+/**
+ * Create and initialize EndingLabels for panel mode
+ * @private
+ */
+_createEndingLabels() {
+  if (this.endingLabels) {
+    this.endingLabels.destroy?.();
+  }
+  
+  this.endingLabels = new EndingLabels({
+    enabled: false,
+    offsetX: 0,
+    offsetY: 0,
+    fontSize: 11,
+    showBackground: true,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundPadding: 4,
+    borderRadius: 3
+  });
+  
+  console.log('EndingLabels created for panel mode');
+}
+
+/**
+ * Collect endpoint data from all panels
+ * @private
+ */
+_collectAllPanelEndpoints() {
+  const endpoints = [];
+  
+  for (const panel of this.panels) {
+    const endpoint = panel.getLineEndpoint();
+    if (endpoint) {
+      // Translate panel-local coordinates to global SVG coordinates
+      const globalCoords = this._translatePanelCoordinatesToGlobal(endpoint);
+      if (globalCoords) {
+        endpoints.push({
+          ...endpoint,
+          globalX: globalCoords.x,
+          globalY: globalCoords.y
+        });
+      }
+    }
+  }
+  
+  return endpoints;
+}
+
+/**
+ * Translate panel-local coordinates to global SVG coordinates
+ * @private
+ */
+_translatePanelCoordinatesToGlobal(endpoint) {
+  if (!endpoint || !endpoint.panelChartArea) {
+    return null;
+  }
+  
+  const panel = this.panels[endpoint.panelIndex];
+  if (!panel) {
+    console.warn(`No panel found for index ${endpoint.panelIndex}`);
+    return null;
+  }
+  
+  // Get actual DOM positions instead of calculated positions
+  const mainContainerRect = this.chart.container.getBoundingClientRect();
+  const panelContainerRect = panel.panelContainer.getBoundingClientRect();
+  
+  // Calculate actual panel offset within the main container
+  const actualPanelStartY = panelContainerRect.y - mainContainerRect.y;
+  
+  // Calculate global coordinates using actual DOM positions
+  const globalX = endpoint.localX; // X coordinate stays the same (panels share X axis)
+  const globalY = actualPanelStartY + endpoint.localY;
+  
+  console.log(`🔍 COORDINATE DEBUG for panel ${endpoint.panelIndex}:`, {
+    datasetName: endpoint.dataset.name,
+    
+    // Panel positioning
+    panelIndex: endpoint.panelIndex,
+    calculatedPanelStartY: endpoint.panelIndex * panel.config.height, // Old method
+    actualPanelStartY: actualPanelStartY, // New method using DOM
+    
+    // DOM rects
+    actualPanelRect: panelContainerRect,
+    mainContainerRect: mainContainerRect,
+    
+    // Local coordinates
+    localX: endpoint.localX,
+    localY: endpoint.localY,
+    panelChartArea: endpoint.panelChartArea,
+    
+    // Global coordinates
+    globalX: globalX,
+    globalY: globalY,
+    
+    // Offset calculation
+    panelOffsetFromContainer: actualPanelStartY
+  });
+  
+  return {
+    x: globalX,
+    y: globalY
+  };
+}
+
+/**
+ * Create datasets array with global coordinates for EndingLabels
+ * @private
+ */
+_createEndingLabelsDatasets() {
+  const endpoints = this._collectAllPanelEndpoints();
+  
+  return endpoints.map(endpoint => ({
+    ...endpoint.dataset,
+    data: [{
+      x: endpoint.dataX,
+      y: endpoint.dataY,
+      // Use global coordinates for rendering
+      unifiedX: endpoint.globalX,
+      unifiedY: endpoint.globalY,
+      screenX: endpoint.globalX,
+      screenY: endpoint.globalY,
+      pixelX: endpoint.globalX,
+      pixelY: endpoint.globalY
+    }]
+  }));
+}
+
+/**
+ * Render ending labels for all panels
+ * @private
+ */
+_renderEndingLabels() {
+  if (!this.endingLabels || !this.panelSvgOverlay) {
+    return;
+  }
+  
+  // Create global chart area for EndingLabels
+  const containerHeight = this.chart.container.offsetHeight;
+  const containerWidth = this.chart.container.offsetWidth;
+  
+  const globalChartArea = {
+    x: 0,
+    y: 0,
+    width: containerWidth,
+    height: containerHeight
+  };
+  
+  // Create datasets with global coordinates
+  const datasets = this._createEndingLabelsDatasets();
+  
+  console.log(`Rendering ${datasets.length} ending labels with global coordinates`);
+  
+  // Update EndingLabels with global datasets
+  this.endingLabels.updateDatasets(datasets);
+  
+  // Render to global SVG overlay
+  this.endingLabels.render(this.panelSvgOverlay, globalChartArea);
+}
+
+/**
+ * Toggle ending labels visibility for all panels
+ * @param {boolean} show - Force show/hide state, or null to toggle
+ */
+toggleEndingLabels(show = null) {
+  if (!this.isPanelMode || !this.endingLabels) {
+    console.warn('EndingLabels not available in current mode');
+    return false;
+  }
+  
+  // Determine new state
+  const currentState = this.endingLabels.isVisible;
+  const newState = show !== null ? show : !currentState;
+  
+  if (newState) {
+    // When showing, render first if not already rendered, then show
+    if (!this.endingLabels.isRendered || this.panels.length > 0) {
+      this._renderEndingLabels();
+    }
+    this.endingLabels.show();
+  } else {
+    // When hiding, just hide
+    this.endingLabels.hide();
+  }
+  
+  console.log(`EndingLabels ${newState ? 'enabled' : 'disabled'} for panel mode`);
+  return newState;
+}
+
+
+/**
+ * Update ending labels with current panel data
+ */
+updateEndingLabels() {
+  if (!this.isPanelMode || !this.endingLabels || this.panels.length === 0) {
+    return;
+  }
+  
+  // Re-render with updated data
+  this._renderEndingLabels();
+  
+  console.log('EndingLabels updated for panel mode');
+}
+
+/**
+ * Get ending labels state
+ */
+getEndingLabelsState() {
+  if (!this.isPanelMode || !this.endingLabels) {
+    return null;
+  }
+  
+  return {
+    isVisible: this.endingLabels.isVisible,
+    enabled: this.endingLabels.config.enabled,
+    panelCount: this.panels.length,
+    mode: 'panel'
+  };
+}
+
+/**
+ * Refresh panel mode - UPDATED to handle EndingLabels state
+ */
+async refreshPanelMode() {
+  if (!this.isPanelMode) return;
+  
+  try {
+    console.log('Refreshing panel mode with updated datasets');
+    console.log(`Current dataset count: ${this.chart.config.data.length}`);
+    
+    // ✅ UPDATED: Store EndingLabels state before refresh
+    const previousEndingLabelsState = this.endingLabels ? this.endingLabels.isVisible : false;
+    
+    // Completely destroy and recreate panel infrastructure
+    this._destroyPanels();
+    this._destroyPanelContainer();
+    
+    // Ensure we have valid datasets before proceeding
+    if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
+      console.warn('No datasets available for panel mode refresh');
+      return;
+    }
+    
+    // Process data first
+    await this.chart._processData();
+    
+    // Recreate shared X scale and axis
+    this._createSharedXScale();
+    this._createSharedXAxis();
+    
+    // Recreate panel container and SVG overlay (this also creates EndingLabels)
+    this._createPanelContainer();
+    
+    this._renderPanelModeTitle();
+    
+    // ✅ UPDATED: Restore EndingLabels state after refresh
+    if (previousEndingLabelsState && this.endingLabels) {
+      this.endingLabels.config.enabled = true;
+    }
+    
+    // Recreate panels with fresh percentage calculations
+    await this._createPanels();
+    
+    // Re-render all panels (this will also render EndingLabels if enabled)
+    await this._renderPanels();
+    
+    console.log(`Panel mode refreshed successfully with ${this.panels.length} panels`);
+    
+  } catch (error) {
+    console.error('Error refreshing panel mode:', error);
+    throw error;
+  }
+}
+
   /**
    * Destroy all panels and shared axis
    * @private
    */
   _destroyPanels() {
     console.log(`Destroying ${this.panels.length} panels...`);
+
+    if (this.endingLabels) {
+      if (this.endingLabels.destroy) {
+        this.endingLabels.destroy();
+      }
+      this.endingLabels = null;
+      console.log('  ✓ EndingLabels destroyed');
+    }
     
     // Destroy individual panels
     for (const panel of this.panels) {

@@ -1,7 +1,6 @@
 import { Axis } from '../core/Axis.js';
 import { Scale } from '../core/Scale.js';
 import PanelDataRenderer from './PanelDataRenderer.js';
-import { EndingLabels } from './EndingLabels.js';
 import { RecessionLines } from './RecessionLines.js';
 import { ZeroLine } from './ZeroLine.js';
 import { Grid } from './Grid.js';
@@ -58,17 +57,6 @@ export class Panel {
     this.canvas = null;
     this.rendererInstance = null;
     this.svgOverlay = null;
-
-    this.endingLabels = new EndingLabels({
-      enabled: false,
-      offsetX: 8,
-      offsetY: 0,
-      fontSize: 11,
-      showBackground: true,
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      backgroundPadding: 4,
-      borderRadius: 3
-    });
     
     // Panel-specific chart area
     this.panelChartArea = null;
@@ -148,8 +136,6 @@ export class Panel {
       if (this.config.showTitle) {
         this._renderPanelTitle();
       }
-
-      this._renderEndingLabels();
       
       this.isRendered = true;
       console.log(`Panel rendered: ${this.config.dataset.name}`);
@@ -187,12 +173,6 @@ export class Panel {
    * Destroy panel and cleanup
    */
   destroy() {
-
-    if (this.endingLabels) {
-      this.endingLabels.destroy();
-      this.endingLabels = null;
-    }
-
     // Cleanup renderer
     if (this.rendererInstance) {
       this.rendererInstance.destroy();
@@ -229,78 +209,6 @@ export class Panel {
     console.log(`Panel destroyed: ${this.config.dataset?.name || 'Unknown'}`);
   }
 
-  /**
-   * Render ending labels for this panel
-   */
-  _renderEndingLabels() {
-    if (!this.endingLabels || !this.svgOverlay || !this.panelChartArea) {
-      return;
-    }
-
-    // Debug: Log coordinate information
-    if (this.config.dataset && this.config.dataset.data && this.config.dataset.data.length > 0) {
-      const lastPoint = this.config.dataset.data[this.config.dataset.data.length - 1];
-      const endX = lastPoint.unifiedX || lastPoint.screenX || lastPoint.pixelX;
-      const endY = lastPoint.unifiedY || lastPoint.screenY || lastPoint.pixelY;
-      
-      console.log(`Panel ${this.config.dataset.name} ending label debug:`, {
-        lastPointCoords: { x: endX, y: endY },
-        panelChartArea: this.panelChartArea,
-        yScale: {
-          domain: this.yScale?.domain,
-          range: this.yScale?.range
-        },
-        lastDataValue: { x: lastPoint.x, y: lastPoint.y }
-      });
-    }
-
-    // Update ending labels with this panel's single dataset
-    this.endingLabels.updateDatasets([this.config.dataset]);
-
-    // Render ending labels to this panel's SVG overlay
-    this.endingLabels.render(this.svgOverlay, this.panelChartArea);
-
-    console.log(`EndingLabels rendered for panel: ${this.config.dataset.name}`);
-  }
-
-
-  /**
-   * Toggle visibility of ending labels
-   */
-  toggleEndingLabels(show = null) {
-    if (!this.endingLabels) {
-      console.warn('EndingLabels not available for this panel');
-      return false;
-    }
-
-    const newState = this.endingLabels.toggle(show);
-    console.log(`Panel ${this.config.dataset.name} EndingLabels ${newState ? 'enabled' : 'disabled'}`);
-    return newState;
-  }
-
-  /**
-   * Update ending labels with current dataset
-   */
-  updateEndingLabels() {
-    if (!this.endingLabels || !this.config.dataset) {
-      return;
-    }
-
-    // Update with current dataset
-    this.endingLabels.updateDatasets([this.config.dataset]);
-
-    // Re-render if already rendered and visible
-    if (this.isRendered && this.endingLabels.isVisible && this.svgOverlay && this.panelChartArea) {
-      this.endingLabels.render(this.svgOverlay, this.panelChartArea);
-    }
-  }
-
-  /**
-   * Get current state of ending labels
-   */
-  getEndingLabelsState() {
-    return this.endingLabels ? this.endingLabels.getState() : null;
-  }
   
   /**
    * Create panel container with dynamic sizing
@@ -588,6 +496,135 @@ export class Panel {
     
     ctx.restore();
   }
+
+  /**
+ * Get the line endpoint data for this panel
+ * Used by PanelManager to collect endpoint coordinates for ending labels
+ */
+getLineEndpoint() {
+  if (!this.config.dataset || !this.config.dataset.data || this.config.dataset.data.length === 0) {
+    return null;
+  }
+
+  const lastPoint = this.config.dataset.data[this.config.dataset.data.length - 1];
+  if (!lastPoint) return null;
+
+  // ✅ FIXED: Calculate coordinates using current scales instead of stored coordinates
+  if (!this.config.sharedXScale || !this.yScale) {
+    console.warn(`Panel ${this.config.dataset.name}: Missing scales for endpoint calculation`);
+    return null;
+  }
+
+  // Calculate fresh coordinates using current panel scales
+  const endX = this.config.sharedXScale.scale(lastPoint.x);
+  const endY = this.yScale.scale(lastPoint.y);
+
+  console.log(`🎯 PANEL ${this.config.panelIndex} LINE ENDPOINT DEBUG:`, {
+    datasetName: this.config.dataset.name,
+    
+    // Raw data point
+    lastDataPoint: {
+      x: lastPoint.x,
+      y: lastPoint.y
+    },
+    
+    // ✅ FRESH CALCULATED coordinates using current scales
+    freshCoords: { endX, endY },
+    
+    // ❌ OLD stored coordinates (for comparison)
+    oldStoredCoords: {
+      unifiedX: lastPoint.unifiedX,
+      unifiedY: lastPoint.unifiedY,
+      screenX: lastPoint.screenX,
+      screenY: lastPoint.screenY
+    },
+    
+    // Panel info
+    panelChartArea: this.panelChartArea,
+    
+    // Scale verification
+    scaleInfo: {
+      xScale: {
+        domain: this.config.sharedXScale.domain,
+        range: this.config.sharedXScale.range,
+        inputValue: lastPoint.x,
+        outputValue: endX
+      },
+      yScale: {
+        domain: this.yScale.domain,
+        range: this.yScale.range,
+        inputValue: lastPoint.y,
+        outputValue: endY
+      }
+    }
+  });
+
+  if (endX == null || endY == null || !isFinite(endX) || !isFinite(endY)) {
+    console.warn(`Panel ${this.config.dataset.name}: Invalid calculated endpoint coordinates`);
+    return null;
+  }
+
+  // Check if point is within panel chart area
+  const tolerance = 50;
+  if (endX < this.panelChartArea.x - tolerance || 
+      endX > this.panelChartArea.x + this.panelChartArea.width + tolerance ||
+      endY < this.panelChartArea.y - tolerance || 
+      endY > this.panelChartArea.y + this.panelChartArea.height + tolerance) {
+    console.log(`Panel ${this.config.dataset.name}: Calculated endpoint outside chart area`);
+    return null;
+  }
+
+  return {
+    // ✅ Panel-local coordinates calculated fresh from current scales
+    localX: endX,
+    localY: endY,
+    
+    // Original data values
+    dataX: lastPoint.x,
+    dataY: lastPoint.y,
+    
+    // Dataset info
+    dataset: this.config.dataset,
+    
+    // Panel context for coordinate translation
+    panelIndex: this.config.panelIndex,
+    panelHeight: this.config.height,
+    panelChartArea: this.panelChartArea
+  };
+}
+
+/**
+ * Get panel coordinate and positioning information
+ * Used by PanelManager for coordinate translation
+ */
+getPanelCoordinateInfo() {
+  const containerRect = this.panelContainer ? this.panelContainer.getBoundingClientRect() : null;
+  const parentRect = this.config.container ? this.config.container.getBoundingClientRect() : null;
+  
+  return {
+    panelIndex: this.config.panelIndex,
+    panelHeight: this.config.height,
+    panelChartArea: this.panelChartArea,
+    
+    // Panel positioning within the overall container
+    panelStartY: this.config.panelIndex * this.config.height,
+    panelEndY: (this.config.panelIndex + 1) * this.config.height,
+    
+    // Container info
+    containerRect: containerRect,
+    parentRect: parentRect,
+    
+    // Padding info
+    padding: this.config.padding,
+    
+    // For debugging
+    debug: {
+      datasetName: this.config.dataset?.name || 'Unknown',
+      isRendered: this.isRendered,
+      chartAreaValid: !!this.panelChartArea
+    }
+  };
+}
 
   /**
    * Get panel information for debugging
