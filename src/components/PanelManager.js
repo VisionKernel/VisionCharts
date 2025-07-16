@@ -98,6 +98,8 @@ async refreshPanelMode() {
   try {
     console.log('Refreshing panel mode with updated datasets');
     console.log(`Current dataset count: ${this.chart.config.data.length}`);
+    const previousEndingLabelsState = this.panels.length > 0 ? 
+    this.panels[0].getEndingLabelsState()?.isVisible : false;
     
     // ✅ CRITICAL: Completely destroy and recreate panel infrastructure
     this._destroyPanels();
@@ -124,6 +126,10 @@ async refreshPanelMode() {
     this._createPanelContainer();
 
     this._renderPanelModeTitle();
+
+    if (previousEndingLabelsState) {
+      this.toggleEndingLabels(true);
+    }
     
     // ✅ CRITICAL: Recreate panels with fresh percentage calculations
     await this._createPanels();
@@ -138,6 +144,47 @@ async refreshPanelMode() {
     throw error;
   }
 }
+
+
+  /**
+   *  Toggle ending labels visibility for all panels
+   */
+toggleEndingLabels(show = null) {
+  if (!this.isPanelMode || this.panels.length === 0) return false;
+  
+  if (show === null) {
+    const firstPanelState = this.panels[0].getEndingLabelsState();
+    show = firstPanelState ? !firstPanelState.isVisible : true;
+  }
+  
+  let newState = false;
+  for (const panel of this.panels) {
+    newState = panel.toggleEndingLabels(show);
+  }
+  return newState;
+}
+
+  /**
+   * Check if a tick is valid for grid lines
+   */
+updateEndingLabels() {
+  if (!this.isPanelMode || this.panels.length === 0) return;
+  for (const panel of this.panels) {
+    panel.updateEndingLabels();
+  }
+}
+
+  /*
+    * Check if a tick is valid for grid lines
+    */
+  getEndingLabelsState() {
+    if (!this.isPanelMode || this.panels.length === 0) return null;
+    return this.panels.map(panel => ({
+      datasetName: panel.config.dataset?.name || 'Unknown',
+      panelIndex: panel.config.panelIndex,
+      endingLabelsState: panel.getEndingLabelsState()
+    }));
+  }
 
   /**
    * Switch to panel mode with validation

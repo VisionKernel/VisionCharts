@@ -1434,8 +1434,17 @@ _debugDataStructure() {
       this.legend.updateDatasetColor(datasetId, newColor);
     }
 
-    if (this.endingLabels) {
-      this.endingLabels.updateDatasetColor(datasetId, newColor);
+    if (this.isPanelMode) {
+      if (this.panelManager && this.panelManager.panels) {
+        const panel = this.panelManager.panels.find(p => p.config.dataset.id === datasetId);
+        if (panel && panel.endingLabels) {
+          panel.endingLabels.updateDatasetColor(datasetId, newColor);
+        }
+      }
+    } else {
+      if (this.endingLabels) {
+        this.endingLabels.updateDatasetColor(datasetId, newColor);
+      }
     }
     
     this.render();
@@ -1462,6 +1471,12 @@ _debugDataStructure() {
    * @private
    */
   _updateEndingLabels() {
+    if (this.isPanelMode) {
+      if (this.panelManager) {
+        this.panelManager.updateEndingLabels();
+      }
+      return;
+    }
     if (this.endingLabels && this.config.data) {
       this.endingLabels.updateDatasets(this.config.data);
       
@@ -1473,11 +1488,33 @@ _debugDataStructure() {
   }
 
   /**
+   * Get current ending labels state
+   */
+  getEndingLabelsState() {
+    if (this.isPanelMode) {
+      return this.panelManager ? this.panelManager.getEndingLabelsState() : null;
+    } else {
+      return this.endingLabels ? this.endingLabels.getState() : null;
+    }
+  }
+
+  /**
    * Toggle ending labels visibility
    * @param {boolean} show - Force show/hide state, or null to toggle
    * @returns {boolean} New visibility state
    */
   toggleEndingLabels(show = null) {
+
+    if (this.isPanelMode) {
+      if (!this.panelManager) {
+        console.warn('PanelManager not available for ending labels toggle');
+        return false;
+      }
+      const newState = this.panelManager.toggleEndingLabels(show);
+      console.log(`EndingLabels ${newState ? 'enabled' : 'disabled'} for panel mode`);
+      return newState;
+    }
+
     if (!this.endingLabels) {
       console.warn('EndingLabels component not available');
       return false;

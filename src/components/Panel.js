@@ -1,6 +1,7 @@
 import { Axis } from '../core/Axis.js';
 import { Scale } from '../core/Scale.js';
 import PanelDataRenderer from './PanelDataRenderer.js';
+import { EndingLabels } from './EndingLabels.js';
 import { RecessionLines } from './RecessionLines.js';
 import { ZeroLine } from './ZeroLine.js';
 import { Grid } from './Grid.js';
@@ -57,6 +58,17 @@ export class Panel {
     this.canvas = null;
     this.rendererInstance = null;
     this.svgOverlay = null;
+
+    this.endingLabels = new EndingLabels({
+      enabled: false,
+      offsetX: 8,
+      offsetY: 0,
+      fontSize: 11,
+      showBackground: true,
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      backgroundPadding: 4,
+      borderRadius: 3
+    });
     
     // Panel-specific chart area
     this.panelChartArea = null;
@@ -136,6 +148,8 @@ export class Panel {
       if (this.config.showTitle) {
         this._renderPanelTitle();
       }
+
+      this._renderEndingLabels();
       
       this.isRendered = true;
       console.log(`Panel rendered: ${this.config.dataset.name}`);
@@ -173,6 +187,12 @@ export class Panel {
    * Destroy panel and cleanup
    */
   destroy() {
+
+    if (this.endingLabels) {
+      this.endingLabels.destroy();
+      this.endingLabels = null;
+    }
+
     // Cleanup renderer
     if (this.rendererInstance) {
       this.rendererInstance.destroy();
@@ -207,6 +227,79 @@ export class Panel {
     this.isRendered = false;
     
     console.log(`Panel destroyed: ${this.config.dataset?.name || 'Unknown'}`);
+  }
+
+  /**
+   * Render ending labels for this panel
+   */
+  _renderEndingLabels() {
+    if (!this.endingLabels || !this.svgOverlay || !this.panelChartArea) {
+      return;
+    }
+
+    // Debug: Log coordinate information
+    if (this.config.dataset && this.config.dataset.data && this.config.dataset.data.length > 0) {
+      const lastPoint = this.config.dataset.data[this.config.dataset.data.length - 1];
+      const endX = lastPoint.unifiedX || lastPoint.screenX || lastPoint.pixelX;
+      const endY = lastPoint.unifiedY || lastPoint.screenY || lastPoint.pixelY;
+      
+      console.log(`Panel ${this.config.dataset.name} ending label debug:`, {
+        lastPointCoords: { x: endX, y: endY },
+        panelChartArea: this.panelChartArea,
+        yScale: {
+          domain: this.yScale?.domain,
+          range: this.yScale?.range
+        },
+        lastDataValue: { x: lastPoint.x, y: lastPoint.y }
+      });
+    }
+
+    // Update ending labels with this panel's single dataset
+    this.endingLabels.updateDatasets([this.config.dataset]);
+
+    // Render ending labels to this panel's SVG overlay
+    this.endingLabels.render(this.svgOverlay, this.panelChartArea);
+
+    console.log(`EndingLabels rendered for panel: ${this.config.dataset.name}`);
+  }
+
+
+  /**
+   * Toggle visibility of ending labels
+   */
+  toggleEndingLabels(show = null) {
+    if (!this.endingLabels) {
+      console.warn('EndingLabels not available for this panel');
+      return false;
+    }
+
+    const newState = this.endingLabels.toggle(show);
+    console.log(`Panel ${this.config.dataset.name} EndingLabels ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Update ending labels with current dataset
+   */
+  updateEndingLabels() {
+    if (!this.endingLabels || !this.config.dataset) {
+      return;
+    }
+
+    // Update with current dataset
+    this.endingLabels.updateDatasets([this.config.dataset]);
+
+    // Re-render if already rendered and visible
+    if (this.isRendered && this.endingLabels.isVisible && this.svgOverlay && this.panelChartArea) {
+      this.endingLabels.render(this.svgOverlay, this.panelChartArea);
+    }
+  }
+
+  /**
+   * Get current state of ending labels
+   */
+  getEndingLabelsState() {
+    return this.endingLabels ? this.endingLabels.getState() : null;
   }
   
   /**
@@ -507,7 +600,8 @@ export class Panel {
       isRendered: this.isRendered,
       chartArea: this.panelChartArea,
       yDomain: this.yScale?.domain || null,
-      rendererType: this.config.rendererType
+      rendererType: this.config.rendererType,
+      endingLabelsState: this.getEndingLabelsState()
     };
   }
 }
