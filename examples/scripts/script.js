@@ -446,7 +446,7 @@ function setupLineChartControls() {
         recessionVisible = !recessionVisible;
         
         // Apply the new state
-        lineChart.toggleRecessionLines();
+        lineChart.toggleRecessionLines(recessionVisible);
         
         console.log('Line chart recession toggle - new state:', recessionVisible);
         
@@ -662,7 +662,7 @@ function setupBarChartControls() {
         recessionVisible = !recessionVisible;
         
         // Apply the new state
-        barChart.toggleRecessionLines();
+        barChart.toggleRecessionLines(recessionVisible);
         
         console.log('Bar chart recession toggle - new state:', recessionVisible);
         

@@ -59,7 +59,7 @@ export class Chart {
         gridDash: [], // [] for solid, [5, 5] for dashed
 
         showRecessionLines: false, // Show recession lines
-        recessionFillColor: 'rgba(50, 50, 5, 0.3)',
+        recessionFillColor: 'rgba(235, 54, 54, 0.2)',
         recessionStrokeColor: 'rgba(30, 30, 30, 0.5)',
         
         // Renderer options
@@ -1016,6 +1016,11 @@ async _renderSingleMode() {
    * Toggle recession lines visibility
    */
   toggleRecessionLines(show = null) {
+    if (this.isPanelMode) {
+        this.panelManager.toggleRecessionLines(show);
+        return;
+    }
+
     if (!this.recessionLines) {
       console.warn('RecessionLines component not available');
       return false;
@@ -1024,6 +1029,8 @@ async _renderSingleMode() {
     const newState = this.recessionLines.toggle(show);
     this.config.options.showRecessionLines = newState;
     
+    this.render();
+
     console.log(`RecessionLines ${newState ? 'enabled' : 'disabled'}`);
     return newState;
   }
@@ -1032,6 +1039,11 @@ async _renderSingleMode() {
    * Toggle zero line visibility
    */
   toggleZeroLine(show = null) {
+    if (this.isPanelMode) {
+      this.panelManager.toggleZeroLine(show);
+      return;
+    }
+
     if (!this.zeroLine) {
       console.warn('ZeroLine component not available');
       return false;
@@ -1548,6 +1560,10 @@ _debugDataStructure() {
    * Toggle average line visibility
    */
   toggleAverageLine(show = null) {
+    if (this.isPanelMode) {
+        this.panelManager.toggleAverageLine(show);
+        return;
+    }
     if (!this.averageLine) {
       console.warn('AverageLine component not available');
       return false;
@@ -1563,6 +1579,10 @@ _debugDataStructure() {
    * Toggle median line visibility
    */
   toggleMedianLine(show = null) {
+    if (this.isPanelMode) {
+        this.panelManager.toggleMedianLine(show);
+        return;
+    }
     if (!this.medianLine) {
       console.warn('MedianLine component not available');
       return false;
@@ -1897,7 +1917,6 @@ async ensureInitialized() {
   _onMouseLeave(event) {
     if (this.crosshair) {
       this.crosshair.hide();
-      this.lastMousePosition = null;
     }
     if (this.tooltip) {
       this.tooltip.hide();

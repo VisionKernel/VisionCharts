@@ -60,6 +60,12 @@ export class Panel {
     
     // Panel-specific chart area
     this.panelChartArea = null;
+
+    // Statistical lines
+    this.statisticalLines = null;
+
+    // Zero line
+    this.zeroLine = null;
     
     console.log(`Panel created for dataset: ${this.config.dataset?.name || 'Unknown'}`);
   }
@@ -94,6 +100,12 @@ export class Panel {
 
     // Create grid for this panel
     this._createGrid();
+
+    // Create statistical lines for this panel
+    this._createStatisticalLines();
+
+    // Create zero line for this panel
+    this._createZeroLine();
 
     // Initialize renderer (Canvas/WebGL)
     await this._initializeRenderer();
@@ -136,6 +148,12 @@ export class Panel {
       if (this.config.showTitle) {
         this._renderPanelTitle();
       }
+      
+      // Render statistical lines
+      this._renderStatisticalLines();
+      
+      // Render zero line
+      this._renderZeroLine();
       
       this.isRendered = true;
       console.log(`Panel rendered: ${this.config.dataset.name}`);
@@ -192,6 +210,16 @@ export class Panel {
     // Remove panel container
     if (this.panelContainer && this.panelContainer.parentNode) {
       this.panelContainer.parentNode.removeChild(this.panelContainer);
+    }
+
+    if (this.statisticalLines) {
+        this.statisticalLines.destroy();
+        this.statisticalLines = null;
+    }
+
+    if (this.zeroLine) {
+        this.zeroLine.destroy();
+        this.zeroLine = null;
     }
     
     // Clear references
@@ -461,6 +489,64 @@ export class Panel {
     
     this.svgOverlay.appendChild(titleElement);
   }
+
+  toggleAverageLine(show) {
+    if (this.statisticalLines) {
+        this.statisticalLines.toggleAverage(show);
+    }
+  }
+
+  toggleMedianLine(show) {
+      if (this.statisticalLines) {
+          this.statisticalLines.toggleMedian(show);
+      }
+  }
+
+  toggleZeroLine(show) {
+    if (this.zeroLine) {
+        this.zeroLine.toggle(show);
+    }
+  }
+
+  _createStatisticalLines() {
+      this.statisticalLines = new StatisticalLines({
+          averageConfig: { useAllDatasets: false },
+          medianConfig: { useAllDatasets: false },
+      });
+  }
+
+  _renderStatisticalLines() {
+      if (this.statisticalLines) {
+          this.statisticalLines.updateDatasets([this.config.dataset]);
+          this.statisticalLines.render(this.panelContainer, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
+      }
+  }
+
+  _createZeroLine() {
+    this.zeroLine = new ZeroLine({
+      // Configuration for the zero line can be passed here if needed
+    });
+  }
+
+  _renderZeroLine() {
+    if (this.zeroLine) {
+      this.zeroLine.render(this.panelContainer, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
+    }
+  }
+
+  getDataPointsAtX(dataX) {
+    const tolerance = (this.config.sharedXScale.domain[1] - this.config.sharedXScale.domain[0]) * 0.01; 
+    const points = this.config.dataset.data.filter(p => Math.abs(p.x - dataX) < tolerance);
+
+    return points.map(p => ({
+        ...p,
+        pixelX: this.config.sharedXScale.scale(p.x),
+        pixelY: this.yScale.scale(p.y),
+        panelIndex: this.config.panelIndex,
+        datasetId: this.config.dataset.id,
+        color: this.config.dataset.color,
+    }));
+}
 
   /**
    * Render grid for this panel

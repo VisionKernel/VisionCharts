@@ -17,6 +17,10 @@ import { Axis } from '../core/Axis.js';
 import { createScale } from '../core/Scale.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
 import { EndingLabels } from './EndingLabels.js';
+import { Legend } from './Legend.js';
+import { Crosshair } from './Crosshair.js';
+import { CrosshairTooltip } from './CrosshairTooltip.js';
+import { RecessionLines } from './RecessionLines.js';
 
 export class PanelManager {
   constructor(chart) {
@@ -38,6 +42,16 @@ export class PanelManager {
     
     // Ending labels management
     this.endingLabels = null;
+
+    // Legend component
+    this.legend = null;
+
+    // Crosshair and Tooltip
+    this.crosshair = null;
+    this.tooltip = null;
+
+    // Recession Lines
+    this.recessionLines = null;
 
     // Single mode state backup
     this.originalSingleModeState = null;
@@ -105,6 +119,9 @@ async refreshPanelMode() {
     const previousEndingLabelsState = this.panels.length > 0 ? 
     this.panels[0].getEndingLabelsState()?.isVisible : false;
     
+    // Clean up the old crosshair and listeners before rebuilding
+    this._destroyCrosshairAndTooltip();
+    
     // ✅ CRITICAL: Completely destroy and recreate panel infrastructure
     this._destroyPanels();
     
@@ -140,6 +157,9 @@ async refreshPanelMode() {
     
     // Re-render all panels
     await this._renderPanels();
+
+    // Re-initialize the crosshair and tooltip
+    this._setupCrosshairAndTooltip();
     
     console.log(`Panel mode refreshed successfully with ${this.panels.length} panels`);
     
@@ -188,6 +208,8 @@ async refreshPanelMode() {
     
     // Render all panels and shared axis
     await this._renderPanels();
+    
+    this._setupCrosshairAndTooltip();
     
     console.log('Panel mode activated successfully');
   }
@@ -381,10 +403,9 @@ _createSharedXScale() {
     throw new Error('No valid X values found in datasets');
   }
   
-  // ✅ FIXED: Calculate range based on actual panel chart area width
-  // Panels will have standard padding: left=60, right=20
-  const panelLeftPadding = 60;  // Space for Y axis
-  const panelRightPadding = 20; // Right margin
+  const chartMargin = this.chart.config.options.margin;
+  const panelLeftPadding = chartMargin.left;
+  const panelRightPadding = chartMargin.right;
   
   // Calculate available width for chart area
   const containerWidth = this.chart.container.offsetWidth;
@@ -480,6 +501,8 @@ _createSharedXScale() {
     this.panelContainer.appendChild(this.panelSvgOverlay);
 
     this._createEndingLabels();
+    this._createLegend();
+    this._createRecessionLines();
     
     console.log('Panel container created');
   }
@@ -582,9 +605,13 @@ _createSharedXScale() {
     
     this._renderSharedXAxis();
 
+    this._renderRecessionLines();
+
     if (this.endingLabels && this.endingLabels.config.enabled) {
       this._renderEndingLabels();
     }
+    
+    this._renderLegend();
     
     console.log(`Rendered ${this.panels.length} panels with shared X axis`);
   }
@@ -659,6 +686,41 @@ _renderPanelModeTitle() {
 }
 
 /**
+ * Create and initialize Legend for panel mode
+ * @private
+ */
+_createLegend() {
+    this.legend = new Legend({
+        fontSize: 12,
+        fontFamily: this.chart.config.options.titleFontFamily || 'Arial, sans-serif',
+        textColor: '#333333',
+        itemSpacing: 25,
+        marginTop: 15,
+        marginBottom: 15
+    });
+    console.log('Legend created for panel mode');
+}
+
+/**
+ * Render legend for all panels
+ * @private
+ */
+_renderLegend() {
+    if (this.legend && this.chart.config.data) {
+        this.legend.updateDatasets(this.chart.config.data);
+
+        if (this.panelSvgOverlay && this.chart.chartArea) {
+            const legendChartArea = {
+                ...this.chart.chartArea,
+                y: (this.chart.config.options.title ? this.chart.config.options.titlePadding + this.chart.config.options.titleFontSize : 0) + 15,
+
+            };
+            this.legend.render(this.panelSvgOverlay, legendChartArea);
+        }
+    }
+}
+
+/**
  * Create and initialize EndingLabels for panel mode
  * @private
  */
@@ -679,6 +741,43 @@ _createEndingLabels() {
   });
   
   console.log('EndingLabels created for panel mode');
+}
+
+/**
+ * Create and initialize RecessionLines for panel mode
+ * @private
+ */
+_createRecessionLines() {
+    if (!this.chart.recessionLines) {
+        return;
+    }
+    this.recessionLines = new RecessionLines({
+        enabled: this.chart.recessionLines.config.enabled,
+        fillColor: this.chart.recessionLines.config.fillColor,
+        strokeColor: this.chart.recessionLines.config.strokeColor,
+        strokeWidth: this.chart.recessionLines.config.strokeWidth,
+    });
+    this.recessionLines.setRecessionData(this.chart.recessionLines.config.recessionData);
+}
+
+/**
+ * Render RecessionLines for all panels
+ * @private
+ */
+_renderRecessionLines() {
+    if (!this.recessionLines) {
+        return;
+    }
+
+    const panelAreaHeight = Math.floor(this.chart.container.offsetHeight * this.PANEL_AREA_PERCENTAGE);
+    const fullPanelArea = {
+        x: this.chart.config.options.margin.left,
+        y: this.chart.config.options.margin.top,
+        width: this.chart.container.offsetWidth - this.chart.config.options.margin.left - this.chart.config.options.margin.right,
+        height: panelAreaHeight - this.chart.config.options.margin.top,
+    };
+
+    this.recessionLines.render(this.panelContainer, fullPanelArea, { x: this.sharedXScale });
 }
 
 /**
@@ -946,6 +1045,540 @@ async refreshPanelMode() {
       this.endingLabels = null;
       console.log('  ✓ EndingLabels destroyed');
     }
+
+    if (this.legend) {
+        this.legend.destroy();
+        this.legend = null;
+        console.log('  ✓ Legend destroyed');
+    }
+
+    if (this.crosshair) {
+        this.crosshair.destroy();
+        this.crosshair = null;
+    }
+
+    if (this.tooltip) {
+        this.tooltip.destroy();
+        this.tooltip = null;
+    }
+
+    if (this.recessionLines) {
+        this.recessionLines.destroy();
+        this.recessionLines = null;
+    }
+    
+    // Destroy individual panels
+    for (const panel of this.panels) {
+      panel.destroy();
+    }
+    console.log('  ✓ Individual panels destroyed');
+    
+    // Clean up shared axis
+    if (this.sharedXAxis) {
+      this.sharedXAxis = null;
+      console.log('  ✓ Shared X axis cleared');
+    }
+    
+    // Clean up SVG overlay
+    if (this.panelSvgOverlay) {
+      if (this.panelSvgOverlay.parentNode) {
+        this.panelSvgOverlay.parentNode.removeChild(this.panelSvgOverlay);
+      }
+      this.panelSvgOverlay = null;
+      console.log('  ✓ Panel SVG overlay removed');
+    }
+    
+    this.panels = [];
+    this.sharedXScale = null;
+    
+    console.log('All panels destroyed');
+  }
+
+  /**
+   * Destroy panel container
+   * @private
+   */
+  _destroyPanelContainer() {
+    if (this.panelContainer && this.panelContainer.parentNode) {
+      this.panelContainer.parentNode.removeChild(this.panelContainer);
+      this.panelContainer = null;
+    }
+  }
+
+  /**
+   * ✅ FIXED: Complete single chart reinitialization
+   * @private
+   */
+  async _reinitializeSingleChart() {
+    try {
+      console.log('Starting complete single chart reinitialization...');
+      console.log('Current isPanelMode state:', this.isPanelMode);
+      
+      // ✅ CRITICAL: Ensure panel mode is false
+      this.isPanelMode = false;
+      
+      // Phase 1: Complete cleanup
+      console.log('Phase 1: Cleanup...');
+      if (this.chart.rendererInstance) {
+        this.chart.rendererInstance.destroy();
+        this.chart.rendererInstance = null;
+        console.log('  ✓ Renderer destroyed');
+      }
+      
+      // Clear all references
+      this.chart.generatedPaths = null;
+      this.chart.transformedData = null;
+      this.chart.canvas = null;
+      this.chart.svgOverlay = null;
+      this.chart.gridCanvas = null;
+      console.log('  ✓ References cleared');
+      
+      // Clear coordinate system cache
+      if (this.chart.coordinateSystem) {
+        this.chart.coordinateSystem.clearCache();
+        console.log('  ✓ Coordinate system cache cleared');
+      }
+      
+      // ✅ CRITICAL: Use Chart's initialize method for complete recreation
+      console.log('Phase 2: Calling chart._initialize() for complete recreation...');
+      await this.chart._initialize();
+      console.log('  ✓ Chart._initialize() completed');
+      
+      // ✅ CRITICAL FIX: Call render() after initialization to actually draw the chart
+      console.log('Phase 3: Rendering chart data...');
+      await this.chart.render();
+      console.log('  ✓ Chart render completed');
+      
+      console.log('Complete single chart reinitialization successful');
+      
+    } catch (error) {
+      console.error('Complete reinitialization failed:', error);
+      
+      // Fallback: Try manual recreation
+      try {
+        console.log('Attempting manual recreation fallback...');
+        
+        // Ensure state is correct
+        this.isPanelMode = false;
+        
+        // Manual setup
+        console.log('  Manual dimensions...');
+        this.chart._calculateDimensions();
+        
+        console.log('  Manual rendering layers...');
+        this.chart._setupRenderingLayers();
+        
+        console.log('  Manual process data...');
+        await this.chart._processData();
+        
+        console.log('  Manual create scales...');
+        this.chart._createScales();
+        
+        if (this.chart.coordinateSystem) {
+          this.chart.coordinateSystem.setScales(this.chart.scales);
+          console.log('  Manual coordinate system updated...');
+        }
+        
+        console.log('  Manual create axes...');
+        this.chart._createAxes();
+        
+        console.log('  Manual create grid...');
+        this.chart._createGrid();
+        
+        console.log('  Manual initialize renderer...');
+        await this.chart._initializeRenderer();
+        
+        // Generate paths manually
+        if (this.chart.coordinateSystem && this.chart.config.data) {
+          console.log('  Manual coordinate transformation...');
+          this.chart.config.data = await this.chart.coordinateSystem.transformDatasets(this.chart.config.data, {
+            strictValidation: false
+          });
+          
+          console.log('  Manual path generation...');
+          this.chart.generatedPaths = await PathGenerator.generatePaths(this.chart.config.data, {
+            curve: this.chart.config.options.curve || 'linear',
+            strokeWidth: this.chart.config.options.strokeWidth || 2,
+            targetRenderer: this.chart.activeRenderer
+          });
+          
+          console.log(`  ✓ Manually generated ${this.chart.generatedPaths.length} paths`);
+        }
+        
+        console.log('  Manual render...');
+        await this.chart.render();
+        console.log('Manual recreation successful');
+        
+      } catch (fallbackError) {
+        console.error('Manual recreation also failed:', fallbackError);
+        
+        // Last resort: Show error message
+        this.chart.container.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+            <div style="text-align: center; padding: 20px;">
+              <div style="font-size: 20px; margin-bottom: 12px;">⚠️</div>
+              <div style="font-size: 16px; font-weight: 500; margin-bottom: 8px;">Chart Error</div>
+              <div style="font-size: 14px; color: #888;">Unable to restore single chart mode</div>
+              <div style="font-size: 12px; color: #aaa; margin-top: 12px;">Try refreshing the page</div>
+            </div>
+          </div>
+        `;
+        
+        throw fallbackError;
+      }
+    }
+  }
+
+_setupCrosshairAndTooltip() {
+    // Create Crosshair
+    this.crosshair = new Crosshair({
+        lineColor: '#555',
+        lineDash: [4, 4],
+    });
+
+    const fullChartArea = {
+        x: 0,
+        y: 0,
+        width: this.chart.config.options.width,
+        height: this.chart.config.options.height,
+    };
+    this.crosshair.render(this.panelSvgOverlay, fullChartArea);
+
+    // Create Tooltip
+    this.tooltip = new CrosshairTooltip();
+
+    // Setup events
+    this._setupCrosshairEvents();
+}
+
+_setupCrosshairEvents() {
+    if (!this.chart.container) return;
+
+    this._boundOnMouseMove = this._onMouseMove.bind(this);
+    this._boundOnMouseLeave = this._onMouseLeave.bind(this);
+
+    this.chart.container.addEventListener('mousemove', this._boundOnMouseMove);
+    this.chart.container.addEventListener('mouseleave', this._boundOnMouseLeave);
+}
+
+_onMouseMove(event) {
+    if (!this.isPanelMode || !this.crosshair || !this.tooltip) return;
+
+    const rect = this.chart.container.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    const dataX = this.sharedXScale.invert(mouseX);
+
+    let allPoints = [];
+    this.panels.forEach(panel => {
+        const points = panel.getDataPointsAtX(dataX);
+        allPoints.push(...points);
+    });
+
+    if (allPoints.length > 0) {
+        this.crosshair.show();
+        // Use the mouse Y for the horizontal line to give immediate feedback
+        this.crosshair.updatePosition(mouseX, mouseY); 
+        this.crosshair.updateHighlights(allPoints.map(p => {
+            const panel = this.panels[p.panelIndex];
+            // Mathematical calculation of the panel's top offset
+            const panelTopOffset = p.panelIndex * panel.config.height;
+            const y = panelTopOffset + p.pixelY;
+            return { ...p, unifiedX: p.pixelX, unifiedY: y };
+        }));
+        this.tooltip.show(allPoints.map(p => ({
+             ...p, 
+             dataX: p.x, 
+             dataY: p.y,
+             dataset: this.chart.config.data.find(d => d.id === p.datasetId)
+            })), 
+            event.clientX, 
+            event.clientY
+        );
+    } else {
+        this.crosshair.hide();
+        this.tooltip.hide();
+    }
+}
+
+
+_onMouseLeave(event) {
+    if (this.crosshair) {
+        this.crosshair.hide();
+    }
+    if (this.tooltip) {
+        this.tooltip.hide();
+    }
+}
+
+toggleAverageLine(show) {
+    this.panels.forEach(panel => panel.toggleAverageLine(show));
+}
+
+toggleMedianLine(show) {
+    this.panels.forEach(panel => panel.toggleMedianLine(show));
+}
+
+toggleZeroLine(show) {
+    this.panels.forEach(panel => panel.toggleZeroLine(show));
+}
+
+toggleRecessionLines(show) {
+    if (this.recessionLines) {
+        this.recessionLines.toggle(show);
+    }
+}
+
+_destroyCrosshairAndTooltip() {
+    if (this.crosshair) {
+        this.crosshair.destroy();
+        this.crosshair = null;
+    }
+    if (this.tooltip) {
+        this.tooltip.destroy();
+        this.tooltip = null;
+    }
+    if (this.chart.container) {
+        if (this._boundOnMouseMove) {
+            this.chart.container.removeEventListener('mousemove', this._boundOnMouseMove);
+        }
+        if (this._boundOnMouseLeave) {
+            this.chart.container.removeEventListener('mouseleave', this._boundOnMouseLeave);
+        }
+    }
+}
+
+
+/**
+ * Create and initialize EndingLabels for panel mode
+ * @private
+ */
+_createEndingLabels() {
+  if (this.endingLabels) {
+    this.endingLabels.destroy?.();
+  }
+  
+  this.endingLabels = new EndingLabels({
+    enabled: false,
+    offsetX: 0,
+    offsetY: 0,
+    fontSize: 11,
+    showBackground: true,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundPadding: 4,
+    borderRadius: 3
+  });
+  
+  console.log('EndingLabels created for panel mode');
+}
+
+_getPanelEndpoints() {
+    const endpoints = [];
+    this.panels.forEach(panel => {
+        const endpoint = panel.getLineEndpoint();
+        if (endpoint) {
+            const panelTopOffset = panel.config.panelIndex * panel.config.height;
+            endpoints.push({
+                ...endpoint,
+                unifiedX: endpoint.localX,
+                unifiedY: panelTopOffset + endpoint.localY
+            });
+        }
+    });
+    return endpoints;
+}
+
+
+/**
+ * Render ending labels for all panels
+ * @private
+ */
+_renderEndingLabels() {
+  if (!this.endingLabels || !this.panelSvgOverlay) {
+    return;
+  }
+  
+  // Create global chart area for EndingLabels
+  const containerHeight = this.chart.container.offsetHeight;
+  const containerWidth = this.chart.container.offsetWidth;
+  
+  const globalChartArea = {
+    x: 0,
+    y: 0,
+    width: containerWidth,
+    height: containerHeight
+  };
+  
+  // Create datasets with global coordinates
+  const datasets = this._getPanelEndpoints().map(endpoint => ({
+      ...endpoint.dataset,
+      data: [{
+          x: endpoint.dataX,
+          y: endpoint.dataY,
+          unifiedX: endpoint.unifiedX,
+          unifiedY: endpoint.unifiedY
+      }]
+  }));
+  
+  console.log(`Rendering ${datasets.length} ending labels with global coordinates`);
+  
+  // Update EndingLabels with global datasets
+  this.endingLabels.updateDatasets(datasets);
+  
+  // Render to global SVG overlay
+  this.endingLabels.render(this.panelSvgOverlay, globalChartArea);
+}
+
+/**
+ * Toggle ending labels visibility for all panels
+ * @param {boolean} show - Force show/hide state, or null to toggle
+ */
+toggleEndingLabels(show = null) {
+  if (!this.isPanelMode || !this.endingLabels) {
+    console.warn('EndingLabels not available in current mode');
+    return false;
+  }
+  
+  // Determine new state
+  const currentState = this.endingLabels.isVisible;
+  const newState = show !== null ? show : !currentState;
+  
+  if (newState) {
+    // When showing, render first if not already rendered, then show
+    if (!this.endingLabels.isRendered || this.panels.length > 0) {
+      this._renderEndingLabels();
+    }
+    this.endingLabels.show();
+  } else {
+    // When hiding, just hide
+    this.endingLabels.hide();
+  }
+  
+  console.log(`EndingLabels ${newState ? 'enabled' : 'disabled'} for panel mode`);
+  return newState;
+}
+
+
+/**
+ * Update ending labels with current panel data
+ */
+updateEndingLabels() {
+  if (!this.isPanelMode || !this.endingLabels || this.panels.length === 0) {
+    return;
+  }
+  
+  // Re-render with updated data
+  this._renderEndingLabels();
+  
+  console.log('EndingLabels updated for panel mode');
+}
+
+/**
+ * Get ending labels state
+ */
+getEndingLabelsState() {
+  if (!this.isPanelMode || !this.endingLabels) {
+    return null;
+  }
+  
+  return {
+    isVisible: this.endingLabels.isVisible,
+    enabled: this.endingLabels.config.enabled,
+    panelCount: this.panels.length,
+    mode: 'panel'
+  };
+}
+
+/**
+ * Refresh panel mode - UPDATED to handle EndingLabels state
+ */
+async refreshPanelMode() {
+  if (!this.isPanelMode) return;
+  
+  try {
+    console.log('Refreshing panel mode with updated datasets');
+    console.log(`Current dataset count: ${this.chart.config.data.length}`);
+    
+    // ✅ UPDATED: Store EndingLabels state before refresh
+    const previousEndingLabelsState = this.endingLabels ? this.endingLabels.isVisible : false;
+    
+    // Completely destroy and recreate panel infrastructure
+    this._destroyPanels();
+    this._destroyPanelContainer();
+    
+    // Ensure we have valid datasets before proceeding
+    if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
+      console.warn('No datasets available for panel mode refresh');
+      return;
+    }
+    
+    // Process data first
+    await this.chart._processData();
+    
+    // Recreate shared X scale and axis
+    this._createSharedXScale();
+    this._createSharedXAxis();
+    
+    // Recreate panel container and SVG overlay (this also creates EndingLabels)
+    this._createPanelContainer();
+    
+    this._renderPanelModeTitle();
+    
+    // ✅ UPDATED: Restore EndingLabels state after refresh
+    if (previousEndingLabelsState && this.endingLabels) {
+      this.endingLabels.config.enabled = true;
+    }
+    
+    // Recreate panels with fresh percentage calculations
+    await this._createPanels();
+    
+    // Re-render all panels (this will also render EndingLabels if enabled)
+    await this._renderPanels();
+    
+    console.log(`Panel mode refreshed successfully with ${this.panels.length} panels`);
+    
+  } catch (error) {
+    console.error('Error refreshing panel mode:', error);
+    throw error;
+  }
+}
+
+  /**
+   * Destroy all panels and shared axis
+   * @private
+   */
+  _destroyPanels() {
+    console.log(`Destroying ${this.panels.length} panels...`);
+
+    if (this.endingLabels) {
+      if (this.endingLabels.destroy) {
+        this.endingLabels.destroy();
+      }
+      this.endingLabels = null;
+      console.log('  ✓ EndingLabels destroyed');
+    }
+
+    if (this.legend) {
+        this.legend.destroy();
+        this.legend = null;
+        console.log('  ✓ Legend destroyed');
+    }
+
+    if (this.crosshair) {
+        this.crosshair.destroy();
+        this.crosshair = null;
+    }
+
+    if (this.tooltip) {
+        this.tooltip.destroy();
+        this.tooltip = null;
+    }
+
+    if (this.recessionLines) {
+        this.recessionLines.destroy();
+        this.recessionLines = null;
+    }
     
     // Destroy individual panels
     for (const panel of this.panels) {
@@ -1120,6 +1753,13 @@ async refreshPanelMode() {
     
     this.chart = null;
     this.originalSingleModeState = null;
+
+    if (this.legend) {
+        this.legend.destroy();
+        this.legend = null;
+    }
+
+    this._destroyCrosshairAndTooltip();
     
     console.log('PanelManager destroyed');
   }

@@ -9,8 +9,7 @@ export class RecessionLines {
   constructor(config = {}) {
     this.config = {
       // Visual styling
-      fillColor: 'rgba(235, 54, 54, 0.15)',      // Default light red with transparency
-      fillOpacity: 0.15,
+      fillColor: 'rgba(235, 54, 54, 0.2)',      // Default light red with transparency
       strokeColor: 'rgba(235, 54, 54, 0.3)',     // Slightly more opaque border
       strokeWidth: 0,                             // No border by default
       
@@ -126,6 +125,8 @@ export class RecessionLines {
       console.warn('RecessionLines: Container, chart area, and scales required');
       return;
     }
+
+    console.log('[RecessionLines Debug] render() called.');
     
     this.chartArea = chartArea;
     this.scales = scales;
@@ -264,14 +265,14 @@ export class RecessionLines {
    * @private
    */
   _createRecessionSVG(container, chartArea) {
-    // Create SVG element with z-index: 0.5 (between grid and data)
+    // Create SVG element with z-index: 1.5 (between data and UI)
     this.svgElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    this.svgElement.setAttribute('width', chartArea.width + chartArea.x * 2);
-    this.svgElement.setAttribute('height', chartArea.height + chartArea.y * 2);
+    this.svgElement.setAttribute('width', container.offsetWidth);
+    this.svgElement.setAttribute('height', container.offsetHeight);
     this.svgElement.style.position = 'absolute';
     this.svgElement.style.top = '0';
     this.svgElement.style.left = '0';
-    this.svgElement.style.zIndex = '0.5';  // Between grid (0) and data (1)
+    this.svgElement.style.zIndex = '1.5';  // Between grid (0) and data (1)
     this.svgElement.style.pointerEvents = 'none'; // Don't interfere with interactions
     this.svgElement.setAttribute('class', 'recession-lines-svg');
     
@@ -300,11 +301,16 @@ export class RecessionLines {
     const xDomain = this.scales.x.domain;
     const chartStartTime = xDomain[0];
     const chartEndTime = xDomain[1];
+
+    console.log('[RecessionLines Debug] Checking for recessions in range:', {
+        start: new Date(chartStartTime).toISOString(),
+        end: new Date(chartEndTime).toISOString()
+    });
     
     // Get recessions that overlap with visible range
     this.currentRecessions = this._getRecessionsByDateRange(chartStartTime, chartEndTime);
     
-    console.log(`Found ${this.currentRecessions.length} recessions in visible range: ${new Date(chartStartTime).getFullYear()}-${new Date(chartEndTime).getFullYear()}`);
+    console.log(`[RecessionLines Debug] Found ${this.currentRecessions.length} recessions in visible range.`);
   }
   
   /**
@@ -340,6 +346,12 @@ export class RecessionLines {
       // Convert recession dates to pixel coordinates using chart scales
       const startX = this.scales.x.scale(recession.start);
       const endX = this.scales.x.scale(recession.end);
+
+      console.log(`[RecessionLines Debug] Creating rect for recession: ${recession.name}`, {
+          startX,
+          endX,
+          chartArea: this.chartArea
+      });
       
       // Skip if recession is completely outside visible area
       if (endX < this.chartArea.x || startX > this.chartArea.x + this.chartArea.width) {
@@ -364,7 +376,6 @@ export class RecessionLines {
       rect.setAttribute('width', rectWidth);
       rect.setAttribute('height', this.chartArea.height);
       rect.setAttribute('fill', colors.fill);
-      rect.setAttribute('fill-opacity', colors.opacity);
       
       if (this.config.strokeWidth > 0) {
         rect.setAttribute('stroke', colors.stroke);
@@ -401,7 +412,6 @@ export class RecessionLines {
     
     return {
       fill: this.config.fillColor,
-      opacity: this.config.fillOpacity,
       stroke: this.config.strokeColor
     };
   }
