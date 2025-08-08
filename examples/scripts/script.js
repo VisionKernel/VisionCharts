@@ -460,6 +460,20 @@ function setupLineChartControls() {
     });
   }
   
+  // Logarithmic scale toggle
+  const logToggle = document.getElementById('line-toggle-log');
+  if (logToggle) {
+    logToggle.addEventListener('click', () => {
+      try {
+        const isLog = lineChart.toggleLogarithmicScale();
+        logToggle.classList.toggle('active', isLog);
+        console.log(`Line chart log scale ${isLog ? 'enabled' : 'disabled'}`);
+      } catch (error) {
+        console.error('Error toggling logarithmic scale:', error);
+      }
+    });
+  }
+  
   // Legend toggle with proper state tracking
   const legendToggle = document.getElementById('line-toggle-legend');
   if (legendToggle) {
@@ -672,6 +686,20 @@ function setupBarChartControls() {
         console.log('Bar recession button classes after toggle:', recessionToggle.className);
       } catch (error) {
         console.error('Error toggling bar chart recessions:', error);
+      }
+    });
+  }
+  
+  // Logarithmic scale toggle
+  const barLogToggle = document.getElementById('bar-toggle-log');
+  if (barLogToggle) {
+    barLogToggle.addEventListener('click', () => {
+      try {
+        const isLog = barChart.toggleLogarithmicScale();
+        barLogToggle.classList.toggle('active', isLog);
+        console.log(`Bar chart log scale ${isLog ? 'enabled' : 'disabled'}`);
+      } catch (error) {
+        console.error('Error toggling bar chart logarithmic scale:', error);
       }
     });
   }

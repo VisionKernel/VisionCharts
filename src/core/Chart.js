@@ -61,6 +61,8 @@ export class Chart {
         showRecessionLines: false, // Show recession lines
         recessionFillColor: 'rgba(235, 54, 54, 0.2)',
         recessionStrokeColor: 'rgba(30, 30, 30, 0.5)',
+
+        isLogarithmic: false, // NEW: Logarithmic scale state
         
         // Renderer options
         forceRenderer: null, // 'canvas', 'webgl', or null for auto
@@ -378,6 +380,25 @@ async _processData() {
     // ✅ FIX: Store processed data BEFORE domain calculation
     this.config.data = processedDatasets;
     
+    // Apply logarithmic transformation if enabled
+    for (const dataset of this.config.data) {
+      // Store original normalized data if it doesn't exist
+      if (!dataset._originalNormalizedData) {
+        dataset._originalNormalizedData = JSON.parse(JSON.stringify(dataset.data));
+      }
+    
+      if (this.config.options.isLogarithmic) {
+        // Transform from the stored original data
+        dataset.data = dataset._originalNormalizedData.map(p => ({
+          ...p,
+          y: p.y > 0 ? Math.log10(p.y) : null
+        }));
+      } else {
+        // Restore from the stored original data
+        dataset.data = JSON.parse(JSON.stringify(dataset._originalNormalizedData));
+      }
+    }
+    
     // ✅ FIX: Calculate data point count from PROCESSED data (use processedDataCount from DataProcessor)
     this.dataPointCount = processedDatasets.reduce((count, dataset) => {
       // DataProcessor adds processedDataCount to the dataset
@@ -526,6 +547,11 @@ _calculateDataDomains() {
     yMax = 1;
   }
   
+  // Ensure yMin is positive for logarithmic scale
+  if (this.config.options.isLogarithmic && yMin <= 0) {
+    yMin = 0.1; // or a small fraction of yMax
+  }
+  
   this.dataDomains = {
     x: [xMin, xMax],
     y: [yMin, yMax]
@@ -572,7 +598,7 @@ _createScales() {
   
   // Determine scale types - DataProcessor handles time detection
   const xScaleType = this.config.options.xType === 'time' ? 'time' : 'linear';
-  const yScaleType = this.config.options.isLogarithmic ? 'log' : 'linear';
+  const yScaleType = 'linear';
   
   // Create X scale with NO PADDING
   this.scales.x = new Scale({
@@ -1010,6 +1036,22 @@ async _renderSingleMode() {
       x: this.chartArea.x,
       y: 0
     });
+  }
+
+  /**
+   * Toggle logarithmic scale for the Y-axis
+   */
+  toggleLogarithmicScale(show = null) {
+    const newState = show !== null ? show : !this.config.options.isLogarithmic;
+    if (newState === this.config.options.isLogarithmic) return newState;
+  
+    this.config.options.isLogarithmic = newState;
+  
+    // The update pipeline will now handle the data transformation
+    this.update();
+    
+    console.log(`Logarithmic scale ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
   }
   
   /**

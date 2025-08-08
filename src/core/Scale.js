@@ -232,18 +232,18 @@ export class Scale {
   _logScale(value) {
     if (value <= 0) return 0; // Handle non-positive values
     
-    const logDomainMin = Math.log(Math.max(this.domain[0], 1e-10));
-    const logDomainMax = Math.log(this.domain[1]);
-    const logValue = Math.log(value);
+    const logDomainMin = Math.log10(Math.max(this.domain[0], 1e-10));
+    const logDomainMax = Math.log10(this.domain[1]);
+    const logValue = Math.log10(value);
     
     return (logValue - logDomainMin) / (logDomainMax - logDomainMin);
   }
   
   _logInvert(normalizedValue) {
-    const logDomainMin = Math.log(Math.max(this.domain[0], 1e-10));
-    const logDomainMax = Math.log(this.domain[1]);
+    const logDomainMin = Math.log10(Math.max(this.domain[0], 1e-10));
+    const logDomainMax = Math.log10(this.domain[1]);
     
-    return Math.exp(logDomainMin + normalizedValue * (logDomainMax - logDomainMin));
+    return Math.pow(10, logDomainMin + normalizedValue * (logDomainMax - logDomainMin));
   }
   
   /**

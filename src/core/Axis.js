@@ -7,7 +7,7 @@
 
 export class Axis {
   constructor(config = {}) {
-    this.orientation = config.orientation; // 'x' or 'y'
+    this.orientation = config.orientation || 'x'; // 'x' or 'y'
     this.scale = config.scale; // Scale instance (required)
     
     if (!this.scale) {
@@ -29,6 +29,8 @@ export class Axis {
       showAxisLine: config.showAxisLine !== false,
       ...config.options
     };
+    
+    console.log(`[Axis constructor] Received options for ${this.orientation}-axis:`, JSON.parse(JSON.stringify(this.options)));
     
     // Internal state
     this.ticks = [];

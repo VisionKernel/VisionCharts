@@ -22,7 +22,8 @@ export class Panel {
       container: null,                  // Panel container element
       chartType: 'line',                // 'line' or 'bar'
       hasSharedXAxis: false,            // Whether to use shared X-axis
-
+      isLogarithmic: false,             // Whether the panel should use a log-transformed scale
+      
       // Panel-specific options
       height: 200,
       padding: { 
@@ -290,12 +291,12 @@ export class Panel {
       throw new Error('No valid Y values found in panel dataset');
     }
     
-    const yMin = Math.min(...yValues);
-    const yMax = Math.max(...yValues);
+    let yMin = Math.min(...yValues);
+    let yMax = Math.max(...yValues);
     const yDomain = [yMin, yMax];
     
     // Determine scale type
-    const scaleType = this.config.scaleType || 'linear';
+    const scaleType = 'linear';
     
     // Y scale range: flip for canvas coordinate system (Y increases downward)
     const yRange = [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y];
@@ -327,20 +328,35 @@ export class Panel {
     const maxTicks = Math.max(2, Math.floor(availableHeight / minTickSpacing));
     const optimalTicks = Math.min(5, maxTicks); // Cap at 5 ticks max
     
+    // NEW: Axis options that adapt to logarithmic scale
+    const axisOptions = {
+      label: this.config.yAxisName || 'Value',
+      fontSize: Math.max(9, Math.min(11, this.config.height / 20)),
+      color: '#666',
+      showAxisLine: true,
+      showTicks: true,
+      showTickLabels: true,
+      tickCount: optimalTicks,
+      tickPadding: 4
+    };
+
+    // If logarithmic, disable abbreviation and format for decimals
+    if (this.config.isLogarithmic) {
+      axisOptions.abbreviateLabels = false;
+      axisOptions.tickFormatOptions = {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      };
+    } else {
+      axisOptions.abbreviateLabels = true;
+    }
+
+    console.log(`[Panel ${this.config.panelIndex}] Creating Y-Axis for dataset "${this.config.dataset.name}" with options:`, JSON.parse(JSON.stringify(axisOptions)));
+
     this.yAxis = new Axis({
       orientation: 'y',
       scale: this.yScale,
-      options: {
-        label: this.config.yAxisName || 'Value',
-        fontSize: Math.max(9, Math.min(11, this.config.height / 20)), // Scale font with panel height
-        color: '#666',
-        showAxisLine: true,
-        showTicks: true,
-        showTickLabels: true,
-        tickCount: optimalTicks,
-        abbreviateLabels: true,
-        tickPadding: 4 // Reduce padding for small panels
-      }
+      options: axisOptions
     });
     
     console.log(`Panel Y axis created with ${optimalTicks} ticks for ${availableHeight}px height`);
@@ -488,6 +504,13 @@ export class Panel {
     titleElement.textContent = this.config.dataset.name;
     
     this.svgOverlay.appendChild(titleElement);
+  }
+
+  toggleLogarithmicScale(isLog) {
+    this.config.isLogarithmic = isLog;
+    this._createYScale(); // Re-create Y scale with the new type
+    this._createYAxis(); // Re-create the axis with new options
+    this.render(); // Re-render the panel
   }
 
   toggleAverageLine(show) {

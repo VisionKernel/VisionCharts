@@ -564,6 +564,7 @@ _createSharedXScale() {
     hasSharedXAxis: true,
     rendererType: this.chart.activeRenderer || 'canvas',
     yAxisName: this.chart.config.options.yAxisName || 'Value',
+    isLogarithmic: this.chart.config.options.isLogarithmic,
     
     // ← ADD THESE GRID OPTIONS:
     showGrid: this.chart.config.options.showGrid,
