@@ -239,30 +239,34 @@ export class LineChart extends Chart {
    * Set curve type for line interpolation - works in both single and panel modes
    */
   setCurveType(curveType) {
-  const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
-  
-  if (!validCurves.includes(curveType)) {
-    console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
+    const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
+    
+    if (!validCurves.includes(curveType)) {
+      console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
+      return this;
+    }
+    
+    // ✅ FIXED: Update config only, PathGenerator handles centrally
+    this.config.options.curve = curveType;
+    
+    // ✅ FIXED: Update panel renderers through PanelManager
+    if (this.isPanelMode && this.panelManager && this.panelManager.panels) {
+      for (const panel of this.panelManager.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.setCurveType(curveType);
+        }
+      }
+      
+      // ✅ FIXED: Just re-render panels without full refresh (no blinking)
+      this.panelManager._renderPanels();
+    } else {
+      // Single mode - just re-render normally
+      this.render();
+    }
+    
+    console.log(`LineChart curve type set to: ${curveType}`);
     return this;
   }
-  
-  // ✅ FIXED: Update config only, PathGenerator handles centrally
-  this.config.options.curve = curveType;
-  
-  // ✅ FIXED: Update panel renderers configuration (not PathGenerator instances)
-  if (this.isPanelMode) {
-    for (const panel of this.panels) {
-      if (panel.panelDataRenderer) {
-        panel.panelDataRenderer.setCurveType(curveType);
-      }
-    }
-  }
-  
-  console.log(`LineChart curve type set to: ${curveType}`);
-  
-  this.render(); // Re-render with new curve type
-  return this;
-}
   
   /**
    * Update the fill state of a specific dataset - works in both single and panel modes

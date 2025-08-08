@@ -182,9 +182,158 @@ export class PathGenerator {
   }
 
   async _generateVertices(points, options) {
-    // Implement curve generation based on options.curve
-    // This is simplified - implement actual curve algorithms
+    if (!points || points.length === 0) {
+      return [];
+    }
+
+    const curveType = options.curve || 'linear';
+    
+    switch (curveType) {
+      case 'linear':
+        return this._generateLinearVertices(points);
+      case 'step':
+        return this._generateStepVertices(points);
+      case 'cardinal':
+        return this._generateCardinalVertices(points);
+      case 'monotone':
+        return this._generateMonotoneVertices(points);
+      default:
+        console.warn(`Unknown curve type: ${curveType}, falling back to linear`);
+        return this._generateLinearVertices(points);
+    }
+  }
+
+  _generateLinearVertices(points) {
+    // Simple linear interpolation - connect points with straight lines
     return points.map(point => ({ x: point.x, y: point.y }));
+  }
+
+  _generateStepVertices(points) {
+    if (points.length < 2) return points;
+    
+    const vertices = [];
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      const current = points[i];
+      const next = points[i + 1];
+      
+      // Add current point
+      vertices.push({ x: current.x, y: current.y });
+      
+      // Add step point (same y as current, x of next)
+      vertices.push({ x: next.x, y: current.y });
+    }
+    
+    // Add the last point
+    vertices.push({ x: points[points.length - 1].x, y: points[points.length - 1].y });
+    
+    return vertices;
+  }
+
+  _generateCardinalVertices(points) {
+    if (points.length < 3) return this._generateLinearVertices(points);
+    
+    const vertices = [];
+    const tension = 0.5; // Cardinal spline tension parameter
+    
+    // Add first point
+    vertices.push({ x: points[0].x, y: points[0].y });
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = i > 0 ? points[i - 1] : points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = i < points.length - 2 ? points[i + 2] : p2;
+      
+      // Generate intermediate points for smooth curve
+      const segments = 10; // Number of segments between points
+      for (let j = 1; j <= segments; j++) {
+        const t = j / segments;
+        const x = this._cardinalSpline(p0.x, p1.x, p2.x, p3.x, t, tension);
+        const y = this._cardinalSpline(p0.y, p1.y, p2.y, p3.y, t, tension);
+        vertices.push({ x, y });
+      }
+    }
+    
+    return vertices;
+  }
+
+  _generateMonotoneVertices(points) {
+    if (points.length < 3) return this._generateLinearVertices(points);
+    
+    const vertices = [];
+    
+    // Add first point
+    vertices.push({ x: points[0].x, y: points[0].y });
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = i > 0 ? points[i - 1] : points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = i < points.length - 2 ? points[i + 2] : p2;
+      
+      // Calculate monotone tangents
+      const m0 = this._calculateMonotoneTangent(p0, p1, p2);
+      const m1 = this._calculateMonotoneTangent(p1, p2, p3);
+      
+      // Generate intermediate points using cubic Hermite interpolation
+      const segments = 10;
+      for (let j = 1; j <= segments; j++) {
+        const t = j / segments;
+        const x = this._cubicHermite(p1.x, p2.x, m0.x, m1.x, t);
+        const y = this._cubicHermite(p1.y, p2.y, m0.y, m1.y, t);
+        vertices.push({ x, y });
+      }
+    }
+    
+    return vertices;
+  }
+
+  _cardinalSpline(p0, p1, p2, p3, t, tension) {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    
+    // Cardinal spline coefficients
+    const c0 = -tension * t3 + 2 * tension * t2 - tension * t;
+    const c1 = (2 - tension) * t3 + (tension - 3) * t2 + 1;
+    const c2 = (tension - 2) * t3 + (3 - 2 * tension) * t2 + tension * t;
+    const c3 = tension * t3 - tension * t2;
+    
+    return c0 * p0 + c1 * p1 + c2 * p2 + c3 * p3;
+  }
+
+  _calculateMonotoneTangent(p0, p1, p2) {
+    const dx = p2.x - p0.x;
+    const dy = p2.y - p0.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    if (length === 0) return { x: 0, y: 0 };
+    
+    // Monotone constraint: ensure the curve doesn't overshoot
+    const tangent = { x: dx / length, y: dy / length };
+    
+    // Apply monotone constraint
+    const d1 = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2);
+    const d2 = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+    const scale = Math.min(d1, d2) / 3;
+    
+    return {
+      x: tangent.x * scale,
+      y: tangent.y * scale
+    };
+  }
+
+  _cubicHermite(p0, p1, m0, m1, t) {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    
+    // Cubic Hermite basis functions
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    
+    return h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
   }
 
   _generateColors(vertices, dataset, options) {

@@ -605,6 +605,24 @@ function setupLineChartControls() {
     });
   }
 
+  // ✅ ADDED: Curve type handler - affects all lines on chart and all panels
+  const curveTypeSelect = document.getElementById('line-curve');
+  if (curveTypeSelect) {
+    curveTypeSelect.addEventListener('change', (e) => {
+      try {
+        const curveType = e.target.value;
+        console.log('Setting curve type to:', curveType);
+        
+        // This will affect all lines on the chart and all panels if in panel mode
+        lineChart.setCurveType(curveType);
+        
+        console.log('Curve type updated successfully');
+      } catch (error) {
+        console.error('Error setting curve type:', error);
+      }
+    });
+  }
+
   const linePanelToggle = document.getElementById('line-toggle-panel');
   if (linePanelToggle) {
     linePanelToggle.addEventListener('click', async () => {
