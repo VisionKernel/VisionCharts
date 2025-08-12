@@ -565,6 +565,7 @@ _createSharedXScale() {
     rendererType: this.chart.activeRenderer || 'canvas',
     yAxisName: this.chart.config.options.yAxisName || 'Value',
     isLogarithmic: this.chart.config.options.isLogarithmic,
+    recessionData: this.chart.recessionLines?.config.recessionData || [],
     
     // ← ADD THESE GRID OPTIONS:
     showGrid: this.chart.config.options.showGrid,
@@ -573,14 +574,14 @@ _createSharedXScale() {
     gridColor: this.chart.config.options.gridColor,
     gridOpacity: this.chart.config.options.gridOpacity,
     gridOptions: {
-  xGridColor: '#f0f0f0',      // Light gray
-  yGridColor: '#f0f0f0',      // Light gray  
-  xGridOpacity: 0.4,          // More transparent
-  yGridOpacity: 0.4,          // More transparent
-  xGridWidth: 0.5,            // Thinner
-  yGridWidth: 0.5,            // Thinner
-  skipEdgeLines: true
-}
+      xGridColor: '#f0f0f0',      // Light gray
+      yGridColor: '#f0f0f0',      // Light gray  
+      xGridOpacity: 0.4,          // More transparent
+      yGridOpacity: 0.4,          // More transparent
+      xGridWidth: 0.5,            // Thinner
+      yGridWidth: 0.5,            // Thinner
+      skipEdgeLines: true
+    }
   });
   
   await panel.initialize();
@@ -605,8 +606,6 @@ _createSharedXScale() {
     }
     
     this._renderSharedXAxis();
-
-    this._renderRecessionLines();
 
     if (this.endingLabels && this.endingLabels.config.enabled) {
       this._renderEndingLabels();
@@ -1326,9 +1325,8 @@ toggleZeroLine(show) {
 }
 
 toggleRecessionLines(show) {
-    if (this.recessionLines) {
-        this.recessionLines.toggle(show);
-    }
+  // Delegate to individual panels instead of global recession lines
+  this.panels.forEach(panel => panel.toggleRecessionLines(show));
 }
 
 _destroyCrosshairAndTooltip() {

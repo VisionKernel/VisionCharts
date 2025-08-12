@@ -59,8 +59,8 @@ export class Chart {
         gridDash: [], // [] for solid, [5, 5] for dashed
 
         showRecessionLines: false, // Show recession lines
-        recessionFillColor: 'rgba(235, 54, 54, 0.2)',
-        recessionStrokeColor: 'rgba(30, 30, 30, 0.5)',
+        recessionFillColor: 'rgba(128, 122, 122, 0.2)',
+        recessionStrokeColor: 'rgba(128, 122, 122, 0.2)',
 
         isLogarithmic: false, // NEW: Logarithmic scale state
         

@@ -55,6 +55,7 @@ export class Panel {
     this.yAxis = null;
     this.panelDataRenderer = null;
     this.grid = null;
+    this.recessionLines = null;
     this.canvas = null;
     this.rendererInstance = null;
     this.svgOverlay = null;
@@ -101,6 +102,9 @@ export class Panel {
 
     // Create grid for this panel
     this._createGrid();
+
+    // Create recession lines
+    this._createRecessionLines();
 
     // Create statistical lines for this panel
     this._createStatisticalLines();
@@ -155,6 +159,9 @@ export class Panel {
       
       // Render zero line
       this._renderZeroLine();
+
+      // Render recession lines
+      this._renderRecessionLines();
       
       this.isRendered = true;
       console.log(`Panel rendered: ${this.config.dataset.name}`);
@@ -211,6 +218,11 @@ export class Panel {
     // Remove panel container
     if (this.panelContainer && this.panelContainer.parentNode) {
       this.panelContainer.parentNode.removeChild(this.panelContainer);
+    }
+
+    if (this.recessionLines) {
+      this.recessionLines.destroy();
+      this.recessionLines = null;
     }
 
     if (this.statisticalLines) {
@@ -453,6 +465,58 @@ export class Panel {
     });
     
     console.log(`Panel grid created for: ${this.config.dataset.name}`);
+  }
+
+  /**
+   * Create recession lines for this panel
+   * @private
+   */
+  _createRecessionLines() {
+    if (!this.config.recessionData) {
+      return;
+    }
+    
+    this.recessionLines = new RecessionLines({
+      enabled: false, // Start disabled
+      fillColor: 'rgba(128, 128, 128, 0.2)',     // Grey instead of red
+      strokeColor: 'rgba(128, 128, 128, 0.3)',   // Grey border
+      strokeWidth: 0,
+      recessionData: this.config.recessionData
+    });
+    
+    console.log(`RecessionLines created for panel: ${this.config.dataset.name}`);
+  }
+
+  /**
+ * Render recession lines for this panel
+ * @private
+ */
+_renderRecessionLines() {
+  if (!this.recessionLines || !this.config.sharedXScale || !this.yScale || !this.svgOverlay) {
+    return;
+  }
+  
+  // Render recession lines directly into this panel's SVG overlay
+  // This ensures each panel gets its own recession rectangles within its boundaries
+  this.recessionLines.render(this.svgOverlay, this.panelChartArea, {
+    x: this.config.sharedXScale,
+    y: this.yScale
+  });
+  
+  console.log(`Recession lines rendered for panel: ${this.config.dataset.name}`);
+}
+
+  /**
+   * Toggle recession lines for this panel
+   */
+  toggleRecessionLines(show = null) {
+    if (!this.recessionLines) {
+      return false;
+    }
+    
+    const newState = this.recessionLines.toggle(show);
+    console.log(`Panel ${this.config.dataset.name} recession lines: ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
   }
 
   /**
