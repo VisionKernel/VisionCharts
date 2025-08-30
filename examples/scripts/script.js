@@ -1,4 +1,4 @@
-// Enhanced script.js - Working recession toggle version
+// Enhanced script.js - Working recession toggle version with Studies Integration
 // Location: /examples/scripts/script.js
 
 import { LineChart, BarChart } from '../../../src/index.js';
@@ -13,6 +13,10 @@ let barChart = null;
 // Dataset counters for unique IDs
 let lineDatasetCounter = 1;
 let barDatasetCounter = 1;
+
+// Study counters for unique naming
+let lineStudyCounter = 1;
+let barStudyCounter = 1;
 
 // Default color palette from the library
 const DEFAULT_COLORS = [
@@ -173,6 +177,8 @@ function createDatasetItem(dataset, chartType) {
     if (chart) {
       chart.removeDataset(dataset.id);
       item.remove();
+      // Update study dropdowns after removing dataset
+      updateStudyDatasetDropdowns();
       console.log(`Removed dataset: ${dataset.id}`);
     }
   });
@@ -253,6 +259,9 @@ function addDatasetToChart(chartType) {
       const datasetItem = createDatasetItem(dataset, chartType);
       datasetManager.appendChild(datasetItem);
       
+      // Update study dropdowns after adding dataset
+      updateStudyDatasetDropdowns();
+      
       console.log(`Added ${chartType} dataset: ${datasetName} with ${formattedData.length} points`);
     }
     
@@ -330,6 +339,9 @@ async function initLineChart() {
       datasetManager.appendChild(datasetItem);
     }
     
+    // Initialize study dataset dropdowns
+    updateStudyDatasetDropdowns();
+    
     console.log('Line chart initialized successfully with sample recession data');
     
   } catch (error) {
@@ -403,6 +415,9 @@ async function initBarChart() {
       const datasetItem = createDatasetItem(initialDataset, 'bar');
       datasetManager.appendChild(datasetItem);
     }
+    
+    // Initialize study dataset dropdowns
+    updateStudyDatasetDropdowns();
     
     console.log('Bar chart initialized successfully with sample recession data');
     
@@ -1105,6 +1120,255 @@ function waitForDOMReady() {
   });
 }
 
+// ========== STUDY MANAGEMENT FUNCTIONALITY ==========
+
+// Initialize study functionality
+function initStudyControls() {
+  console.log('Initializing study controls...');
+  
+  // Line chart study controls
+  initLineStudyControls();
+  
+  // Bar chart study controls  
+  initBarStudyControls();
+  
+  // Initialize accordion functionality for studies sections
+  initStudyAccordions();
+}
+
+// Initialize line chart study controls
+function initLineStudyControls() {
+  const addStudyButton = document.querySelector('#line-section .accordion-content button');
+  if (addStudyButton) {
+    addStudyButton.addEventListener('click', () => addStudyToChart('line'));
+  }
+  
+  console.log('Line study controls initialized');
+}
+
+// Initialize bar chart study controls
+function initBarStudyControls() {
+  const addStudyButton = document.querySelector('#bar-section .accordion-content button');
+  if (addStudyButton) {
+    addStudyButton.addEventListener('click', () => addStudyToChart('bar'));
+  }
+  
+  console.log('Bar study controls initialized');
+}
+
+// Add study to chart
+function addStudyToChart(chartType) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (!chart) {
+      console.error(`${chartType} chart not initialized`);
+      return;
+    }
+
+    // Get study parameters from UI
+    const studyType = document.getElementById(`${chartType}-study-type`).value;
+    const period = parseInt(document.getElementById(`${chartType}-study-period`).value);
+    const datasetSelect = document.getElementById(`${chartType}-study-dataset`);
+    const datasetId = datasetSelect.value;
+    const color = document.getElementById(`${chartType}-study-color`).value;
+
+    // Validate inputs
+    if (!studyType || !period || period < 1) {
+      alert('Please provide valid study parameters');
+      return;
+    }
+
+    // Check if study type is supported (core library supports sma, ema, bollinger)
+    const supportedTypes = ['sma', 'ema', 'bollinger'];
+    if (!supportedTypes.includes(studyType)) {
+      alert(`Study type "${studyType}" is not yet implemented in the core library. Currently supported: ${supportedTypes.join(', ')}`);
+      return;
+    }
+
+    // Generate study name
+    const counter = chartType === 'line' ? lineStudyCounter++ : barStudyCounter++;
+    const studyName = `${studyType.toUpperCase()} (${period})`;
+
+    // Create study configuration
+    const studyConfig = {
+      name: studyName,
+      datasetId: datasetId,
+      parameters: { period: period },
+      color: color,
+      strokeWidth: 2,
+      visible: true
+    };
+
+    // Add study to chart using the core library method
+    const studyId = chart.addStudy(studyType, studyConfig);
+    
+    // Add study to UI
+    addStudyToUI(chartType, studyId, studyName, studyType, period, color);
+    
+    console.log(`Added ${studyType} study to ${chartType} chart: ${studyName}`);
+    
+  } catch (error) {
+    console.error('Error adding study:', error);
+    alert(`Error adding study: ${error.message}`);
+  }
+}
+
+// Add study item to UI
+function addStudyToUI(chartType, studyId, studyName, studyType, period, color) {
+  const activeStudiesContainer = document.querySelector(`#${chartType}-section .accordion-content > div:last-child`);
+  if (!activeStudiesContainer) return;
+
+  // Remove "No studies added" text if it exists
+  if (activeStudiesContainer.textContent.includes('No studies added')) {
+    activeStudiesContainer.innerHTML = '';
+  }
+
+  // Create study item
+  const studyItem = document.createElement('div');
+  studyItem.className = 'study-item';
+  studyItem.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 4px 0;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+  `;
+  studyItem.setAttribute('data-study-id', studyId);
+
+  studyItem.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 12px; height: 12px; background-color: ${color}; border-radius: 2px;"></div>
+      <span style="font-weight: 500;">${studyName}</span>
+      <span style="color: #6c757d; font-size: 12px;">${studyType}</span>
+    </div>
+    <div style="display: flex; gap: 4px;">
+      <button class="study-toggle-btn" style="padding: 2px 6px; font-size: 11px; background-color: #198754; color: white; border: none; border-radius: 3px; cursor: pointer;">
+        Hide
+      </button>
+      <button class="study-remove-btn" style="padding: 2px 6px; font-size: 11px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+        ✕
+      </button>
+    </div>
+  `;
+
+  // Add event listeners
+  const toggleBtn = studyItem.querySelector('.study-toggle-btn');
+  const removeBtn = studyItem.querySelector('.study-remove-btn');
+  
+  let isVisible = true;
+  toggleBtn.addEventListener('click', () => {
+    isVisible = !isVisible;
+    toggleStudyVisibility(chartType, studyId, isVisible);
+    toggleBtn.textContent = isVisible ? 'Hide' : 'Show';
+    toggleBtn.style.backgroundColor = isVisible ? '#198754' : '#6c757d';
+  });
+
+  removeBtn.addEventListener('click', () => {
+    removeStudyFromChart(chartType, studyId, studyItem);
+  });
+
+  activeStudiesContainer.appendChild(studyItem);
+}
+
+// Toggle study visibility
+function toggleStudyVisibility(chartType, studyId, isVisible) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (chart && chart.updateStudy) {
+      chart.updateStudy(studyId, { visible: isVisible });
+      console.log(`${isVisible ? 'Showed' : 'Hidden'} study: ${studyId}`);
+    }
+  } catch (error) {
+    console.error('Error toggling study visibility:', error);
+  }
+}
+
+// Remove study from chart
+function removeStudyFromChart(chartType, studyId, studyItem) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (chart && chart.removeStudy) {
+      chart.removeStudy(studyId);
+      studyItem.remove();
+      
+      // Check if no studies remain
+      const activeStudiesContainer = studyItem.parentNode;
+      if (activeStudiesContainer && activeStudiesContainer.children.length === 0) {
+        activeStudiesContainer.innerHTML = '<div>No studies added</div>';
+      }
+      
+      console.log(`Removed study: ${studyId}`);
+    }
+  } catch (error) {
+    console.error('Error removing study:', error);
+  }
+}
+
+// Update dataset dropdowns when datasets are added/removed
+function updateStudyDatasetDropdowns() {
+  updateStudyDatasetDropdown('line');
+  updateStudyDatasetDropdown('bar');
+}
+
+function updateStudyDatasetDropdown(chartType) {
+  const dropdown = document.getElementById(`${chartType}-study-dataset`);
+  if (!dropdown) return;
+
+  // Clear existing options
+  dropdown.innerHTML = '';
+  
+  // Get datasets from chart
+  const chart = chartType === 'line' ? lineChart : barChart;
+  if (!chart || !chart.config || !chart.config.data) {
+    dropdown.innerHTML = '<option value="">No datasets available</option>';
+    return;
+  }
+
+  // Add options for each dataset
+  chart.config.data.forEach((dataset, index) => {
+    const option = document.createElement('option');
+    option.value = dataset.id;
+    option.textContent = dataset.name || `Dataset ${index + 1}`;
+    dropdown.appendChild(option);
+  });
+  
+  // Select first option by default
+  if (dropdown.children.length > 0) {
+    dropdown.selectedIndex = 0;
+  }
+}
+
+// Initialize study accordion functionality
+function initStudyAccordions() {
+  const accordionHeaders = document.querySelectorAll('.accordion-header');
+  
+  accordionHeaders.forEach(header => {
+    header.addEventListener('click', () => {
+      const content = header.nextElementSibling;
+      const span = header.querySelector('span');
+      
+      if (content.style.display === 'none' || !content.style.display) {
+        content.style.display = 'block';
+        span.style.transform = 'rotate(45deg)';
+      } else {
+        content.style.display = 'none';
+        span.style.transform = 'rotate(0deg)';
+      }
+    });
+  });
+  
+  // Initialize accordion states (closed by default)
+  accordionHeaders.forEach(header => {
+    const content = header.nextElementSibling;
+    content.style.display = 'none';
+  });
+}
+
+// ========== MAIN INITIALIZATION ==========
+
 // Initialize everything
 async function initializeCharts() {
   try {
@@ -1114,7 +1378,10 @@ async function initializeCharts() {
     setupTabs();
     await initLineChart(); // Initialize line chart first (default tab)
     
-    console.log('Chart initialization complete with working recession toggles');
+    // Initialize study controls after charts are ready
+    initStudyControls();
+    
+    console.log('Chart initialization complete with working recession toggles and studies');
     
   } catch (error) {
     console.error('Failed to initialize charts:', error);
