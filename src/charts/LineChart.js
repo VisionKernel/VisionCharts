@@ -33,6 +33,8 @@ export class LineChart extends Chart {
     // NEW: Coordinate validation state
     this.coordinateValidationResults = [];
     this.renderingDebugInfo = null;
+
+    this.supportsStudies = true;
     
     console.log('LineChart created with unified coordinate system support');
   }

@@ -24,6 +24,8 @@ import { AverageLine } from '../components/AverageLine.js';
 import { MedianLine } from '../components/MedianLine.js';
 import { CrosshairTooltip } from '../components/CrosshairTooltip.js';
 import { RecessionLines } from '../components/RecessionLines.js';
+import { StudiesManager } from './StudiesManager.js';
+import { StudiesRenderer } from '../components/StudiesRenderer.js';
 
 export class Chart {
   constructor(config = {}) {
@@ -154,6 +156,9 @@ export class Chart {
       strokeColor: this.config.options.recessionStrokeColor
     });
 
+    this.studiesManager = new StudiesManager(this);
+    this.studiesRenderer = new StudiesRenderer(this);
+
     this.zeroLine = new ZeroLine({
       enabled: false,
       strokeColor: '#000000',
@@ -253,6 +258,9 @@ async _initialize() {
 
     //set up crosshair
     this._setupCrosshair();
+
+    // Render studies
+    await this.studiesRenderer.initialize();
     
     // Initialize the selected renderer
     await this._initializeRenderer();
@@ -981,6 +989,19 @@ async _renderSingleMode() {
     
     // ✅ FIX: Render chart data AFTER paths are generated
     await this._renderChartData();
+
+    if (this.studiesRenderer && this.studiesManager) {
+      try {
+        // Calculate studies before rendering
+        this.studiesManager.calculateAllStudies();
+        
+        // Render studies
+        await this.studiesRenderer.render();
+        
+      } catch (error) {
+        console.error('Error rendering studies:', error);
+      }
+    }
     
     // Render axes
     this._renderAxes();
@@ -1197,6 +1218,10 @@ async _renderSingleMode() {
     
     // Re-render with new data
     await this.render();
+
+    if (this.studiesManager) {
+      this.studiesManager.calculateAllStudies();
+    }
     
     console.log('Chart updated successfully');
     
@@ -1695,6 +1720,112 @@ _debugDataStructure() {
   }
 
   /**
+   * Add a study to the chart
+   * @param {string} studyType - Type of study ('sma', 'ema', 'bollinger')
+   * @param {Object} config - Study configuration
+   * @returns {string} Study ID
+   */
+  addStudy(studyType, config = {}) {
+    if (!this.studiesManager) {
+      throw new Error('Studies system not initialized');
+    }
+    
+    const studyId = this.studiesManager.addStudy(studyType, config);
+    
+    // Re-render chart to show the new study
+    this.render().catch(error => {
+      console.error('Error re-rendering after adding study:', error);
+    });
+    
+    console.log(`Added ${studyType} study: ${studyId}`);
+    return studyId;
+  }
+
+  /**
+   * Remove a study from the chart
+   * @param {string} studyId - Study ID to remove
+   * @returns {boolean} True if study was removed
+   */
+  removeStudy(studyId) {
+    if (!this.studiesManager) {
+      return false;
+    }
+    
+    const removed = this.studiesManager.removeStudy(studyId);
+    
+    if (removed) {
+      // Re-render chart to remove the study
+      this.render().catch(error => {
+        console.error('Error re-rendering after removing study:', error);
+      });
+      
+      console.log(`Removed study: ${studyId}`);
+    }
+    
+    return removed;
+  }
+
+  /**
+   * Update study parameters
+   * @param {string} studyId - Study ID
+   * @param {Object} updates - Parameters to update
+   */
+  updateStudy(studyId, updates) {
+    if (!this.studiesManager) {
+      throw new Error('Studies system not initialized');
+    }
+    
+    this.studiesManager.updateStudy(studyId, updates);
+    
+    // Re-render chart to show updated study
+    this.render().catch(error => {
+      console.error('Error re-rendering after updating study:', error);
+    });
+    
+    console.log(`Updated study: ${studyId}`);
+  }
+
+  /**
+   * Get all studies
+   * @returns {Array} Array of study configurations
+   */
+  getAllStudies() {
+    return this.studiesManager ? this.studiesManager.getAllStudies() : [];
+  }
+
+  /**
+   * Get visible studies only
+   * @returns {Array} Array of visible studies
+   */
+  getVisibleStudies() {
+    return this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+  }
+
+  /**
+   * Get supported study types
+   * @returns {Object} Supported studies configuration
+   */
+  getSupportedStudies() {
+    return this.studiesManager ? this.studiesManager.getSupportedStudies() : {};
+  }
+
+  /**
+   * Clear all studies
+   */
+  clearAllStudies() {
+    if (this.studiesManager) {
+      this.studiesManager.clearAllStudies();
+      
+      // Re-render chart to remove all studies
+      this.render().catch(error => {
+        console.error('Error re-rendering after clearing studies:', error);
+      });
+      
+      console.log('All studies cleared');
+    }
+  }
+
+  /**
  * FIXED: Clear render without destroying generated paths
  */
 _clearRender() {
@@ -1795,6 +1926,17 @@ async ensureInitialized() {
     if (this.endingLabels) {
       this.endingLabels.destroy();
       this.endingLabels = null;
+    }
+
+    // Cleanup studies
+    if (this.studiesRenderer) {
+      this.studiesRenderer.destroy();
+      this.studiesRenderer = null;
+    }
+
+    if (this.studiesManager) {
+      this.studiesManager.clearAllStudies();
+      this.studiesManager = null;
     }
     
     // Remove mouse event listeners

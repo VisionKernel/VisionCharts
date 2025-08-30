@@ -33,6 +33,8 @@ export class BarChart extends Chart {
     this.coordinateValidationResults = [];
     this.renderingDebugInfo = null;
     this.barPositioningInfo = null;
+
+    this.supportsStudies = true;
     
     console.log('BarChart created with FORCED canvas rendering and unified coordinate system support');
   }
