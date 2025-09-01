@@ -1,2070 +1,2409 @@
-import Axis from '../core/Axis.js';
-import InteractionManager from '../core/InteractionManager.js';
-import ScaleManager from '../core/ScaleManager.js';
-import StudiesManager from '../core/StudiesManager.js';
-import SvgRenderer from '../renderers/SvgRenderer.js';
-import { formatLargeNumber, formatDateValue } from '../utils/chartUtils.js';
-import Crosshair from '../components/Crosshair.js';
-import StatisticalLines from '../components/StatisticalLines.js';
-import Tooltip from '../components/Tooltip.js';
-import RecessionLines from '../components/RecessionLines.js';
-import ZeroLine from '../components/ZeroLine.js';
+/**
+ * Chart.js - Enhanced Base Chart Class with Multi-Renderer Support (Updated)
+ * 
+ * Foundation class for all chart types in VisionCharts.
+ * Handles automatic renderer selection (Canvas 2D vs WebGL) based on dataset size.
+ * NOW WITH UNIFIED COORDINATE SYSTEM for consistent rendering across all renderers.
+ */
+
+import { browserSupport } from '../utils/BrowserSupport.js';
+import { Axis } from './Axis.js';
+import { Scale, ScaleManager } from './Scale.js';
+import { Grid } from '../components/Grid.js';
+import CanvasRenderer from '../renderers/CanvasRenderer.js';
+import WebGLRenderer from '../renderers/WebGLRenderer.js';
+import { PanelManager } from '../components/PanelManager.js';
+import { CoordinateSystem } from '../utils/CoordinateSystem.js';
+import { DataProcessor } from '../utils/DataProcessor.js';
+import { PathGenerator } from '../utils/PathGenerator.js';
+import { Legend } from '../components/Legend.js';
+import { EndingLabels } from '../components/EndingLabels.js';
+import { Crosshair } from '../components/Crosshair.js';
+import { ZeroLine } from '../components/ZeroLine.js';
 import { AverageLine } from '../components/AverageLine.js';
 import { MedianLine } from '../components/MedianLine.js';
-import Legend from '../components/Legend.js';
-import Grid from '../components/Grid.js';
-import Panel from '../components/Panel.js';
-import { calculateIndicator } from '../utils/math.js';
-import ChartExporter from '../utils/ChartExporter.js';
+import { CrosshairTooltip } from '../components/CrosshairTooltip.js';
+import { RecessionLines } from '../components/RecessionLines.js';
+import { StudiesManager } from './StudiesManager.js';
+import { StudiesRenderer } from '../components/StudiesRenderer.js';
 
-/**
- * Base Chart class that handles common chart functionality
+export class Chart {
+  constructor(config = {}) {
+    this.container = this._resolveContainer(config.container);
+    this.config = {
+      data: config.data || [],
+      options: {
+        // Default options
+        width: 800,
+        height: 400,
+        title: config.options?.title || '', // Chart title
+        xAxisName: 'X Axis',
+        yAxisName: 'Y Axis',
+        xField: 'x',
+        yField: 'y',
+        xType: 'time', // 'time', 'number', 'category'
+        yType: 'number',
+        margin: { top: 40, right: 60, bottom: 60, left: 80 },
+        
+        // Title styling options
+        titleFontSize: 16,
+        titleFontFamily: 'Arial, sans-serif',
+        titleFontWeight: 'bold',
+        titleColor: '#333333',
+        titlePadding: 10, // Space between title and chart area
+        
+        // Grid options
+        showGrid: true,
+        showXGrid: true,
+        showYGrid: true,
+        gridColor: '#e0e0e0',
+        gridOpacity: 0.7,
+        gridDash: [], // [] for solid, [5, 5] for dashed
+
+        showRecessionLines: false, // Show recession lines
+        recessionFillColor: 'rgba(128, 122, 122, 0.2)',
+        recessionStrokeColor: 'rgba(128, 122, 122, 0.2)',
+
+        isLogarithmic: false, // NEW: Logarithmic scale state
+        
+        // Renderer options
+        forceRenderer: null, // 'canvas', 'webgl', or null for auto
+        
+        ...config.options
+      }
+    };
+
+    this.dataProcessor = new DataProcessor({
+      strictValidation: false,
+      autoDetectTimeFormat: true,
+      sortByTime: true,
+      removeDuplicates: true
+    });
+
+    this.pathGenerator = new PathGenerator({
+      curve: 'linear',
+      enableOptimization: true
+    });
+
+    this.generatedPaths = null;
+    
+    // Multi-renderer infrastructure
+    this.renderers = new Map(); // Holds renderer instances
+    this.activeRenderer = null;
+    this.rendererInstance = null;
+    this.svgOverlay = null;
+    
+    // Performance monitoring
+    this.dataPointCount = 0;
+    this.performanceThresholds = {
+      canvas: 50000, // Switch to WebGL after 50K points
+      webgl: 100000  // WebGL upper limit
+    };
+    
+    // Component state
+    this.axes = { x: null, y: null };
+    this.chartArea = { x: 0, y: 0, width: 0, height: 0 };
+    this.dataDomains = { x: [0, 1], y: [0, 1] };
+
+    // Scale management
+    this.scaleManager = new ScaleManager();
+    this.scales = { x: null, y: null };
+
+    // UPDATED: Enhanced coordinate system for unified rendering
+    this.coordinateSystem = null;
+    this.transformedData = null; // Store transformed data for renderers
+    
+    // Grid component
+    this.grid = null;
+    
+    // Title element reference
+    this.titleElement = null;
+    
+    // Initialization state
+    this.isInitialized = false;
+
+    this.panelManager = new PanelManager(this);
+    
+    // Legend component
+    this.legend = new Legend({
+      fontSize: 12,
+      fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
+      textColor: '#333333',
+      itemSpacing: 25,
+      marginTop: 15,
+      marginBottom: 15
+    });
+
+    // Ending labels component
+    this.endingLabels = new EndingLabels({
+      fontSize: 11,
+      fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
+      showBackground: true,
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      formatValue: true,
+      decimals: 1,
+      enabled: false
+    });
+    
+    // Crosshair functionality  
+    this.crosshair = null;
+    this.lastMousePosition = null;
+    this.mouseThreshold = 5; // pixels
+
+    this.recessionLines = new RecessionLines({
+      enabled: this.config.options.showRecessionLines,
+      fillColor: this.config.options.recessionFillColor,
+      strokeColor: this.config.options.recessionStrokeColor
+    });
+
+    this.studiesManager = new StudiesManager(this);
+    this.studiesRenderer = new StudiesRenderer(this);
+
+    this.zeroLine = new ZeroLine({
+      enabled: false,
+      strokeColor: '#000000',
+      strokeWidth: 1,
+      strokeOpacity: 1,
+      strokeDash: [3, 3],
+      showLabel: false
+    });
+
+    this.averageLine = new AverageLine({
+      enabled: false,
+      strokeColor: '#FF6B35',
+      strokeWidth: 2,
+      strokeOpacity: 0.8,
+      strokeDash: [5, 5],
+      showLabel: true,
+      labelText: 'Avg',
+      labelPosition: 'right',
+      useAllDatasets: true
+    });
+
+    this.medianLine = new MedianLine({
+      enabled: false,
+      strokeColor: '#9C27B0',
+      strokeWidth: 2,
+      strokeOpacity: 0.8,
+      strokeDash: [8, 4],
+      showLabel: true,
+      labelText: 'Median',
+      labelPosition: 'right',
+      useAllDatasets: true
+    });
+    
+    // Initialize
+    this._initPromise = this._initialize();
+  }
+  
+  
+  /**
+   * Resolve container from selector or element
+   */
+  _resolveContainer(container) {
+    if (typeof container === 'string') {
+      const element = document.querySelector(container) || document.getElementById(container.replace('#', ''));
+      if (!element) {
+        throw new Error(`Container not found: ${container}`);
+      }
+      return element;
+    }
+    
+    if (container && container.nodeType === Node.ELEMENT_NODE) {
+      return container;
+    }
+    
+    throw new Error('Invalid container provided');
+  }
+  
+  /**
+ * FIXED: Remove duplicate domain calculation from _initialize
  */
-export default class Chart {
-  /**
-   * Create a new chart instance
-   * @param {Object} config - Chart configuration
-   * @param {string|HTMLElement} config.container - CSS selector or HTML element to render the chart
-   * @param {Array} config.data - Chart data
-   * @param {Object} config.options - Chart options
-   */
-  constructor(config) {
-  console.log('Chart constructor called');
-  
-  // Store the configuration
-  this.config = Object.assign({
-    // Default configuration
-    container: null,
-    data: [],
-    options: {}
-  }, config);
-
-  // Import themes
-  let lightTheme, darkTheme;
+async _initialize() {
   try {
-    lightTheme = require('../themes/light.js').default;
-    darkTheme = require('../themes/dark.js').default;
-  } catch (e) {
-    console.warn('Chart themes could not be loaded:', e);
-    lightTheme = {};
-    darkTheme = {};
+    // Clear container
+    this.container.innerHTML = '';
+    
+    // Set up container styling
+    this.container.style.position = 'relative';
+    this.container.style.width = '100%';
+    this.container.style.height = '100%';
+    
+    // Calculate dimensions
+    this._calculateDimensions();
+    
+    // Set up rendering layers
+    this._setupRenderingLayers();
+    
+    // Process data (this includes domain calculation now)
+    await this._processData();
+    
+    // ✅ REMOVED: Don't calculate domains again, _processData() already does it
+    // this._calculateDataDomains();
+    
+    // Choose optimal renderer first (before creating coordinate system)
+    this._selectOptimalRenderer();
+    
+    // UPDATED: Create coordinate system with renderer information
+    this._createCoordinateSystem();
+    
+    // UPDATED: Create scales with unified coordinate system
+    this._createScales();
+    
+    // Create grid
+    this._createGrid();
+    
+    // Create axes
+    this._createAxes();
+
+    //set up crosshair
+    this._setupCrosshair();
+
+    // Render studies
+    await this.studiesRenderer.initialize();
+    
+    // Initialize the selected renderer
+    await this._initializeRenderer();
+    
+    this.isInitialized = true;
+    console.log('Chart initialization complete with unified coordinate system and', this.activeRenderer, 'renderer');
+    
+  } catch (error) {
+    console.error('Chart initialization failed:', error);
+    throw error;
   }
-
-  // Determine if dark mode is active
-  const isDarkMode = (
-    this.config.options.theme === 'dark' || 
-    (this.config.options.theme === 'auto' && darkTheme.isDarkMode?.())
-  );
+}
   
-  // Select active theme
-  const activeTheme = isDarkMode ? darkTheme : lightTheme;
-  
-  // Merge options with defaults and theme
-  this.options = Object.assign({
-    // Default options
-    width: null,
-    height: null,
-    margins: { top: 50, right: 40, bottom: 70, left: 60 },
-    title: '',
-    xAxisName: '',
-    yAxisName: '',
-    isLogarithmic: false,
-    isPanelView: false,
-    showRecessionLines: false,
-    recessions: [],
-    showZeroLine: false,
-    showAverageLine: false,
-    showMedianLine: false,
+  /**
+   * Calculate chart dimensions based on container
+   */
+  _calculateDimensions() {
+    const containerRect = this.container.getBoundingClientRect();
     
-    // Theme application
-    theme: 'auto', // 'light', 'dark', or 'auto'
+    this.config.options.width = containerRect.width || this.config.options.width;
+    this.config.options.height = containerRect.height || this.config.options.height;
     
-    // Apply theme colors if available
-    colors: activeTheme.palette || ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-    backgroundColor: activeTheme.colors?.background || '#ffffff',
-    textColor: activeTheme.colors?.text || '#333',
-    axisColor: activeTheme.colors?.axis || '#666',
-    gridColor: activeTheme.colors?.grid || '#eee',
-    fontFamily: 'sans-serif',
-    
-    // Keep other options
-    responsive: true,
-    lineWidth: 2,
-    studies: [],
-    animation: {
-      duration: 300,
-      easing: 'ease'
-    }
-  }, this.config.options);
-
-  // Store active theme for use in rendering
-  this.theme = activeTheme;
-
-    // Initialize state
-    this.state = {
-      container: null,
-      svg: null,
-      chart: null,
-      scales: {},
-      axes: {},
-      dimensions: {
-        width: 0,
-        height: 0,
-        innerWidth: 0,
-        innerHeight: 0
-      },
-      rendered: false,
-      datasets: [],
-      processedData: [],
-      components: {
-        recessionLines: null,
-        zeroLine: null,
-        averageLine: null,
-        medianLine: null,
-        tooltip: null,
-        legend: null,
-        panels: [],
-        grid: null
-      }
+    const margin = this.config.options.margin;
+    this.chartArea = {
+      x: margin.left,
+      y: margin.top,
+      width: this.config.options.width - margin.left - margin.right,
+      height: this.config.options.height - margin.top - margin.bottom
     };
-
-    // Initialize the chart
-    this.init();
   }
 
   /**
-   * Initialize the chart
-   * @private
+   * Set up the hybrid rendering layers
    */
-  init() {
-    console.log('Chart init called');
+  _setupRenderingLayers() {
+    // Create separate canvas for grid (needed for WebGL compatibility)
+    this.gridCanvas = document.createElement('canvas');
+    this.gridCanvas.width = this.config.options.width;
+    this.gridCanvas.height = this.config.options.height;
+    this.gridCanvas.style.position = 'absolute';
+    this.gridCanvas.style.top = '0';
+    this.gridCanvas.style.left = '0';
+    this.gridCanvas.style.zIndex = '0'; // Behind data layer
     
-    // Select the container
-    this.state.container = this.getContainer();
+    // Apply DPI scaling to grid canvas
+    const devicePixelRatio = window.devicePixelRatio || 1;
+    this.gridCanvas.width = this.config.options.width * devicePixelRatio;
+    this.gridCanvas.height = this.config.options.height * devicePixelRatio;
+    this.gridCanvas.style.width = this.config.options.width + 'px';
+    this.gridCanvas.style.height = this.config.options.height + 'px';
     
-    if (!this.state.container) {
-      console.error('Failed to get container for chart');
-      return;
-    }
+    // Create canvas for data rendering
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = this.config.options.width;
+    this.canvas.height = this.config.options.height;
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.top = '0';
+    this.canvas.style.left = '0';
+    this.canvas.style.zIndex = '1';
     
-    console.log('Container obtained:', this.state.container);
+    // Create SVG overlay for UI elements (axes, labels, title, etc.)
+    this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svgOverlay.setAttribute('width', this.config.options.width);
+    this.svgOverlay.setAttribute('height', this.config.options.height);
+    this.svgOverlay.style.position = 'absolute';
+    this.svgOverlay.style.top = '0';
+    this.svgOverlay.style.left = '0';
+    this.svgOverlay.style.pointerEvents = 'none';
+    this.svgOverlay.style.zIndex = '2'; // On top for UI elements
     
-    // Process datasets
-    this.processDatasets();
+    // ✅ IMPORTANT: Add all layers to the container in correct z-index order
+    this.container.appendChild(this.gridCanvas);  // Layer 0 (bottom)
+    this.container.appendChild(this.canvas);      // Layer 1 (middle) 
+    this.container.appendChild(this.svgOverlay);  // Layer 2 (top)
     
-    // Create scales, axes, etc.
-    this.createScales();
-    this.createAxes();
-    
-    // Set dimensions WITHOUT updating axes
-    this.setDimensionsWithoutUpdatingAxes();
-    
-    // Create event listeners
-    this.bindEvents();
-    
-    console.log('Chart init completed');
-  }
-
-  /**
-   * Set dimensions without updating axes - new method that doesn't trigger axis updates
-   * @private
-   */
-  setDimensionsWithoutUpdatingAxes() {
-    console.log('setDimensionsWithoutUpdatingAxes called');
-    
-    if (!this.state.container) {
-      console.error('Cannot update dimensions: container is null');
-      return;
-    }
-    
-    const containerRect = this.state.container.getBoundingClientRect();
-    
-    // Chart width and height (respecting user-defined values if provided)
-    // Ensure dimensions are at least 1px to avoid SVG rendering issues
-    const width = Math.max(1, this.options.width || containerRect.width || 300);
-    const height = Math.max(1, this.options.height || containerRect.height || 200);
-    
-    // Automatically adjust margins based on chart size
-    if (this.options.responsive) {
-      // For smaller charts, reduce margins
-      if (width < 400) {
-        this.options.margins = {
-          top: Math.max(10, this.options.margins.top * 0.8),
-          right: Math.max(10, this.options.margins.right * 0.8),
-          bottom: Math.max(30, this.options.margins.bottom), // Keep minimum bottom margin for labels
-          left: Math.max(25, this.options.margins.left * 0.8)
-        };
-      }
-    }
-    
-    // Inner chart area dimensions (excluding margins)
-    const innerWidth = Math.max(1, width - this.options.margins.left - this.options.margins.right);
-    const innerHeight = Math.max(1, height - this.options.margins.top - this.options.margins.bottom);
-    
-    // Update state
-    this.state.dimensions = {
-      width,
-      height,
-      innerWidth,
-      innerHeight
-    };
-    
-    // Update scales if already created
-    if (Object.keys(this.state.scales).length > 0) {
-      this.updateScales();
-    }
-    
-    // DO NOT update axes here at all
-    console.log('Dimensions set, scales updated, skipping axes update');
-  }
-
-  /**
-   * Get the container element
-   * @private
-   * @returns {HTMLElement|null} The container element or null if not found
-   */
-  getContainer() {
-    let container = null;
-    
-    try {
-      if (typeof this.config.container === 'string') {
-        container = document.querySelector(this.config.container);
-        if (!container) {
-          console.error(`Container selector not found: ${this.config.container}`);
-          return null;
-        }
-      } else if (this.config.container instanceof HTMLElement) {
-        container = this.config.container;
-      } else {
-        console.error('Container must be a CSS selector string or HTML element');
-        return null;
-      }
-      
-      // Add resize observer to track container size changes
-      if (typeof ResizeObserver !== 'undefined') {
-        const resizeObserver = new ResizeObserver(entries => {
-          if (this.state.rendered) {
-            this.updateDimensions();
-            this.update();
-          }
-        });
-        
-        resizeObserver.observe(container);
-        this.state.resizeObserver = resizeObserver;
-      }
-    } catch (error) {
-      console.error('Error getting container:', error);
-      return null;
-    }
-    
-    return container;
-  }
-  
-  // Adjust the handleResize method to properly handle aspect ratio
-  handleResize() {
-    console.log('handleResize called');
-    
-    // Always update dimensions when container size changes
-    this.updateDimensions();
-    
-    if (this.state.rendered) {
-      this.update();
-    }
+    console.log('Rendering layers created and added to DOM');
   }
   
   /**
-   * Process datasets into a standardized format
-   * @private
-   */
-  processDatasets() {
-    console.log('processDatasets called');
-    
-    const data = this.config.data;
-    
-    // Skip if no data
-    if (!data) {
-      this.state.datasets = [];
-      return;
-    }
-    
-    // Store existing dataset settings to preserve area, areaOpacity, etc.
-    const existingSettings = {};
-    if (this.state.datasets) {
-      this.state.datasets.forEach(dataset => {
-        existingSettings[dataset.id] = {
-          area: dataset.area,
-          areaOpacity: dataset.areaOpacity,
-          width: dataset.width,
-          color: dataset.color,
-          visible: dataset.visible
-        };
-      });
-    }
-    
-    // Handle array of objects (single dataset) vs array of datasets
-    if (Array.isArray(data)) {
-      if (data.length === 0) {
-        this.state.datasets = [];
-      } else if (data[0] && data[0].hasOwnProperty('data')) {
-        // Array of datasets
-        this.state.datasets = data.map((dataset, index) => {
-          const id = dataset.id || `dataset-${Math.random().toString(36).substr(2, 9)}`;
-          const existing = existingSettings[id] || {};
-          
-          return {
-            id: id,
-            name: dataset.name || `Dataset ${index + 1}`,
-            color: existing.color || dataset.color || this.options.colors[index % this.options.colors.length],
-            width: existing.width || dataset.width || this.options.lineWidth,
-            type: dataset.type || 'line',
-            area: existing.area !== undefined ? existing.area : (dataset.area || false),
-            areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : (dataset.areaOpacity || 0.2),
-            visible: existing.visible !== undefined ? existing.visible : (dataset.visible !== false),
-            data: Array.isArray(dataset.data) ? dataset.data : []
-          };
-        });
-      } else {
-        // Array of data points (single dataset)
-        const existing = existingSettings['dataset-1'] || {};
-        
-        this.state.datasets = [{
-          id: 'dataset-1',
-          name: 'Dataset',
-          color: existing.color || this.options.colors[0],
-          width: existing.width || this.options.lineWidth,
-          type: 'line',
-          area: existing.area !== undefined ? existing.area : false,
-          areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : 0.2,
-          visible: existing.visible !== undefined ? existing.visible : true,
-          data: data
-        }];
-      }
-    } else {
-      // Object with data property
-      const existing = existingSettings['dataset-1'] || {};
-      
-      this.state.datasets = [{
-        id: 'dataset-1',
-        name: 'Dataset',
-        color: existing.color || this.options.colors[0],
-        width: existing.width || this.options.lineWidth,
-        type: 'line',
-        area: existing.area !== undefined ? existing.area : false,
-        areaOpacity: existing.areaOpacity !== undefined ? existing.areaOpacity : 0.2,
-        visible: existing.visible !== undefined ? existing.visible : true,
-        data: data.data || []
-      }];
-    }
-    
-    // Process studies if present
-    if (this.options.studies && this.options.studies.length) {
-      StudiesManager.processStudies(this);
-    }
-    
-    // Apply date filtering if needed
-    this.applyDateFilter();
-    
-    console.log('Datasets processed:', this.state.datasets.length);
-  }
-  
-  /**
-   * Apply date filtering to datasets
-   * @private
-   */
-  applyDateFilter() {
-    const { startDate, endDate } = this.options;
-    
-    // Skip if no date filtering is requested
-    if (!startDate && !endDate) return;
-    
-    // Parse dates
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
-    
-    // Skip if invalid dates
-    if ((start && isNaN(start.getTime())) || 
-        (end && isNaN(end.getTime()))) {
-      console.warn('Invalid start or end date for filtering');
-      return;
-    }
-    
-    // Filter each dataset
-    this.state.datasets = this.state.datasets.map(dataset => {
-      // Assume 'x' field contains date, or try 'date' field
-      const dateField = this.options.xField || 'x' || 'date';
-      
-      const filteredData = dataset.data.filter(point => {
-        // Get date from point
-        const pointDate = point[dateField] instanceof Date ? 
-                         point[dateField] : new Date(point[dateField]);
-        
-        // Filter by start and end dates
-        return (!start || pointDate >= start) &&
-               (!end || pointDate <= end);
-      });
-      
-      return {
-        ...dataset,
-        data: filteredData
-      };
-    });
-  }
-
-  /**
-   * Create scales for the chart using ScaleManager
-   * @private
-   */
-  createScales() {
-    console.log('Chart.createScales called - using ScaleManager');
-    
-    // Use ScaleManager to create scales
-    const scales = ScaleManager.createScales(this);
-    
-    // Store scales in state
-    this.state.scales = scales;
-    
-    console.log('Chart scales created via ScaleManager');
-  }
-
-  /**
-   * Update the chart dimensions - but don't call updateAxes unless the chart is rendered
-   * @private
-   */
-  updateDimensions() {
-    console.log('updateDimensions called');
-    
-    this.setDimensionsWithoutUpdatingAxes();
-    
-    // Update scale ranges when dimensions change
-    if (this.state.scales && Object.keys(this.state.scales).length > 0) {
-      ScaleManager.updateScaleRanges(this.state.scales, this.state.dimensions);
-    }
-    
-    // IMPORTANT: Only update axes if the chart has already been rendered
-    if (this.state.rendered && this.state.chart) {
-      console.log('Chart is already rendered, safe to update axes');
-      this.updateAxes();
-    } else {
-      console.log('Chart is not rendered yet, skipping axes update');
-    }
-  }
-
-  /**
-   * Create event listeners
-   * @private
-   */
-  bindEvents() {
-    console.log('bindEvents called');
-    
-    // Window resize event - using debounced handler to prevent excessive updates
-    const debounce = (func, wait) => {
-      let timeout;
-      return function executedFunction(...args) {
-        const later = () => {
-          clearTimeout(timeout);
-          func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-      };
-    };
-    
-    // Debounced resize handler
-    this.resizeHandler = debounce(this.handleResize.bind(this), 250);
-    window.addEventListener('resize', this.resizeHandler);
-    
-    console.log('Resize event handler bound');
-    // Additional events to be implemented by subclasses
-  }
-
-  /**
-   * Handle window resize
-   * @private
-   */
-  handleResize() {
-    console.log('handleResize called');
-    
-    if (!this.options.width || !this.options.height) {
-      this.updateDimensions();
-      
-      if (this.state.rendered) {
-        this.update();
-      }
-    }
-  }
-
-  /**
-   * Create the SVG element
-   * @private
-   */
-  createSvg() {
-    console.log('createSvg called');
-    
-    if (!this.state.container) {
-      console.error('Cannot create SVG: container is null');
-      return;
-    }
-    
-    // Create SVG element using SvgRenderer
-    const svg = SvgRenderer.createSvg(this.state.dimensions.width, this.state.dimensions.height);
-    
-    // Apply background color from theme
-    SvgRenderer.applyStyles(svg, { background: this.options.backgroundColor });
-    
-    // Create chart group with transform for margins
-    const chart = SvgRenderer.createGroup({
-      transform: `translate(${this.options.margins.left},${this.options.margins.top})`,
-      class: 'visioncharts-chart'
-    });
-    
-    // Add chart group to SVG
-    svg.appendChild(chart);
-    
-    // Add SVG to container
-    this.state.container.appendChild(svg);
-    
-    // Update state
-    this.state.svg = svg;
-    this.state.chart = chart;
-    
-    console.log('SVG created and added to DOM, chart reference stored');
-  }
-
-  /**
-   * Modified render method to enforce proper rendering order
-   */
-  render() {
-    console.log('render called with isPanelView =', this.options.isPanelView);
-    
-    // Clear the container
-    if (!this.state.container) {
-      console.error('Cannot render chart: container is null');
-      return this;
-    }
-    
-    this.state.container.innerHTML = '';
-    
-    // Create SVG
-    this.createSvg();
-    
-    if (!this.state.chart) {
-      console.error('Failed to create SVG chart element');
-      return this;
-    }
-    
-    console.log('About to render chart content');
-    
-    // Completely separate rendering modes
-    if (this.options.isPanelView) {
-      console.log('PANEL MODE: Rendering panel-only content');
-      
-      // Ensure we have datasets for panel mode
-      if (!this.state.datasets || this.state.datasets.length === 0) {
-        console.warn('No datasets for panel mode, falling back to single mode');
-        this.options.isPanelView = false;
-        this.renderSingleMode();
-      } else {
-        this.renderPanelMode();
-      }
-    } else {
-      console.log('SINGLE MODE: Rendering single-panel content');
-      this.renderSingleMode();
-    }
-
-    // Common components for both modes
-    this.renderLegend();
-    this.renderTitle();
-    this.renderAxisNames();
-
-    // Render statistical lines
-    StatisticalLines.renderForChart(this);
-    
-    // Update state
-    this.state.rendered = true;
-    
-    console.log('Chart rendering completed, rendered=true');
-    
-    return this;
-  }
-
-  
-  /**
- * Render chart in single-panel mode
+ * FIXED: Process data and calculate domains in correct order
  * @private
  */
-  renderSingleMode() {
-    console.log('renderSingleMode called');
-    
-    // Standard view mode
-    this.renderAxes();
+async _processData() {
+  if (!this.config.data || !Array.isArray(this.config.data)) {
+    console.warn('No data to process');
+    return;
+  }
 
-    if (this.options.grid?.show) {
-      this.state.components.grid = new Grid(this.options.grid);
-      this.state.components.grid.render(
-        this.state.chart,
-        this.state.scales.x,
-        this.state.scales.y,
-        this.state.dimensions.innerWidth,
-        this.state.dimensions.innerHeight,
-        this.options
-      );
+  try {
+    console.log('Processing raw data with DataProcessor...');
+    
+    // ✅ FIX: Use DataProcessor to normalize ALL data to standard x/y fields
+    const processingOptions = {
+      // DataProcessor will normalize any time field → x, any value field → y
+      autoDetectTimeFormat: true,
+      sortByTime: true,
+      removeDuplicates: true,
+      strictValidation: false,
+      fillGaps: false,
+      timeZone: 'UTC',
+      enableCaching: true,
+      batchSize: 10000,
+      normalizeTimeStamps: true,
+      gapThreshold: '1d'
+    };
+    
+    const processedDatasets = [];
+    
+    for (let i = 0; i < this.config.data.length; i++) {
+      const dataset = this.config.data[i];
+      console.log(`Processing dataset ${i + 1}/${this.config.data.length}: ${dataset.name || dataset.id || 'Unknown'}`);
+      
+      if (!dataset.data || !Array.isArray(dataset.data)) {
+        console.warn(`Dataset ${i} has invalid data, skipping`);
+        continue;
+      }
+
+      // ✅ CRITICAL FIX: DataProcessor.processDataset returns the whole processed dataset object
+      const processedDataset = await this.dataProcessor.processDataset(dataset, processingOptions);
+      
+      // ✅ CRITICAL FIX: Just push the processed dataset directly (it already has the structure we need)
+      processedDatasets.push(processedDataset);
     }
 
-    this.renderData();
-
-    // Render legend if enabled
-    if (this.options.showLegend) {
-      this.renderLegend();
-    }
+    // ✅ FIX: Store processed data BEFORE domain calculation
+    this.config.data = processedDatasets;
     
-    // Render zero line if enabled
-    if (this.options.showZeroLine) {
-      this.state.components.zeroLine = new ZeroLine(this.options.zeroLineOptions || {});
-      if (this.state.scales.y) {
-        this.state.components.zeroLine.render(
-          this.state.chart, 
-          this.state.scales.y, 
-          this.state.dimensions.innerWidth
-        );
+    // Apply logarithmic transformation if enabled
+    for (const dataset of this.config.data) {
+      // Store original normalized data if it doesn't exist
+      if (!dataset._originalNormalizedData) {
+        dataset._originalNormalizedData = JSON.parse(JSON.stringify(dataset.data));
+      }
+    
+      if (this.config.options.isLogarithmic) {
+        // Transform from the stored original data
+        dataset.data = dataset._originalNormalizedData.map(p => ({
+          ...p,
+          y: p.y > 0 ? Math.log10(p.y) : null
+        }));
+      } else {
+        // Restore from the stored original data
+        dataset.data = JSON.parse(JSON.stringify(dataset._originalNormalizedData));
       }
     }
     
-    // Render recession lines if enabled
-    if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
-      this.state.components.recessionLines.render(
-        this.state.chart, 
-        this.options.recessions, 
-        this.state.scales.x, 
-        this.state.dimensions.innerHeight
-      );
-    }
+    // ✅ FIX: Calculate data point count from PROCESSED data (use processedDataCount from DataProcessor)
+    this.dataPointCount = processedDatasets.reduce((count, dataset) => {
+      // DataProcessor adds processedDataCount to the dataset
+      const dataLength = dataset.processedDataCount || (dataset.data && Array.isArray(dataset.data) ? dataset.data.length : 0);
+      return count + dataLength;
+    }, 0);
     
-    // Initialize hover features using InteractionManager
-    InteractionManager.initSingleMode(this);
-  }
-  
-  /**
-   * Render chart in panel mode
-   * @private
-   */
-  renderPanelMode() {
-    console.log('renderPanelMode called');
-    
-    // Make sure we have datasets to render
-    if (!this.state.datasets || this.state.datasets.length === 0) {
-      console.warn('No datasets available for panel mode');
-      return;
-    }
-    
-    // Render panels using the Panel component
-    Panel.renderForChart(this);
-    
-    // Initialize hover features using InteractionManager
-    InteractionManager.initPanelMode(this);
-  }
+    console.log(`DataProcessor: Successfully processed ${processedDatasets.length} datasets`);
+    console.log(`DataProcessor: Total points for rendering: ${this.dataPointCount}`);
 
-  /**
-   * Render panels for multi-panel view - UPDATED VERSION
-   * @private
-   */
-  renderPanels() {
-    console.log('renderPanels called - delegating to renderPanelMode');
-    // Delegate to the proper panel rendering
-    this.renderPanelMode();
-  }
+    // ✅ CRITICAL: Calculate domains AFTER data processing using normalized data
+    this._calculateDataDomains();
 
+  } catch (error) {
+    console.error('Error processing data:', error);
+    throw error;
+  }
+}
   /**
- * Render chart legend using Legend component
+ * Update scales with new data domains
+ * @private
  */
-renderLegend() {
-  console.log('renderLegend called');
+_updateScales() {
+  if (!this.scales.x || !this.scales.y) {
+    console.warn('Scales not initialized for update');
+    return;
+  }
+
+  // Recalculate data domains based on current data
+  this._calculateDataDomains();
+
+  // Update X scale domain
+  this.scales.x.setDomain([...this.dataDomains.x]);
   
-  if (!this.options.showLegend || !this.config.data.length) {
+  // Update Y scale domain  
+  this.scales.y.setDomain([...this.dataDomains.y]);
+  
+  // Update scale manager
+  this.scaleManager.setScale('x', this.scales.x);
+  this.scaleManager.setScale('y', this.scales.y);
+  
+  // Update coordinate system with new scales
+  if (this.coordinateSystem) {
+    this.coordinateSystem.setScales(this.scales);
+  }
+  
+  console.log('Scales updated with new data domains');
+}
+
+  /**
+ * Update axes with new scales
+ * @private  
+ */
+_updateAxes() {
+  if (!this.axes.x || !this.axes.y) {
+    console.warn('Axes not initialized for update');
     return;
   }
   
-  // Clean up existing legend
-  if (this.state.components.legend) {
-    this.state.components.legend.destroy();
-    this.state.components.legend = null;
+  if (!this.scales.x || !this.scales.y) {
+    console.warn('Scales not available for axis update');
+    return;
   }
+
+  // Update X axis with new scale
+  this.axes.x.scale = this.scales.x;
   
-  // ENHANCED: Create legend items with study info
-  const legendItems = this.config.data.map(dataset => {
-    // Find studies for this dataset
-    const relatedStudies = this.state.datasets.filter(d => 
-      d.type === 'study' && 
-      this.options.studies && 
-      this.options.studies.find(s => s.id === d.id && s.datasetId === dataset.id)
-    );
-    
-    const baseItem = {
-      id: dataset.id,
-      label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
-      color: dataset.color || '#1468a8',
-      visible: dataset.visible !== false,
-      type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
-    };
-    
-    // COMPACT: Add study info without cluttering
-    if (relatedStudies.length > 0) {
-      baseItem.studyCount = relatedStudies.length;
-      baseItem.studyNames = relatedStudies.map(s => s.name).join(', ');
-      baseItem.studies = relatedStudies;
-    }
-    
-    return baseItem;
-  });
+  // Update Y axis with new scale  
+  this.axes.y.scale = this.scales.y;
   
-  // Calculate title height offset
-  const titleHeight = this.options.title ? 35 : 0;
-  
-  // Create legend with study-aware options
-  const legendOptions = Object.assign({
-    position: 'top',
-    align: 'center', 
-    orientation: 'horizontal',
-    itemMargin: 25,
-    symbolSize: 12,
-    fontSize: 12,
-    fontFamily: 'sans-serif',
-    interactive: true,
-    padding: { top: 10, right: 15, bottom: 10, left: 15 },
-    titleOffset: titleHeight,
-    // ENHANCED: Study display options
-    showStudyBadges: true,  // Show [+2] indicators
-    showStudyTooltips: true // Show study details on hover
-  }, this.options.legendOptions || {});
-  
-  // Create and configure legend
-  this.state.components.legend = new Legend(legendOptions);
-  this.state.components.legend.setItems(legendItems);
-  
-  // Render legend
-  this.state.components.legend.render(
-    this.state.svg, 
-    this.state.dimensions.width,
-    this.state.dimensions.height
-  );
-  
-  // ENHANCED: Add study interaction handlers
-  this.bindStudyLegendInteractions();
+  console.log('Axes updated with new scales');
 }
 
-/**
- * NEW: Bind study-specific legend interactions
+  /**
+   * Initialize crosshair functionality
+   * @private
+   *  
+    */
+  async togglePanelMode(force = null) {
+    return await this.panelManager.togglePanelMode(force);
+  }
+
+
+  /**
+   * Check if the chart is in panel mode
+   * @return {boolean} True if in panel mode, false otherwise
+   * */
+  get isPanelMode() {
+    return this.panelManager.isPanelMode;
+  }
+  
+  /**
+ * FIXED: Calculate domains using normalized data from DataProcessor
  * @private
  */
-bindStudyLegendInteractions() {
-  if (!this.state.components.legend) return;
+_calculateDataDomains() {
+  if (!this.config.data || !Array.isArray(this.config.data) || this.config.data.length === 0) {
+    console.warn('No data available for domain calculation');
+    this.dataDomains = { x: [0, 1], y: [0, 1] };
+    return;
+  }
+
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  let totalPoints = 0;
   
-  // Dataset visibility toggle (existing)
-  this.state.components.legend.element.addEventListener('legend-item-click', (event) => {
-    const { id, visible } = event.detail;
-    console.log(`Legend item ${id} clicked, visible: ${visible}`);
+  // ✅ FIX: Use normalized data from DataProcessor (always has x/y fields)
+  for (const dataset of this.config.data) {
+    if (!dataset.data || !Array.isArray(dataset.data) || dataset.data.length === 0) {
+      continue;
+    }
     
-    const dataset = this.config.data.find(d => d.id === id);
-    if (dataset) {
-      dataset.visible = visible;
+    // ✅ FIX: DataProcessor guarantees x/y fields exist and are normalized
+    for (const point of dataset.data) {
+      totalPoints++;
       
-      // ENHANCED: Also toggle related studies
-      if (this.state.datasets) {
-        this.state.datasets.forEach(d => {
-          if (d.type === 'study') {
-            const studyConfig = this.options.studies?.find(s => s.id === d.id && s.datasetId === id);
-            if (studyConfig) {
-              d.visible = visible; // Studies follow their parent dataset
-            }
-          }
-        });
+      // DataProcessor normalizes all time fields → point.x (numeric timestamp)
+      // DataProcessor normalizes all value fields → point.y (numeric value)
+      const xValue = point.x;
+      const yValue = point.y;
+      
+      if (xValue != null && isFinite(xValue)) {
+        xMin = Math.min(xMin, xValue);
+        xMax = Math.max(xMax, xValue);
       }
       
-      this.update();
+      if (yValue != null && isFinite(yValue)) {
+        yMin = Math.min(yMin, yValue);
+        yMax = Math.max(yMax, yValue);
+      }
+    }
+  }
+  
+  // Handle edge cases
+  if (xMin === Infinity || xMax === -Infinity) {
+    console.warn('No valid X values found in processed data');
+    xMin = 0;
+    xMax = 1;
+  }
+  
+  if (yMin === Infinity || yMax === -Infinity) {
+    console.warn('No valid Y values found in processed data');
+    yMin = 0;
+    yMax = 1;
+  }
+  
+  // Ensure yMin is positive for logarithmic scale
+  if (this.config.options.isLogarithmic && yMin <= 0) {
+    yMin = 0.1; // or a small fraction of yMax
+  }
+  
+  const yRange = yMax - yMin;
+  const yPadding = yRange * 0.05; // 5% padding
+
+  this.dataDomains = {
+    x: [xMin, xMax],
+    y: [yMin - yPadding, yMax + yPadding]
+  };
+    
+  console.log(`Data domains calculated from ${totalPoints} processed points:`, this.dataDomains);
+}
+  
+  /**
+   * UPDATED: Create coordinate system with renderer information
+   */
+  _createCoordinateSystem() {
+    this.coordinateSystem = CoordinateSystem.createForChart(
+      this.constructor.name.toLowerCase().replace('chart', ''), // 'line', 'bar', etc.
+      {
+        x: 0,
+        y: 0,
+        width: this.config.options.width,
+        height: this.config.options.height
+      },
+      this.chartArea,
+      {
+        targetRenderer: this.activeRenderer, // Pass selected renderer
+        devicePixelRatio: window.devicePixelRatio || 1,
+        enableHighDPI: true,
+        enableCaching: true,
+        useUnifiedCoordinates: true // Enable unified coordinate system
+      }
+    );
+    
+    console.log(`CoordinateSystem created for ${this.activeRenderer} renderer with unified coordinates`);
+  }
+  
+  /**
+ * UPDATED: Create scales with proper domains from processed data
+ * @private
+ */
+_createScales() {
+  // ✅ FIX: Ensure domains are calculated from processed data first
+  if (!this.dataDomains || !this.dataDomains.x || !this.dataDomains.y) {
+    console.warn('Data domains not available, recalculating...');
+    this._calculateDataDomains();
+  }
+  
+  // Determine scale types - DataProcessor handles time detection
+  const xScaleType = this.config.options.xType === 'time' ? 'time' : 'linear';
+  const yScaleType = 'linear';
+  
+  // Create X scale with NO PADDING
+  this.scales.x = new Scale({
+    type: xScaleType,
+    domain: [...this.dataDomains.x],
+    range: [this.chartArea.x, this.chartArea.x + this.chartArea.width],
+    coordinateSystem: 'unified',
+    orientation: 'horizontal',
+    dataType: this.config.options.xType,
+    options: { 
+      nice: false,    // ✅ DISABLE nice numbers
+      padding: 0,     // ✅ DISABLE padding
+      clamp: true 
     }
   });
   
-  // ENHANCED: Study badge interactions
-  this.state.components.legend.element.addEventListener('legend-study-badge-click', (event) => {
-    const { datasetId, studies } = event.detail;
-    console.log(`Study badge clicked for dataset ${datasetId}`);
-    
-    // Toggle all studies for this dataset
-    studies.forEach(study => {
-      const studyDataset = this.state.datasets.find(d => d.id === study.id);
-      if (studyDataset) {
-        studyDataset.visible = !studyDataset.visible;
-      }
-    });
-    
-    this.update();
+  // Create Y scale with NO PADDING
+  this.scales.y = new Scale({
+    type: yScaleType,
+    domain: [...this.dataDomains.y],
+    range: [this.chartArea.y + this.chartArea.height, this.chartArea.y],
+    coordinateSystem: 'unified',
+    orientation: 'vertical',
+    dataType: this.config.options.yType,
+    options: { 
+      nice: false,    // ✅ DISABLE nice numbers
+      padding: 0,     // ✅ DISABLE padding
+      clamp: true 
+    }
   });
+  
+  // Update scale manager
+  this.scaleManager.setScale('x', this.scales.x);
+  this.scaleManager.setScale('y', this.scales.y);
+  
+  console.log('Scales created with NO PADDING and unified coordinate system');
 }
 
   /**
-   * Update legend to reflect current chart state
+   * Create grid instance
    */
-  updateLegend() {
-    if (!this.state.components.legend || !this.options.showLegend) {
+  _createGrid() {
+    if (!this.scales.x || !this.scales.y) {
+      console.warn('Scales not created before grid');
       return;
     }
     
-    // Update legend items with current dataset state
-    const legendItems = this.config.data.map(dataset => ({
-      id: dataset.id,
-      label: dataset.name || `Dataset ${this.config.data.indexOf(dataset) + 1}`,
-      color: dataset.color || '#1468a8',
-      visible: dataset.visible !== false,
-      type: this.constructor.name === 'LineChart' ? 'line' : 'rect'
-    }));
-    
-    // Update legend items and re-render
-    this.state.components.legend.setItems(legendItems);
-    this.state.components.legend.update();
+    this.grid = new Grid({
+      xScale: this.scales.x,
+      yScale: this.scales.y,
+      chartArea: this.chartArea,
+      showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
+      showYGrid: this.config.options.showYGrid && this.config.options.showGrid,
+      xGridColor: this.config.options.gridColor,
+      yGridColor: this.config.options.gridColor,
+      xGridOpacity: this.config.options.gridOpacity,
+      yGridOpacity: this.config.options.gridOpacity,
+      xGridDash: this.config.options.gridDash,
+      yGridDash: this.config.options.gridDash
+    });
   }
+  
+  /**
+   * Create axis instances
+   */
+  _createAxes() {
+    if (!this.scales.x || !this.scales.y) {
+      console.warn('Scales not created before axes');
+      return;
+    }
+    
+    // X Axis
+    this.axes.x = new Axis({
+      orientation: 'x',
+      scale: this.scales.x,
+      options: {
+        label: this.config.options.xAxisName,
+        fontSize: 12,
+        color: '#333'
+      }
+    });
+    
+    // Y Axis
+    this.axes.y = new Axis({
+      orientation: 'y',
+      scale: this.scales.y,
+      options: {
+        label: this.config.options.yAxisName,
+        fontSize: 12,
+        color: '#333'
+      }
+    });
+  }
+  
+  /**
+   * UPDATED: Determine optimal renderer based on data size and browser capabilities
+   */
+  _selectOptimalRenderer() {
+    // Check for forced renderer
+    if (this.config.options.forceRenderer) {
+      this.activeRenderer = this.config.options.forceRenderer;
+      console.log(`Using forced renderer: ${this.activeRenderer}`);
+      return;
+    }
+    
+    // Force canvas rendering for bar charts
+    if (this.chartType === 'bar') {
+      this.activeRenderer = 'canvas';
+      console.log(`Force-selected Canvas renderer for BarChart (${this.dataPointCount} data points)`);
+      return;
+    }
+    
+    const dataPoints = this.dataPointCount;
+    
+    // UPDATED: Use centralized browser support
+    const webglSupported = browserSupport.hasWebGL();
+    
+    if (dataPoints > this.performanceThresholds.canvas && webglSupported) {
+      this.activeRenderer = 'webgl';
+      console.log(`Auto-selected WebGL renderer for ${dataPoints} data points`);
+    } else if (dataPoints > this.performanceThresholds.webgl) {
+      // Dataset too large even for WebGL
+      console.warn(`Dataset (${dataPoints} points) exceeds WebGL limit (${this.performanceThresholds.webgl})`);
+      this.activeRenderer = webglSupported ? 'webgl' : 'canvas';
+    } else {
+      this.activeRenderer = 'canvas';
+      console.log(`Auto-selected Canvas renderer for ${dataPoints} data points`);
+    }
+  }
+  
+  /**
+   * Initialize the selected renderer
+   */
+  async _initializeRenderer() {
+    try {
+      // Create renderer instance
+      switch (this.activeRenderer) {
+        case 'webgl':
+          this.rendererInstance = new WebGLRenderer({
+            antialias: true,
+            preserveDrawingBuffer: false
+          });
+          break;
+          
+        case 'canvas':
+        default:
+          this.rendererInstance = new CanvasRenderer({
+            antialias: true,
+            imageSmoothingEnabled: true
+          });
+          break;
+      }
+      
+      // Initialize renderer with canvas
+      await this.rendererInstance.initialize(this.canvas, {
+        width: this.config.options.width,
+        height: this.config.options.height
+      });
+      
+      // UPDATED: Inform coordinate system about active renderer
+      if (this.coordinateSystem) {
+        this.coordinateSystem.setTargetRenderer(this.activeRenderer);
+      }
+      
+      console.log(`${this.activeRenderer} renderer initialized with unified coordinate system`);
+      
+    } catch (error) {
+      console.error(`Failed to initialize ${this.activeRenderer} renderer:`, error);
+      
+      // Fallback to Canvas if WebGL fails
+      if (this.activeRenderer === 'webgl') {
+        console.log('Falling back to Canvas renderer');
+        this.activeRenderer = 'canvas';
+        this.rendererInstance = new CanvasRenderer();
+        await this.rendererInstance.initialize(this.canvas, {
+          width: this.config.options.width,
+          height: this.config.options.height
+        });
+        
+        // Update coordinate system with fallback renderer
+        if (this.coordinateSystem) {
+          this.coordinateSystem.setTargetRenderer(this.activeRenderer);
+        }
+      } else {
+        throw error;
+      }
+    }
+  }
+  
+  /**
+ * UPDATED: Extract X value - use normalized data from DataProcessor
+ * @private
+ */
+_getXValue(point) {
+  // ✅ FIX: After DataProcessor, all time data is normalized to point.x
+  // DataProcessor guarantees point.x exists and is a numeric timestamp
+  let value = point.x;
+  
+  // Fallback for unprocessed data (shouldn't happen in normal flow)
+  if (value == null) {
+    value = point.date || point.time || point.timestamp;
+    
+    // Convert Date objects to timestamps
+    if (value instanceof Date) {
+      value = value.getTime();
+    } else if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!isNaN(parsed.getTime())) {
+        value = parsed.getTime();
+      } else {
+        value = parseFloat(value);
+      }
+    }
+  }
+  
+  return typeof value === 'number' && isFinite(value) ? value : null;
+}
 
+/**
+ * UPDATED: Extract Y value - use normalized data from DataProcessor
+ * @private
+ */
+_getYValue(point) {
+  // ✅ FIX: After DataProcessor, all value data is normalized to point.y
+  // DataProcessor guarantees point.y exists and is a numeric value
+  let value = point.y;
+  
+  // Fallback for unprocessed data (shouldn't happen in normal flow)
+  if (value == null) {
+    value = point.value || point.price || point.close || point.amount;
+    
+    if (typeof value === 'string') {
+      value = parseFloat(value);
+    }
+  }
+  
+  return typeof value === 'number' && isFinite(value) ? value : null;
+}
+  
   /**
    * Render chart title
-   * @private
    */
-  renderTitle() {
-    console.log('renderTitle called');
-    
-    if (!this.state.svg) return;
-    
-    if (this.options.title) {
-      const title = SvgRenderer.createText(
-        this.options.title,
-        this.state.dimensions.width / 2,
-        25,
-        {
-          'text-anchor': 'middle',
-          'font-size': '16px',
-          'font-weight': 'bold',
-          'font-family': this.options.fontFamily,
-          fill: this.options.textColor,
-          class: 'visioncharts-title'
-        }
-      );
-      
-      this.state.svg.appendChild(title);
+  _renderTitle() {
+    // Remove existing title if present
+    if (this.titleElement) {
+      this.titleElement.remove();
+      this.titleElement = null;
     }
     
-    this.renderAxisNames();
+    // Only render title if one is specified
+    if (!this.config.options.title) {
+      return;
+    }
+    
+    // Create title element
+    this.titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    
+    // Position title centered horizontally, in the top margin
+    const centerX = this.config.options.width / 2;
+    const titleY = this.config.options.titlePadding + this.config.options.titleFontSize;
+    
+    // Set title attributes
+    this.titleElement.setAttribute('x', centerX);
+    this.titleElement.setAttribute('y', titleY);
+    this.titleElement.setAttribute('text-anchor', 'middle');
+    this.titleElement.setAttribute('font-size', this.config.options.titleFontSize);
+    this.titleElement.setAttribute('font-family', this.config.options.titleFontFamily);
+    this.titleElement.setAttribute('font-weight', this.config.options.titleFontWeight);
+    this.titleElement.setAttribute('fill', this.config.options.titleColor);
+    this.titleElement.setAttribute('class', 'chart-title');
+    
+    // Set title text
+    this.titleElement.textContent = this.config.options.title;
+    
+    // Add to SVG overlay
+    this.svgOverlay.appendChild(this.titleElement);
+    
+    console.log(`Title rendered: "${this.config.options.title}"`);
   }
-
+  
   /**
- * Create and configure axes using Axis component - FIXED VERSION
- */
-createAxes() {
-  console.log('createAxes called');
-  
-  // Initialize axes storage
-  this.state.components.axes = {
-    x: null,
-    y: null
-  };
-  
-  // Create X axis
-  if (this.state.scales.x) {
-    const xAxisOptions = {
-      orientation: 'bottom', // FIXED: Ensure bottom orientation
-      scale: this.state.scales.x,
-      tickCount: this.options.xTickCount || 5,
-      tickFormat: this.options.xTickFormat,
-      formatType: this.options.xType === 'time' ? 'time' : 'number', // FIXED: Proper format type
-      formatOptions: this.options.xFormatOptions || {}, // FIXED: Pass format options
-      label: this.options.xAxisName || '',
-      isLogarithmic: false, // X-axis typically not logarithmic
-      showTickLabels: this.options.showXLabels !== false,
-      tickRotation: this.options.xTickRotation || 0,
-      showAxisLabel: false // FIXED: Disable to prevent duplicate with Chart.renderAxisNames()
-    };
+   * UPDATED: Preprocess data for rendering using unified coordinate system
+   */
+  async _preprocessDataForRenderer() {
+  if (!Array.isArray(this.config.data) || !this.coordinateSystem) {
+    return;
+  }
+
+  try {
+    console.log('Transforming coordinates with UNIFIED CoordinateSystem...');
     
-    this.state.components.axes.x = new Axis(xAxisOptions);
-  }
-  
-  // Create Y axis  
-  if (this.state.scales.y) {
-    const yAxisOptions = {
-      orientation: 'left',
-      scale: this.state.scales.y,
-      tickCount: this.options.yTickCount || 5,
-      tickFormat: this.options.yTickFormat,
-      formatType: this.options.yType === 'time' ? 'time' : 'number',
-      formatOptions: this.options.yFormatOptions || {},
-      label: this.options.yAxisName || '',
-      isLogarithmic: this.options.isLogarithmic || false,
-      showTickLabels: this.options.showYLabels !== false,
-      tickRotation: this.options.yTickRotation || 0,
-      showAxisLabel: false // FIXED: Disable to prevent duplicate with Chart.renderAxisNames()
-    };
-    
-    this.state.components.axes.y = new Axis(yAxisOptions);
-  }
-}
-
-
-/**
- * Render axes using Axis component - FIXED VERSION
- */
-renderAxes() {
-  console.log('renderAxes called');
-  
-  if (!this.state.chart) return;
-  
-  const { innerWidth, innerHeight } = this.state.dimensions;
-  
-  // Render X axis
-  if (this.state.components.axes?.x) {
-    this.state.components.axes.x.render(
-      this.state.chart, 
-      innerWidth, 
-      innerHeight
-    );
-  }
-  
-  // Render Y axis
-  if (this.state.components.axes?.y) {
-    this.state.components.axes.y.render(
-      this.state.chart, 
-      innerWidth, 
-      innerHeight
-    );
-  }
-}
-
-/**
- * Update axes with new scales or dimensions - FIXED VERSION
- */
-updateAxes() {
-  console.log('updateAxes called');
-  
-  const { innerWidth, innerHeight } = this.state.dimensions;
-  
-  // Update X axis
-  if (this.state.components.axes?.x) {
-    this.state.components.axes.x.setScale(this.state.scales.x);
-    // FIXED: Update format type based on current options
-    this.state.components.axes.x.setOptions({ 
-      formatType: this.options.xType === 'time' ? 'time' : 'number',
-      formatOptions: this.options.xFormatOptions || {}
+    // Step 1: Use CoordinateSystem to transform data to UNIFIED pixel coordinates
+    this.config.data = await this.coordinateSystem.transformDatasets(this.config.data, {
+      strictValidation: false
     });
-    this.state.components.axes.x.update(innerWidth, innerHeight);
-  }
-  
-  // Update Y axis
-  if (this.state.components.axes?.y) {
-    this.state.components.axes.y.setScale(this.state.scales.y);
-    this.state.components.axes.y.setOptions({ 
-      isLogarithmic: this.options.isLogarithmic || false,
-      formatType: this.options.yType === 'time' ? 'time' : 'number',
-      formatOptions: this.options.yFormatOptions || {}
+
+    console.log('Data transformed to UNIFIED coordinates for', this.activeRenderer, 'renderer');
+
+    // ✅ FIXED: Use centralized PathGenerator instead of instance
+    console.log('Generating standardized paths with centralized PathGenerator...');
+    
+    this.generatedPaths = await PathGenerator.generatePaths(this.config.data, {
+      curve: this.config.options.curve || 'linear',
+      strokeWidth: this.config.options.strokeWidth || 2,
+      targetRenderer: this.activeRenderer
     });
-    this.state.components.axes.y.update(innerWidth, innerHeight);
-  }
 
-  if (this.state.components.grid && this.options.grid?.show) {
-    this.state.components.grid.update(
-      this.state.scales.x,
-      this.state.scales.y,
-      innerWidth,
-      innerHeight,
-      this.options
-    );
-  } else if (this.options.grid?.show) {
-    this.state.components.grid = new Grid(this.options.grid);
-    this.state.components.grid.render(
-      this.state.chart,
-      this.state.scales.x,
-      this.state.scales.y,
-      innerWidth,
-      innerHeight,
-      this.options
-    );
+    console.log('Standardized paths generated from UNIFIED coordinates for', this.activeRenderer, 'renderer');
+    
+  } catch (error) {
+    console.error('Error in preprocessing data for renderer:', error);
+    throw error;
   }
 }
 
-/**
- * Set X axis name
- * @param {string} name - X axis name
- */
-setXAxisName(name) {
-  this.options.xAxisName = name;
-  if (this.state.components.axes?.x) {
-    this.state.components.axes.x.setOptions({ label: name });
-    this.state.components.axes.x.update(
-      this.state.dimensions.innerWidth, 
-      this.state.dimensions.innerHeight
-    );
-  }
-}
-
-/**
- * Set Y axis name  
- * @param {string} name - Y axis name
- */
-setYAxisName(name) {
-  this.options.yAxisName = name;
-  if (this.state.components.axes?.y) {
-    this.state.components.axes.y.setOptions({ label: name });
-    this.state.components.axes.y.update(
-      this.state.dimensions.innerWidth, 
-      this.state.dimensions.innerHeight
-    );
-  }
-}
-
-/**
- * Clean up axes components
- */
-cleanupAxes() {
-  if (this.state.components.axes?.x) {
-    this.state.components.axes.x.destroy();
-    this.state.components.axes.x = null;
-  }
-  
-  if (this.state.components.axes?.y) {
-    this.state.components.axes.y.destroy();
-    this.state.components.axes.y = null;
-  }
-}
   
   /**
-   * Render axis names
-   * @private
-   */
-  renderAxisNames() {
-    console.log('renderAxisNames called');
+ * FIXED: Render chart - correct pipeline order
+ */
+async render() {
+  try {
+    // Step 1: Raw Data → DataProcessor (normalize to x/y fields)
+    await this._processData();
     
-    if (!this.state.svg) return;
+    // Step 2: Calculate Domains (from normalized data) - already done in _processData()
     
-    const { xAxisName, yAxisName } = this.options;
-    const { width, height, innerWidth, innerHeight } = this.state.dimensions;
-    const { left, top } = this.options.margins;
+    // Step 3: Create Scales (using calculated domains)
+    this._createScales();
     
-    // X-axis name
-    if (xAxisName) {
-      const xAxisNameElement = SvgRenderer.createText(
-        xAxisName,
-        left + innerWidth / 2,
-        height + 5,
-        {
-          'text-anchor': 'middle',
-          'font-size': '14px',
-          'font-family': this.options.fontFamily,
-          fill: this.options.textColor,
-          class: 'visioncharts-axis-name x-axis-name'
-        }
-      );
+    // Step 4: CoordinateSystem (using scales)
+    if (this.coordinateSystem) {
+      this.coordinateSystem.setScales(this.scales);
+    }
+
+    if (this.isPanelMode && this.panelManager) {
+      // In panel mode - refresh panels instead of single mode rendering
+      await this.panelManager.refreshPanelMode();
+      return;
+    }
+    
+    // Continue with rest of rendering...
+    await this._renderSingleMode();
+    
+  } catch (error) {
+    console.error('Error in render pipeline:', error);
+    throw error;
+  }
+}
+
+  /**
+ * FIXED: Render single mode with correct path generation timing
+ */
+async _renderSingleMode() {
+  if (!this.isInitialized) {
+    console.warn('Chart not initialized, cannot render');
+    return;
+  }
+
+  console.log('Rendering chart...');
+  
+  try {
+    // ✅ FIX: Clear previous render FIRST (before generating new paths)
+    this._clearRender();
+    
+    // ✅ FIX: Generate paths AFTER clearing (so they don't get deleted)
+    console.log('Generating paths for rendering...');
+    await this._preprocessDataForRenderer();
+    
+    // Render title
+    this._renderTitle();
+    
+    // Render grid
+    if (this.grid && this.config.options.showGrid && this.gridCanvas) {
+      this.grid.updateChartArea(this.chartArea);
+      this.grid.updateScales(this.scales.x, this.scales.y);
       
-      this.state.svg.appendChild(xAxisNameElement);
+      const gridCtx = this.gridCanvas.getContext('2d');
+      if (gridCtx) {
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        gridCtx.save();
+        gridCtx.scale(devicePixelRatio, devicePixelRatio);
+        this.grid.render(gridCtx);
+        gridCtx.restore();
+      }
     }
     
-    // Y-axis name
-    if (yAxisName) {
-      const yAxisNameElement = SvgRenderer.createText(
-        yAxisName,
-        10,
-        top + innerHeight / 2,
-        {
-          'text-anchor': 'middle',
-          transform: `rotate(-90, 10, ${top + innerHeight / 2})`,
-          'font-size': '14px',
-          'font-family': this.options.fontFamily,
-          fill: this.options.textColor,
-          class: 'visioncharts-axis-name y-axis-name'
-        }
-      );
-      
-      this.state.svg.appendChild(yAxisNameElement);
-    }
-  }
+    // ✅ FIX: Render chart data AFTER paths are generated
+    await this._renderChartData();
 
-  /**
- * FIXED: Update method to include statistical lines
- */
-update() {
-  console.log('update called with isPanelView =', this.options.isPanelView);
-  
-  if (!this.state.rendered) {
-    console.log('Chart not rendered yet, calling render instead');
-    return this.render();
+    if (this.studiesRenderer && this.studiesManager) {
+      try {
+        // Calculate studies before rendering
+        this.studiesManager.calculateAllStudies();
+        
+        // Render studies
+        await this.studiesRenderer.render();
+        
+      } catch (error) {
+        console.error('Error rendering studies:', error);
+      }
+    }
+    
+    // Render axes
+    this._renderAxes();
+    
+    // Render statistical lines
+    this._renderStatisticalLines();
+    
+    // Render recession lines  
+    this._renderRecessionLines();
+    
+    // Render zero line
+    this._renderZeroLine();
+    
+    // Update legend
+    this._updateLegend();
+    
+    // Update ending labels
+    this._updateEndingLabels();
+    
+    console.log('Chart rendered successfully');
+    
+  } catch (error) {
+    console.error('Error rendering chart:', error);
+    throw error;
   }
-  
-  if (!this.state.chart) {
-    console.error('Cannot update chart: chart element is null');
-    return this;
-  }
-  
-  // Process datasets
-  this.processDatasets();
-  
-  // Update scales
-  this.updateScales();
-  
-  // Clear existing chart content completely
-  if (this.state.chart) {
-    this.state.chart.innerHTML = '';
-  }
-  
-  // Clean up any existing hover components
-  this.cleanupHoverFeatures();
-  
-  // Re-render based on current mode
-  if (this.options.isPanelView) {
-    console.log('UPDATE: Re-rendering in panel mode');
-    this.renderPanelMode();
-  } else {
-    console.log('UPDATE: Re-rendering in single mode');
-    this.renderSingleMode();
-  }
-  
-  // Update common elements
-  const oldLegend = this.state.svg.querySelector('.visioncharts-legend');
-  if (oldLegend) {
-    oldLegend.parentNode.removeChild(oldLegend);
-  }
-  this.renderLegend();
-  
-  StatisticalLines.updateForChart(this);
-  
-  return this;
 }
 
+  
   /**
-   * Update scales using ScaleManager
-   * @private
+   * Get panel mode information
    */
-  updateScales() {
-    console.log('Chart.updateScales called - using ScaleManager');
-    
-    // Use ScaleManager to update scales
-    ScaleManager.updateScales(this, this.state.scales);
-    
-    console.log('Chart scales updated via ScaleManager');
-  }
-
-  /**
-   * Update axes
-   * @private
-   * This should be implemented by subclasses
-   */
-  updateAxes() {
-    console.log('updateAxes called - to be implemented by subclass');
-    // To be implemented by subclasses
-  }
-
-  /**
-   * Update chart data
-   * @private
-   * This should be implemented by subclasses
-   */
-  updateData() {
-    console.log('updateData called - to be implemented by subclass');
-    // To be implemented by subclasses
+  getPanelModeInfo() {
+    return this.panelManager.getState();
   }
   
   /**
-   * Update zero line
-   * @private
+   * Render axes using the Axis class
    */
-  updateZeroLine() {
-    console.log('updateZeroLine called');
-    
-    if (!this.state.chart) return;
-    
-    // Remove existing zero line
-    if (this.state.components.zeroLine) {
-      this.state.components.zeroLine.destroy();
-      this.state.components.zeroLine = null;
+  _renderAxes() {
+    if (!this.axes.x || !this.axes.y) {
+      console.warn('Axes not initialized');
+      return;
     }
     
-    // Re-render zero line if enabled
-    if (this.options.showZeroLine && this.state.scales.y) {
-      this.state.components.zeroLine = new ZeroLine(this.options.zeroLineOptions || {});
-      this.state.components.zeroLine.render(
-        this.state.chart, 
-        this.state.scales.y, 
-        this.state.dimensions.innerWidth
-      );
-    }
+    // Render X axis
+    this.axes.x.render(this.svgOverlay, {
+      x: 0,
+      y: this.chartArea.y + this.chartArea.height
+    });
+    
+    // Render Y axis  
+    this.axes.y.render(this.svgOverlay, {
+      x: this.chartArea.x,
+      y: 0
+    });
+  }
+
+  /**
+   * Toggle logarithmic scale for the Y-axis
+   */
+  toggleLogarithmicScale(show = null) {
+    const newState = show !== null ? show : !this.config.options.isLogarithmic;
+    if (newState === this.config.options.isLogarithmic) return newState;
+  
+    this.config.options.isLogarithmic = newState;
+  
+    // The update pipeline will now handle the data transformation
+    this.update();
+    
+    console.log(`Logarithmic scale ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
   }
   
   /**
-   * Update recession lines
-   * @private
+   * Toggle recession lines visibility
    */
-    updateRecessionLines() {
-    console.log('updateRecessionLines called');
-    
-    if (!this.state.chart) return;
-    
-    // Remove existing recession lines
-    if (this.state.components.recessionLines) {
-      this.state.components.recessionLines.destroy();
-      this.state.components.recessionLines = null;
-    }
-    
-    // Re-render recession lines if enabled
-    if (this.options.showRecessionLines && this.options.recessions && this.options.recessions.length) {
-      this.state.components.recessionLines = new RecessionLines(this.options.recessionLinesOptions || {});
-      this.state.components.recessionLines.render(
-        this.state.chart, 
-        this.options.recessions, 
-        this.state.scales.x, 
-        this.state.dimensions.innerHeight
-      );
-    }
-  }
-
-  /**
-   * Set new data
-   * @public
-   * @param {Array} data - New chart data
-   */
-  setData(data) {
-    console.log('setData called');
-    
-    this.config.data = data;
-    return this.update();
-  }
-
-  /**
-   * Set new options
-   * @public
-   * @param {Object} options - New chart options
-   */
-  setOptions(options) {
-    console.log('setOptions called');
-    
-    this.options = Object.assign(this.options, options);
-    return this.update();
-  }
-
-  /**
-   * Get chart data
-   * @public
-   * @returns {Array} Chart data
-   */
-  getData() {
-    return this.config.data;
-  }
-
-  /**
-   * Get chart options
-   * @public
-   * @returns {Object} Chart options
-   */
-  getOptions() {
-    return this.options;
-  }
-  
-  /**
-   * Toggle logarithmic scale using data transformation approach
-   * @public
-   * @param {boolean} isLogarithmic - Whether to use logarithmic scale
-   * @returns {Chart} This chart instance
-   */
-  toggleLogarithmic(isLogarithmic) {
-    console.log('Chart.toggleLogarithmic called:', isLogarithmic);
-
-    // Update option
-    this.options.isLogarithmic = isLogarithmic;
-
-    // Transform data for all datasets
-    this.handleLogarithmicDataTransformation(isLogarithmic);
-
-    if (this.state.chart) {
-    // Remove all existing axes
-      this.state.chart.innerHTML = '';
+  toggleRecessionLines(show = null) {
+    if (this.isPanelMode) {
+        this.panelManager.toggleRecessionLines(show);
+        return;
     }
 
+    if (!this.recessionLines) {
+      console.warn('RecessionLines component not available');
+      return false;
+    }
+    
+    const newState = this.recessionLines.toggle(show);
+    this.config.options.showRecessionLines = newState;
+    
+    this.render();
 
-    this.updateScales(); // Update scales after data transformation
-    // Update axes to reflect new scale
-    this.updateData(); // Update axes after scale change
-    this.updateAxes(); // Update axes after data transformation
-
-    // Update the chart with transformed data
-    return this;
+    console.log(`RecessionLines ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
   }
 
   /**
-   * Handle logarithmic data transformation for all datasets
-   * @private
-   * @param {boolean} isLogarithmic - Whether to apply logarithmic transformation
+   * Toggle zero line visibility
    */
-  handleLogarithmicDataTransformation(isLogarithmic) {
-    console.log('handleLogarithmicDataTransformation called:', isLogarithmic);
-
-    if (!this.state.datasets || !this.state.datasets.length) {
-      console.log('No datasets to transform');
+  toggleZeroLine(show = null) {
+    if (this.isPanelMode) {
+      this.panelManager.toggleZeroLine(show);
       return;
     }
 
-    const yField = this.options.yField;
-
-    this.state.datasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length) {
-        console.log(`Skipping empty dataset ${index}`);
-        return;
-      }
-
-      if (isLogarithmic) {
-        // GOING TO LOG: Store original data and transform
-        if (!dataset._originalData) {
-          // Store deep copy of original data
-          dataset._originalData = dataset.data.map(point => ({ ...point }));
-          console.log(`Stored original data for dataset ${index}:`, dataset._originalData.length, 'points');
-        }
-
-        // Transform current data to logarithmic
-        dataset.data = this.transformDataToLogarithmic(dataset.data, yField);
-        console.log(`Transformed dataset ${index} to logarithmic`);
-
-      } else {
-        // GOING TO LINEAR: Restore original data  
-        if (dataset._originalData) {
-          // Restore from backup
-          dataset.data = dataset._originalData.map(point => ({ ...point }));
-          console.log(`Restored original data for dataset ${index}:`, dataset.data.length, 'points');
-
-          // Clean up backup
-          delete dataset._originalData;
-        } else {
-          console.log(`No original data to restore for dataset ${index}`);
-        }
-      }
-    });
+    if (!this.zeroLine) {
+      console.warn('ZeroLine component not available');
+      return false;
+    }
+    
+    const newState = this.zeroLine.toggle(show);
+    
+    console.log(`ZeroLine ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
   }
 
   /**
-   * Transform dataset to logarithmic values
+   * Render recession lines
    * @private
-   * @param {Array} data - Original data points
-   * @param {string} yField - Y field name to transform
-   * @returns {Array} Transformed data points
    */
-  transformDataToLogarithmic(data, yField) {
-    return data.map(point => {
-      const originalValue = point[yField];
-
-      // Handle edge cases for logarithmic transformation
-      const transformedValue = this.validateAndTransformLogValue(originalValue);
-
-      return {
-        ...point,
-        [yField]: transformedValue
-      };
-    });
+  _renderRecessionLines() {
+    if (!this.recessionLines || !this.scales.x || !this.scales.y) {
+      return;
+    }
+    
+    // Render recession lines to the container (creates dedicated SVG layer)
+    this.recessionLines.render(this.container, this.chartArea, this.scales);
   }
 
   /**
-   * Validate and transform a single value for logarithmic scale
+   * Render zero line
    * @private
-   * @param {number} value - Original value
-   * @returns {number} Transformed value safe for log10
    */
-  validateAndTransformLogValue(value) {
-    // Handle null, undefined, or non-numeric values
-    if (value == null || typeof value !== 'number' || isNaN(value)) {
-      console.warn('Invalid value for log transformation:', value, '- using 0.01');
-      return Math.log10(0.01); // ≈ -2
+  _renderZeroLine() {
+    if (!this.zeroLine || !this.scales.x || !this.scales.y) {
+      return;
     }
-
-    // Handle negative values - convert to positive
-    if (value < 0) {
-      console.warn('Negative value for log transformation:', value, '- using absolute value');
-      value = Math.abs(value);
-    }
-
-    // Handle zero or very small values - set minimum threshold
-    if (value <= 0 || value < 0.01) {
-      console.warn('Zero/small value for log transformation:', value, '- using 0.01');
-      value = 0.01;
-    }
-
-    // Apply log10 transformation
-    const logValue = Math.log10(value);
-
-    // Validate result
-    if (isNaN(logValue) || !isFinite(logValue)) {
-      console.error('Invalid log transformation result for value:', value, '- using -2');
-      return -2; // log10(0.01)
-    }
-
-    return logValue;
+    
+    // Render zero line to the container (creates dedicated SVG layer)
+    this.zeroLine.render(this.container, this.chartArea, this.scales);
   }
 
   /**
-   * Toggle recession lines
-   * @public
-   * @param {boolean} showRecessionLines - Whether to show recession lines
-   * @returns {Chart} This chart instance
+   * Render statistical lines
+   * @private
    */
-  toggleRecessionLines(showRecessionLines) {
-    console.log('toggleRecessionLines called:', showRecessionLines);
-    
-    this.options.showRecessionLines = showRecessionLines;
-    
-    if (this.state.rendered) {
-      if (this.options.isPanelView) {
-        // In panel mode, we need to re-render all panels
-        return this.update();
-      } else {
-        // In single mode, just update recession lines
-        this.updateRecessionLines();
-      }
+  _renderStatisticalLines() {
+    // Update and render average line
+    if (this.averageLine && this.scales.x && this.scales.y) {
+      this.averageLine.updateDatasets(this.config.data);
+      this.averageLine.render(this.container, this.chartArea, this.scales);
     }
     
-    return this;
-  }
-
-  /**
-   * Toggle panel view mode
-   * @public
-   * @param {boolean} isPanelView - Whether to enable panel view
-   * @returns {Chart} This chart instance
-   */
-  togglePanelView(isPanelView) {
-    console.log('Chart.togglePanelView called:', isPanelView);
-    
-    this.options.isPanelView = Boolean(isPanelView);
-    
-    if (this.state.rendered) {
-      // Panel view requires a complete re-render
-      return this.render();
+    // Update and render median line
+    if (this.medianLine && this.scales.x && this.scales.y) {
+      this.medianLine.updateDatasets(this.config.data);
+      this.medianLine.render(this.container, this.chartArea, this.scales);
     }
-    
-    return this;
-  }
-
-  /**
-   * Toggle ending labels visibility - ALSO ADD THIS if it's missing
-   * @public
-   * @param {boolean} show - Whether to show ending labels (null to toggle)
-   * @returns {Chart} This chart instance
-   */
-  toggleEndingLabels(show = null) {
-    console.log('Chart.toggleEndingLabels called:', show);
-    
-    if (show === null) {
-      show = !this.options.showEndingLabels;
-    }
-    
-    this.options.showEndingLabels = Boolean(show);
-    
-    if (this.state.rendered) {
-      return this.update();
-    }
-    
-    return this;
   }
   
   /**
-   * Toggle zero line
-   * @public
-   * @param {boolean} showZeroLine - Whether to show zero line
-   * @returns {Chart} This chart instance
+   * Render chart data using the selected renderer - to be implemented by subclasses
    */
-  toggleZeroLine(showZeroLine) {
-    console.log('toggleZeroLine called:', showZeroLine);
-    
-    this.options.showZeroLine = showZeroLine;
-    
-    if (this.state.rendered) {
-      if (this.options.isPanelView) {
-        // In panel mode, we need to re-render all panels
-        return this.update();
-      } else {
-        // In single mode, just update zero line
-        this.updateZeroLine();
-      }
-    }
-    
-    return this;
-  }
-
-  /**
-   * Toggle average line visibility - UPDATED VERSION using StatisticalLines
-   * @public
-   * @param {boolean} show - Whether to show the average line
-   * @param {string} datasetId - Optional: specific dataset to calculate average from
-   * @returns {Chart} This chart instance
-   */
-  toggleAverageLine(show = null, datasetId = null) {
-    console.log('Chart.toggleAverageLine called - delegating to StatisticalLines');
-    
-    StatisticalLines.toggleAverageLine(this, show, datasetId);
-    return this;
-  }
-
-  /**
-   * Toggle median line visibility - UPDATED VERSION using StatisticalLines
-   * @public
-   * @param {boolean} show - Whether to show the median line
-   * @param {string} datasetId - Optional: specific dataset to calculate median from
-   * @returns {Chart} This chart instance
-   */
-  toggleMedianLine(show = null, datasetId = null) {
-    console.log('Chart.toggleMedianLine called - delegating to StatisticalLines');
-    
-    StatisticalLines.toggleMedianLine(this, show, datasetId);
-    return this;
-  }
-
-  /**
-   * Configure average line appearance - UPDATED VERSION using StatisticalLines
-   * @public
-   * @param {Object} config - Configuration object
-   * @returns {Chart} This chart instance
-   */
-  configureAverageLine(config) {
-    console.log('Chart.configureAverageLine called - delegating to StatisticalLines');
-    
-    StatisticalLines.configureAverageLine(this, config);
-    return this;
-  }
-
-  /**
-   * Configure median line appearance - UPDATED VERSION using StatisticalLines
-   * @public
-   * @param {Object} config - Configuration object
-   * @returns {Chart} This chart instance
-   */
-  configureMedianLine(config) {
-    console.log('Chart.configureMedianLine called - delegating to StatisticalLines');
-    
-    StatisticalLines.configureMedianLine(this, config);
-    return this;
-  }
-
-  /**
-   * Get statistical information about the current dataset - UPDATED VERSION using StatisticalLines
-   * @public
-   * @param {string} datasetId - Optional: specific dataset ID
-   * @returns {Object} - Statistical information
-   */
-    getStatisticalInfo(datasetId = null) {
-      return StatisticalLines.getStatisticalInfo(this, datasetId);
-    }
-
-    /**
-   * Remove all statistical lines
-   * @public
-   * @returns {Chart} This chart instance
-   */
-  removeAllStatisticalLines() {
-    console.log('Chart.removeAllStatisticalLines called');
-    
-    StatisticalLines.removeAllLines(this);
-    return this.update();
-  }
-
-  /**
-   * Check if any statistical lines are visible
-   * @public
-   * @returns {boolean} True if any statistical lines are visible
-   */
-  hasStatisticalLines() {
-    return StatisticalLines.hasVisibleLines(this);
-  }
-
-  /**
-   * Get statistical lines configuration
-   * @public
-   * @returns {Object} Configuration object
-   */
-  getStatisticalLinesConfig() {
-    return StatisticalLines.getConfiguration(this);
-  }
-
-  /**
-   * Apply statistical lines configuration
-   * @public
-   * @param {Object} configuration - Configuration object
-   * @returns {Chart} This chart instance
-   */
-  applyStatisticalLinesConfig(configuration) {
-    console.log('Chart.applyStatisticalLinesConfig called');
-    
-    StatisticalLines.applyConfiguration(this, configuration);
-    return this.update();
-  }
-
-  /**
-   * Set X axis name
-   * @public
-   * @param {string} name - X axis name
-   * @returns {Chart} This chart instance
-   */
-  setXAxisName(name) {
-    console.log('setXAxisName called:', name);
-    
-    this.options.xAxisName = name;
-    
-    if (this.state.rendered && this.state.svg) {
-      // Update axis name
-      const xAxisName = this.state.svg.querySelector('.x-axis-name');
-      if (xAxisName) {
-        xAxisName.textContent = name;
-      } else {
-        this.renderAxisNames();
-      }
-    }
-    
-    return this;
+  async _renderChartData() {
+    throw new Error('_renderChartData must be implemented by subclass');
   }
   
   /**
-   * Set Y axis name
-   * @public
-   * @param {string} name - Y axis name
-   * @returns {Chart} This chart instance
+   * Update chart - handle both single and panel modes
    */
-  setYAxisName(name) {
-    console.log('setYAxisName called:', name);
+  async update() {
+    if (this.isPanelMode) {
+      return await this.panelManager.refreshPanelMode();
+    } else {
+      return this._updateSingleMode();
+    }
+  }
+
+  /**
+   * Update panel mode
+   * @private
+   */
+  async _updatePanelMode() {
+    return await this.panelManager.refreshPanelMode();
+  }
+  
+  /**
+   * FIXED: Update single mode chart
+   * @private
+   */
+  async _updateSingleMode() {
+  if (!this.isInitialized) {
+    await this._initialize();
+    return;
+  }
+
+  console.log('Updating chart...');
+  
+  try {
+    // Process data first
+    await this._processData();
     
-    this.options.yAxisName = name;
+    // Update scales with new data domains
+    this._updateScales();
     
-    if (this.state.rendered && this.state.svg) {
-      // Update axis name
-      const yAxisName = this.state.svg.querySelector('.y-axis-name');
-      if (yAxisName) {
-        yAxisName.textContent = name;
-      } else {
-        this.renderAxisNames();
-      }
+    // Update axes with new scales
+    this._updateAxes();
+    
+    // Update grid with new scales
+    this._updateGrid();
+    
+    // CRITICAL: Generate paths for rendering after scales are updated
+    await this._preprocessDataForRenderer();
+    
+    // Re-render with new data
+    await this.render();
+
+    if (this.studiesManager) {
+      this.studiesManager.calculateAllStudies();
     }
     
-    return this;
+    console.log('Chart updated successfully');
+    
+  } catch (error) {
+    console.error('Error updating chart:', error);
+    throw error;
+  }
+}
+
+  /**
+   * Update grid with new scales and chart area
+   * @private
+   */
+  _updateGrid() {
+    if (this.grid && this.scales.x && this.scales.y) {
+      this.grid.updateScales(this.scales.x, this.scales.y);
+      this.grid.updateChartArea(this.chartArea);
+    }
+  }
+  
+  /**
+ * FIXED: Debug method to verify data structure
+ */
+_debugDataStructure() {
+  console.log('=== DATA STRUCTURE DEBUG ===');
+  
+  if (!this.config.data || this.config.data.length === 0) {
+    console.log('No data available');
+    return;
+  }
+  
+  const firstDataset = this.config.data[0];
+  console.log('Dataset structure:', {
+    id: firstDataset.id,
+    name: firstDataset.name,
+    hasData: !!firstDataset.data,
+    dataLength: firstDataset.data ? firstDataset.data.length : 0,
+    processed: firstDataset.processed,
+    processedDataCount: firstDataset.processedDataCount,
+    originalDataCount: firstDataset.originalDataCount
+  });
+  
+  if (firstDataset.data && firstDataset.data.length > 0) {
+    const firstPoint = firstDataset.data[0];
+    console.log('First data point structure:', {
+      keys: Object.keys(firstPoint),
+      x: firstPoint.x,
+      y: firstPoint.y,
+      hasUnifiedCoords: !!(firstPoint.unifiedX && firstPoint.unifiedY)
+    });
+  }
+  
+  console.log('Data domains:', this.dataDomains);
+  console.log('Data point count:', this.dataPointCount);
+}
+
+  /**
+   * UPDATED: Determine optimal renderer without setting it
+   */
+  _determineOptimalRenderer() {
+    if (this.config.options.forceRenderer) {
+      return this.config.options.forceRenderer;
+    }
+    
+    const webglSupported = browserSupport.hasWebGL();
+    
+    if (this.dataPointCount > this.performanceThresholds.canvas && webglSupported) {
+      return 'webgl';
+    } else {
+      return 'canvas';
+    }
+  }
+  
+  /**
+   * UPDATED: Get renderer performance information
+   */
+  getRendererInfo() {
+    return {
+      activeRenderer: this.activeRenderer,
+      dataPointCount: this.dataPointCount,
+      thresholds: this.performanceThresholds,
+      rendererCapabilities: this.rendererInstance ? this.rendererInstance.getPerformanceProfile() : null,
+      webglSupported: browserSupport.hasWebGL(),
+      webglCapabilities: browserSupport.getWebGLCapabilities(),
+      coordinateSystem: this.coordinateSystem ? this.coordinateSystem.getCoordinateInfo() : null
+    };
+  }
+  
+  /**
+   * UPDATED: Force switch to a specific renderer
+   */
+  async switchRenderer(rendererType) {
+    if (!['canvas', 'webgl'].includes(rendererType)) {
+      throw new Error(`Invalid renderer type: ${rendererType}`);
+    }
+    
+    // UPDATED: Use centralized browser support
+    if (rendererType === 'webgl' && !browserSupport.hasWebGL()) {
+      throw new Error('WebGL is not supported in this browser');
+    }
+    
+    if (rendererType === this.activeRenderer) {
+      console.log(`Already using ${rendererType} renderer`);
+      return;
+    }
+    
+    console.log(`Manually switching to ${rendererType} renderer with unified coordinates`);
+    
+    // Destroy current renderer
+    if (this.rendererInstance) {
+      this.rendererInstance.destroy();
+    }
+    
+    // Set new renderer
+    this.activeRenderer = rendererType;
+    this.config.options.forceRenderer = rendererType;
+    
+    // Update coordinate system
+    if (this.coordinateSystem) {
+      this.coordinateSystem.setTargetRenderer(rendererType);
+    }
+    
+    // Initialize new renderer
+    await this._initializeRenderer();
+    
+    // Re-render
+    await this.render();
   }
   
   /**
    * Set chart title
-   * @public
-   * @param {string} title - Chart title
-   * @returns {Chart} This chart instance
    */
   setTitle(title) {
-    console.log('setTitle called:', title);
-    
-    this.options.title = title;
-    
-    if (this.state.rendered && this.state.svg) {
-      // Update title
-      const titleElement = this.state.svg.querySelector('.visioncharts-title');
-      if (titleElement) {
-        titleElement.textContent = title;
-      } else {
-        this.renderTitle();
-      }
-    }
-    
+    this.config.options.title = title;
+    this._renderTitle(); // Re-render title immediately
     return this;
   }
   
   /**
-   * Filter data by date range
-   * @public
-   * @param {string|Date} startDate - Start date
-   * @param {string|Date} endDate - End date
-   * @returns {Chart} This chart instance
+   * Get current title
    */
-  filterByDate(startDate, endDate) {
-    console.log('filterByDate called:', startDate, endDate);
-    
-    this.options.startDate = startDate;
-    this.options.endDate = endDate;
-    
-    return this.update();
+  getTitle() {
+    return this.config.options.title;
   }
   
   /**
-   * Add a dataset
-   * @public
-   * @param {Object} dataset - Dataset configuration
-   * @returns {Chart} This chart instance
+   * Toggle grid visibility
    */
-  addDataset(dataset) {
-    console.log('addDataset called with panel mode =', this.options.isPanelView);
+  toggleGrid(show = null) {
+    this.config.options.showGrid = show !== null ? show : !this.config.options.showGrid;
     
-    // Get current datasets
-    const datasets = Array.isArray(this.config.data) ? this.config.data : [];
-    
-    // Add new dataset
-    datasets.push(dataset);
-    
-    // Update config
-    this.config.data = datasets;
-    
-    // First update processed datasets
-    this.processDatasets();
-    
-    // If in panel view, we need a complete redraw
-    if (this.options.isPanelView && this.state.rendered) {
-      console.log('Redrawing in strict panel view mode');
-      
-      // Clear existing chart content completely
-      if (this.state.chart) {
-        this.state.chart.innerHTML = '';
-      }
-      
-      // Update scales after adding the new dataset
-      this.updateScales();
-      
-      // ONLY render panels - nothing else related to regular chart
-      this.renderPanels();
-      
-      // Render common elements
-      this.renderLegend();
-      this.renderTitle();
-      this.renderAxisNames();
-      
-      return this;
+    if (this.grid) {
+      this.grid.updateOptions({
+        showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
+        showYGrid: this.config.options.showYGrid && this.config.options.showGrid
+      });
     }
     
-    // Otherwise, normal update
-    return this.update();
+    // ← ADD: Update panel grids if in panel mode
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
+    this.render();
+    return this.config.options.showGrid;
   }
   
   /**
-   * Remove a dataset
-   * @public
-   * @param {string} datasetId - Dataset ID to remove
-   * @returns {Chart} This chart instance
+   * Toggle X grid lines
    */
-  removeDataset(datasetId) {
-    console.log('removeDataset called:', datasetId);
+  toggleXGrid(show = null) {
+    this.config.options.showXGrid = show !== null ? show : !this.config.options.showXGrid;
     
-    // Get current datasets
-    const datasets = Array.isArray(this.config.data) ? this.config.data : [];
+    if (this.grid) {
+      this.grid.toggleXGrid(this.config.options.showXGrid && this.config.options.showGrid);
+    }
     
-    // Filter out dataset with matching ID
-    const filteredDatasets = datasets.filter(d => d.id !== datasetId);
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
     
-    // Update config
-    this.config.data = filteredDatasets;
+    this.render();
+    return this.config.options.showXGrid;
+  }
+
+  
+  /**
+   * Toggle Y grid lines
+   */
+  toggleYGrid(show = null) {
+    this.config.options.showYGrid = show !== null ? show : !this.config.options.showYGrid;
     
-    // Update chart
-    return this.update();
+    if (this.grid) {
+      this.grid.toggleYGrid(this.config.options.showYGrid && this.config.options.showGrid);
+    }
+    
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
+    this.render();
+    return this.config.options.showYGrid;
+  }
+
+  
+  /**
+   * Set grid color
+   */
+  setGridColor(color) {
+    this.config.options.gridColor = color;
+    
+    if (this.grid) {
+      this.grid.setGridColor(color);
+    }
+
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Set grid opacity
+   */
+  setGridOpacity(opacity) {
+    this.config.options.gridOpacity = opacity;
+    
+    if (this.grid) {
+      this.grid.setGridOpacity(opacity);
+    }
+    
+    // ← ADD: Update panel grids if in panel mode
+    if (this.isPanelMode && this.panelManager) {
+      this._updatePanelGrids();
+    }
+    
+    this.render();
+    return this;
   }
 
   /**
-   * Add a study/indicator - UPDATED VERSION using StudiesManager
-   * @public
-   * @param {string} datasetId - Dataset ID to apply the study to
-   * @param {Object} study - Study configuration
-   * @returns {Chart} This chart instance
+   * Update all panel grids with current grid options
+   * @private
    */
-  addStudy(datasetId, study) {
-    console.log('Chart.addStudy called - delegating to StudiesManager');
+  _updatePanelGrids() {
+    if (!this.panelManager || !this.panelManager.panels) return;
     
-    StudiesManager.addStudy(this, datasetId, study);
+    const gridOptions = {
+      showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
+      showYGrid: this.config.options.showYGrid && this.config.options.showGrid,
+      xGridColor: this.config.options.gridColor || '#e0e0e0',
+      yGridColor: this.config.options.gridColor || '#e0e0e0',
+      xGridOpacity: this.config.options.gridOpacity || 0.5,
+      yGridOpacity: this.config.options.gridOpacity || 0.5
+    };
     
-    // Update chart
-    return this.update();
+    // Update each panel's grid
+    for (const panel of this.panelManager.panels) {
+      if (panel.grid) {
+        panel.grid.updateOptions(gridOptions);
+        
+        // Update panel config for future renders
+        Object.assign(panel.config, {
+          showGrid: this.config.options.showGrid,
+          showXGrid: this.config.options.showXGrid,
+          showYGrid: this.config.options.showYGrid,
+          gridColor: this.config.options.gridColor,
+          gridOpacity: this.config.options.gridOpacity
+        });
+      }
+    }
+    
+    console.log('Updated grid options for all panels');
   }
 
   /**
-   * Remove a study/indicator - UPDATED VERSION using StudiesManager
-   * @public
-   * @param {string} datasetId - Dataset ID (for compatibility)
+   * Update dataset color
+   * @param {string} datasetId - The ID of the dataset to update
+   */
+  updateDatasetColor(datasetId, newColor) {
+    const dataset = this.config.data.find(d => d.id === datasetId);
+    if (!dataset) return false;
+    
+    dataset.color = newColor;
+    
+    if (this.legend) {
+      this.legend.updateDatasetColor(datasetId, newColor);
+    }
+
+    if (this.isPanelMode) {
+      if (this.panelManager && this.panelManager.panels) {
+        const panel = this.panelManager.panels.find(p => p.config.dataset.id === datasetId);
+        if (panel && panel.endingLabels) {
+          panel.endingLabels.updateDatasetColor(datasetId, newColor);
+        }
+      }
+    } else {
+      if (this.endingLabels) {
+        this.endingLabels.updateDatasetColor(datasetId, newColor);
+      }
+    }
+    
+    this.render();
+    return true;
+  }
+  
+  /**
+   * Update legend with current datasets
+   * @private
+   */
+  _updateLegend() {
+    if (this.legend && this.config.data) {
+      this.legend.updateDatasets(this.config.data);
+      
+      // Re-render legend if SVG overlay exists
+      if (this.svgOverlay && this.chartArea) {
+        this.legend.render(this.svgOverlay, this.chartArea);
+      }
+    }
+  }
+
+  /**
+   * Update ending labels with current datasets
+   * @private
+   */
+  _updateEndingLabels() {
+    if (this.isPanelMode) {
+      if (this.panelManager) {
+        this.panelManager.updateEndingLabels();
+      }
+      return;
+    }
+    if (this.endingLabels && this.config.data) {
+      this.endingLabels.updateDatasets(this.config.data);
+      
+      // Re-render ending labels if SVG overlay exists
+      if (this.svgOverlay && this.chartArea) {
+        this.endingLabels.render(this.svgOverlay, this.chartArea);
+      }
+    }
+  }
+
+  /**
+   * Get current ending labels state
+   */
+  getEndingLabelsState() {
+    if (this.isPanelMode) {
+      return this.panelManager ? this.panelManager.getEndingLabelsState() : null;
+    } else {
+      return this.endingLabels ? this.endingLabels.getState() : null;
+    }
+  }
+
+  /**
+   * Toggle ending labels visibility
+   * @param {boolean} show - Force show/hide state, or null to toggle
+   * @returns {boolean} New visibility state
+   */
+  toggleEndingLabels(show = null) {
+
+    if (this.isPanelMode) {
+      if (!this.panelManager) {
+        console.warn('PanelManager not available for ending labels toggle');
+        return false;
+      }
+      const newState = this.panelManager.toggleEndingLabels(show);
+      console.log(`EndingLabels ${newState ? 'enabled' : 'disabled'} for panel mode`);
+      return newState;
+    }
+
+    if (!this.endingLabels) {
+      console.warn('EndingLabels component not available');
+      return false;
+    }
+    
+    const newState = this.endingLabels.toggle(show);
+    
+    console.log(`EndingLabels ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Configure ending labels appearance
+   * @param {Object} config - Configuration options
+   */
+  setEndingLabelsConfig(config) {
+    if (this.endingLabels) {
+      this.endingLabels.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Get ending labels state for debugging
+   */
+  getEndingLabelsInfo() {
+    return this.endingLabels ? this.endingLabels.getState() : { enabled: false };
+  }
+
+  /**
+   * Toggle average line visibility
+   */
+  toggleAverageLine(show = null) {
+    if (this.isPanelMode) {
+        this.panelManager.toggleAverageLine(show);
+        return;
+    }
+    if (!this.averageLine) {
+      console.warn('AverageLine component not available');
+      return false;
+    }
+    
+    const newState = this.averageLine.toggle(show);
+    
+    console.log(`AverageLine ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Toggle median line visibility
+   */
+  toggleMedianLine(show = null) {
+    if (this.isPanelMode) {
+        this.panelManager.toggleMedianLine(show);
+        return;
+    }
+    if (!this.medianLine) {
+      console.warn('MedianLine component not available');
+      return false;
+    }
+    
+    const newState = this.medianLine.toggle(show);
+    
+    console.log(`MedianLine ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Get current statistical values (average and median)
+   */
+  getStatisticalValues() {
+    return {
+      average: this.averageLine ? this.averageLine.getAverageValue() : null,
+      median: this.medianLine ? this.medianLine.getMedianValue() : null,
+      averageInRange: this.averageLine ? this.averageLine.getState().averageInRange : false,
+      medianInRange: this.medianLine ? this.medianLine.getState().medianInRange : false
+    };
+  }
+
+  /**
+   * Configure average line appearance and behavior
+   * @param {Object} config - Configuration for average line
+   */
+  setAverageLineConfig(config) {
+    if (this.averageLine) {
+      this.averageLine.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Configure median line appearance and behavior
+   * @param {Object} config - Configuration for median line
+   */
+  setMedianLineConfig(config) {
+    if (this.medianLine) {
+      this.medianLine.updateConfig(config);
+    }
+    return this;
+  }
+
+  /**
+   * Set whether statistical lines should calculate across all datasets or just the first
+   * @param {boolean} useAllDatasets - Whether to use all datasets for calculation
+   */
+  setStatisticalDataScope(useAllDatasets) {
+    if (this.averageLine) {
+      this.averageLine.updateConfig({ useAllDatasets });
+    }
+    if (this.medianLine) {
+      this.medianLine.updateConfig({ useAllDatasets });
+    }
+    return this;
+  }
+
+  /**
+   * Get statistical lines state for debugging
+   */
+  getStatisticalLinesInfo() {
+    return {
+      average: this.averageLine ? this.averageLine.getState() : { enabled: false },
+      median: this.medianLine ? this.medianLine.getState() : { enabled: false }
+    };
+  }
+
+  /**
+   * Add a study to the chart
+   * @param {string} studyType - Type of study ('sma', 'ema', 'bollinger')
+   * @param {Object} config - Study configuration
+   * @returns {string} Study ID
+   */
+  addStudy(studyType, config = {}) {
+    if (!this.studiesManager) {
+      throw new Error('Studies system not initialized');
+    }
+    
+    const studyId = this.studiesManager.addStudy(studyType, config);
+    
+    // Re-render chart to show the new study
+    this.render().catch(error => {
+      console.error('Error re-rendering after adding study:', error);
+    });
+    
+    console.log(`Added ${studyType} study: ${studyId}`);
+    return studyId;
+  }
+
+  /**
+   * Remove a study from the chart
    * @param {string} studyId - Study ID to remove
-   * @returns {Chart} This chart instance
+   * @returns {boolean} True if study was removed
    */
-  removeStudy(datasetId, studyId) {
-    console.log('Chart.removeStudy called - delegating to StudiesManager');
+  removeStudy(studyId) {
+    if (!this.studiesManager) {
+      return false;
+    }
     
-    StudiesManager.removeStudy(this, datasetId, studyId);
+    const removed = this.studiesManager.removeStudy(studyId);
     
-    // Update chart
-    return this.update();
+    if (removed) {
+      // Re-render chart to remove the study
+      this.render().catch(error => {
+        console.error('Error re-rendering after removing study:', error);
+      });
+      
+      console.log(`Removed study: ${studyId}`);
+    }
+    
+    return removed;
   }
 
   /**
- * Update study configuration
- * @public
- * @param {string} studyId - Study ID
- * @param {Object} updates - Configuration updates
- * @returns {Chart} This chart instance
- */
-updateStudy(studyId, updates) {
-  console.log('Chart.updateStudy called');
-  
-  if (StudiesManager.updateStudy(this, studyId, updates)) {
-    return this.update();
+   * Update study parameters
+   * @param {string} studyId - Study ID
+   * @param {Object} updates - Parameters to update
+   */
+  updateStudy(studyId, updates) {
+    if (!this.studiesManager) {
+      throw new Error('Studies system not initialized');
+    }
+    
+    this.studiesManager.updateStudy(studyId, updates);
+    
+    // Re-render chart to show updated study
+    this.render().catch(error => {
+      console.error('Error re-rendering after updating study:', error);
+    });
+    
+    console.log(`Updated study: ${studyId}`);
   }
-  
-  return this;
+
+  /**
+   * Get all studies
+   * @returns {Array} Array of study configurations
+   */
+  getAllStudies() {
+    return this.studiesManager ? this.studiesManager.getAllStudies() : [];
+  }
+
+  /**
+   * Get visible studies only
+   * @returns {Array} Array of visible studies
+   */
+  getVisibleStudies() {
+    return this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+  }
+
+  /**
+   * Get supported study types
+   * @returns {Object} Supported studies configuration
+   */
+  getSupportedStudies() {
+    return this.studiesManager ? this.studiesManager.getSupportedStudies() : {};
+  }
+
+  /**
+   * Clear all studies
+   */
+  clearAllStudies() {
+    if (this.studiesManager) {
+      this.studiesManager.clearAllStudies();
+      
+      // Re-render chart to remove all studies
+      this.render().catch(error => {
+        console.error('Error re-rendering after clearing studies:', error);
+      });
+      
+      console.log('All studies cleared');
+    }
+  }
+
+  /**
+ * FIXED: Clear render without destroying generated paths
+ */
+_clearRender() {
+  try {
+    // Clear the renderer (canvas/webgl)
+    if (this.rendererInstance && this.rendererInstance.clear) {
+      this.rendererInstance.clear();
+    }
+    
+    // Clear grid canvas
+    if (this.gridCanvas) {
+      const gridCtx = this.gridCanvas.getContext('2d');
+      if (gridCtx) {
+        gridCtx.clearRect(0, 0, this.gridCanvas.width, this.gridCanvas.height);
+      }
+    }
+    
+    // Clear SVG overlay elements but preserve structure
+    if (this.svgOverlay) {
+      const children = Array.from(this.svgOverlay.children);
+      children.forEach(child => {
+        // Don't remove crosshair or other persistent components
+        if (child.classList && 
+            !child.classList.contains('crosshair') && 
+            !child.classList.contains('tooltip')) {
+          if (child.parentNode) {
+            child.parentNode.removeChild(child);
+          }
+        }
+      });
+    }
+    
+    // Clear title element if it exists separately
+    if (this.titleElement && this.titleElement.parentNode) {
+      this.titleElement.parentNode.removeChild(this.titleElement);
+      this.titleElement = null;
+    }
+    
+    // ✅ FIX: DON'T clear generated paths here - they'll be regenerated when needed
+    // this.generatedPaths = null;  // ❌ REMOVED: This was causing the bug
+    
+  } catch (error) {
+    console.warn('Error clearing render:', error);
+    // Don't throw - allow rendering to continue
+  }
 }
 
 /**
- * Clear all studies
- * @public
- * @returns {Chart} This chart instance
+ * Public method to ensure chart is ready before use
+ * Add this to your Chart class for cleaner initialization handling
  */
-  clearAllStudies() {
-    console.log('Chart.clearAllStudies called');
+async ensureInitialized() {
+  if (this._initPromise) {
+    await this._initPromise;
+  }
+  return this.isInitialized;
+}
+  
+  /**
+   * Destroy the chart and clean up resources
+   */
+  destroy() {
+    // Cleanup crosshair
+    if (this.crosshair) {
+      this.crosshair.destroy();
+      this.crosshair = null;
+    }
     
-    StudiesManager.clearAllStudies(this);
-    return this.update();
-  }
+    // Cleanup tooltip
+    if (this.tooltip) {
+      this.tooltip.destroy();
+      this.tooltip = null;
+    }
+    // Cleanup recession lines
+    if (this.recessionLines) {
+      this.recessionLines.destroy();
+      this.recessionLines = null; 
+    }
 
-  /**
-   * Get studies for a dataset
-   * @public
-   * @param {string} datasetId - Dataset ID
-   * @returns {Array} Array of studies
-   */
-  getStudiesForDataset(datasetId) {
-    return StudiesManager.getStudiesForDataset(this, datasetId);
-  }
+    // Cleanup zero line
+    if (this.zeroLine) {
+      this.zeroLine.destroy();
+      this.zeroLine = null;
+    }
 
-  /**
-   * Get study by ID
-   * @public
-   * @param {string} studyId - Study ID
-   * @returns {Object|null} Study configuration
-   */
-  getStudyById(studyId) {
-    return StudiesManager.getStudyById(this, studyId);
-  }
+    // Cleanup average and median lines
+    if (this.averageLine) {
+      this.averageLine.destroy();
+      this.averageLine = null;
+    }
 
-  /**
- * Export chart as SVG - UPDATED VERSION using ChartExporter
- * @public
- * @param {Object} options - Export options
- * @returns {string} SVG content as string
- */
-  exportSVG(options = {}) {
-    console.log('Chart.exportSVG called - delegating to ChartExporter');
-    return ChartExporter.exportSVG(this, options);
-  }
+    if (this.medianLine) {
+      this.medianLine.destroy();
+      this.medianLine = null;
+    }
 
-  /**
-   * Export chart as PNG - UPDATED VERSION using ChartExporter
-   * @public
-   * @param {Object} options - Export options
-   * @returns {Promise<string>} PNG data URL
- */
-  async exportPNG(options = {}) {
-    console.log('Chart.exportPNG called - delegating to ChartExporter');
-    return await ChartExporter.exportPNG(this, options);
-  }
+    // Cleanup ending labels
+    if (this.endingLabels) {
+      this.endingLabels.destroy();
+      this.endingLabels = null;
+    }
 
-  /**
-   * Serialize chart configuration and data - UPDATED VERSION using ChartExporter
-   * @public
-   * @param {Object} options - Serialization options
-   * @returns {string} Serialized chart configuration as JSON string
-   */
-  serialize(options = {}) {
-    console.log('Chart.serialize called - delegating to ChartExporter');
-    return ChartExporter.serialize(this, options);
-  }
+    // Cleanup studies
+    if (this.studiesRenderer) {
+      this.studiesRenderer.destroy();
+      this.studiesRenderer = null;
+    }
 
-  /**
-   * Load chart configuration from serialized data - UPDATED VERSION using ChartExporter
-   * @public
-   * @param {string|Object} configData - Serialized configuration
-   * @param {Object} options - Loading options
-   * @returns {Chart} This chart instance
-   */
-  loadConfig(configData, options = {}) {
-    console.log('Chart.loadConfig called - delegating to ChartExporter');
-    return ChartExporter.loadConfig(this, configData, options);
-  }
-
-  /**
-   * Download chart as SVG file
-   * @public
-   * @param {string} filename - Filename (optional)
-   * @param {Object} options - Export options
-   */
-  downloadSVG(filename = 'chart.svg', options = {}) {
-    console.log('Chart.downloadSVG called');
-    ChartExporter.downloadSVG(this, filename, options);
-    return this;
-  }
-
-  /**
-   * Download chart as PNG file
-   * @public
-   * @param {string} filename - Filename (optional)
-   * @param {Object} options - Export options
-   * @returns {Promise<Chart>} This chart instance
-   */
-  async downloadPNG(filename = 'chart.png', options = {}) {
-    console.log('Chart.downloadPNG called');
-    await ChartExporter.downloadPNG(this, filename, options);
-    return this;
-  }
-
-  /**
-   * Download chart configuration as JSON file
-   * @public
-   * @param {string} filename - Filename (optional)
-   * @param {Object} options - Serialization options
-   */
-  downloadConfig(filename = 'chart-config.json', options = {}) {
-    console.log('Chart.downloadConfig called');
-    ChartExporter.downloadConfig(this, filename, options);
-    return this;
-  }
-
-  /**
-   * Load configuration from file input
-   * @public
-   * @param {File} file - File object from input element
-   * @param {Object} options - Loading options
-   * @returns {Promise<Chart>} This chart instance
-   */
-  async loadConfigFromFile(file, options = {}) {
-    console.log('Chart.loadConfigFromFile called');
+    if (this.studiesManager) {
+      this.studiesManager.clearAllStudies();
+      this.studiesManager = null;
+    }
     
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+    // Remove mouse event listeners
+    if (this._boundMouseMove && this.container) {
+      this.container.removeEventListener('mousemove', this._boundMouseMove);
+      this.container.removeEventListener('mouseleave', this._boundMouseLeave);
+      this._boundMouseMove = null;
+      this._boundMouseLeave = null;
+    }
+    
+    if (this.titleElement) {
+      this.titleElement.remove();
+      this.titleElement = null;
+    }
+
+    if (this.panelManager) {
+      this.panelManager.destroy();
+      this.panelManager = null;
+    }
+    
+    if (this.rendererInstance) {
+      this.rendererInstance.destroy();
+      this.rendererInstance = null;
+    }
+    
+    if (this.coordinateSystem) {
+      this.coordinateSystem.clearCache();
+    }
+    
+    if (this.container) {
+      this.container.innerHTML = '';
+    }
+    
+    this.renderers.clear();
+    this.isInitialized = false;
+    
+    console.log('Chart destroyed and resources cleaned up');
+  }
+  
+  _setupCrosshair() {
+  // Skip crosshair creation in panel mode - PanelManager handles it
+  if (this.isPanelMode) {
+    console.log('Crosshair setup skipped - panel mode uses PanelManager crosshair');
+    return;
+  }
+  
+  // Original single mode crosshair setup
+  if (!this.svgOverlay) {
+    console.warn('SVG overlay not available for crosshair');
+    return;
+  }
+  
+  console.log('SVG overlay before crosshair render:', this.svgOverlay);
+  console.log('Chart area before crosshair render:', this.chartArea);
+  
+  this.crosshair = new Crosshair({
+    enabled: true,
+    lineColor: '#666666',
+    lineOpacity: 0.7,
+    highlightRadius: 3
+  });
+
+  this.tooltip = new CrosshairTooltip({
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    textColor: '#ffffff',
+    fontSize: 12,
+    dateFormat: 'medium',
+    valueDecimals: 2,
+    offsetX: 15,
+    offsetY: 15
+  });
+  
+  // Debug the render call
+  console.log('About to call crosshair.render with:', this.svgOverlay, this.chartArea);
+  this.crosshair.render(this.svgOverlay, this.chartArea);
+  console.log('Crosshair render completed');
+  
+  // Check if the crosshair group was actually added
+  const crosshairGroup = this.svgOverlay.querySelector('.crosshair');
+  console.log('Crosshair group after render:', crosshairGroup);
+  
+  this._setupCrosshairEvents();
+  console.log('Crosshair component created');
+}
+
+  /**
+   * Set up crosshair mouse event listeners
+   * @private
+   */
+  _setupCrosshairEvents() {
+    if (!this.container || !this.crosshair) return;
+    
+    // Mouse move handler
+    this._boundMouseMove = this._onMouseMove.bind(this);
+    this._boundMouseLeave = this._onMouseLeave.bind(this);
+    
+    // Add event listeners to the container
+    this.container.addEventListener('mousemove', this._boundMouseMove);
+    this.container.addEventListener('mouseleave', this._boundMouseLeave);
+    
+    console.log('Crosshair mouse events setup');
+  }
+
+  /**
+   * Handle mouse move events for crosshair
+   * @private
+   */
+  _onMouseMove(event) {
+    if (!this.crosshair || !this.isInitialized) {
+      return;
+    }
+    
+    try {
+      // Get mouse coordinates relative to container
+      const rect = this.container.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
       
-      reader.onload = (e) => {
-        try {
-          const configData = e.target.result;
-          this.loadConfig(configData, options);
-          resolve(this);
-        } catch (error) {
-          reject(error);
+      // Check if mouse is within chart area
+      if (!this._isMouseInChartArea(mouseX, mouseY)) {
+        this.crosshair.hide();
+        // Hide tooltip when outside chart area
+        if (this.tooltip) {
+          this.tooltip.hide();
         }
-      };
+        return;
+      }
       
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
+      // Apply distance threshold to avoid excessive updates
+      if (this.lastMousePosition) {
+        const deltaX = Math.abs(mouseX - this.lastMousePosition.x);
+        const deltaY = Math.abs(mouseY - this.lastMousePosition.y);
+        
+        if (deltaX < this.mouseThreshold && deltaY < this.mouseThreshold) {
+          // Update tooltip position even if crosshair doesn't update
+          if (this.tooltip && this.tooltip.isVisible) {
+            this.tooltip.updatePosition(mouseX, mouseY);
+          }
+          return; // Skip update if mouse hasn't moved enough
+        }
+      }
       
-      reader.readAsText(file);
+      this.lastMousePosition = { x: mouseX, y: mouseY };
+      
+      // Convert mouse coordinates to data coordinates
+      const dataCoords = this._mouseToDataCoordinates(mouseX, mouseY);
+      
+      if (dataCoords.x != null && dataCoords.y != null) {
+        // Update crosshair with new position
+        this._updateCrosshair(dataCoords.x, mouseX, mouseY);
+      }
+      
+    } catch (error) {
+      console.error('Error handling crosshair mouse move:', error);
+    }
+  }
+
+  /**
+   * Handle mouse leave events for crosshair
+   * @private
+   */
+  _onMouseLeave(event) {
+    if (this.crosshair) {
+      this.crosshair.hide();
+    }
+    if (this.tooltip) {
+      this.tooltip.hide();
+    }
+  }
+
+  /**
+   * Check if mouse is within chart area
+   * @private
+   */
+  _isMouseInChartArea(mouseX, mouseY) {
+    const chartArea = this.chartArea;
+    return mouseX >= chartArea.x && 
+           mouseX <= chartArea.x + chartArea.width &&
+           mouseY >= chartArea.y && 
+           mouseY <= chartArea.y + chartArea.height;
+  }
+
+  /**
+   * Convert mouse coordinates to data coordinates
+   * @private
+   */
+  _mouseToDataCoordinates(mouseX, mouseY) {
+    if (!this.scales.x || !this.scales.y) {
+      return { x: null, y: null };
+    }
+    
+    try {
+      const dataX = this.scales.x.invert(mouseX);
+      const dataY = this.scales.y.invert(mouseY);
+      
+      return { x: dataX, y: dataY };
+      
+    } catch (error) {
+      console.error('Error converting mouse to data coordinates:', error);
+      return { x: null, y: null };
+    }
+  }
+
+  /**
+   * Calculate proximity tolerance based on visible time range
+   * @private
+   */
+  _calculateMouseProximityTolerance() {
+    // Base tolerance on visible time range, not dataset frequency
+    const xScale = this.scales.x;
+    if (!xScale) return 3600000; // 1 hour fallback
+    
+    const visibleTimeRange = xScale.domain[1] - xScale.domain[0];
+    const chartPixelWidth = this.chartArea.width;
+    
+    // Calculate milliseconds per pixel
+    const msPerPixel = visibleTimeRange / chartPixelWidth;
+    
+    // Use tolerance of ~10 pixels worth of time (reasonable mouse precision)
+    const tolerancePixels = 10;
+    const tolerance = msPerPixel * tolerancePixels;
+    
+    // Cap at reasonable limits (5 minutes to 12 hours)
+    return Math.max(300000, Math.min(43200000, tolerance));
+  }
+
+  /**
+ * Get actual data points at specific X coordinate
+ * @private
+  */
+  _getDataPointsAtX(exactDataX) {
+    const dataPoints = [];
+    
+    if (!Array.isArray(this.config.data) || exactDataX == null) {
+      return dataPoints;
+    }
+    
+    // Get points from each dataset at the exact X coordinate
+    for (const dataset of this.config.data) {
+      if (dataset.data && Array.isArray(dataset.data)) {
+        const points = this.getDataPointsAtX(exactDataX, dataset);
+        if (points && points.length > 0) {
+          dataPoints.push(...points);
+        }
+      }
+    }
+    
+    return dataPoints;
+  }
+
+  /**
+   * Update crosshair position and highlights
+   * @private
+   */
+  _updateCrosshair(targetDataX, mouseX, mouseY) {
+    console.log('=== _updateCrosshair called ===');
+    console.log('targetDataX:', targetDataX, 'mouseX:', mouseX, 'mouseY:', mouseY);
+    
+    if (!this.crosshair) {
+      console.log('No crosshair - returning');
+      return;
+    }
+    
+    try {
+      // Find candidate points
+      const candidatePoints = this._findCandidateDataPoints(targetDataX);
+      console.log('candidatePoints:', candidatePoints.length);
+      
+      if (candidatePoints.length === 0) {
+        console.log('No candidates - hiding tooltip');
+        this.crosshair.hide();
+        if (this.tooltip) {
+          this.tooltip.hide();
+        }
+        return;
+      }
+      
+      // Select best X
+      const bestDataX = this._findBestDataX(candidatePoints, targetDataX);
+      console.log('bestDataX:', bestDataX);
+      
+      // Get actual points
+      const actualDataPoints = this._getDataPointsAtX(bestDataX);
+      console.log('actualDataPoints:', actualDataPoints);
+      console.log('actualDataPoints structure:', actualDataPoints.map(p => ({
+        dataset: p.dataset ? p.dataset.name : 'no dataset',
+        dataX: p.dataX,
+        dataY: p.dataY,
+        color: p.color
+      })));
+      
+      if (actualDataPoints.length === 0) {
+        console.log('No actual points - hiding tooltip');
+        this.crosshair.hide();
+        if (this.tooltip) {
+          this.tooltip.hide();
+        }
+        return;
+      }
+      
+      // Update crosshair
+      const primaryPoint = actualDataPoints[0];
+      const crosshairX = primaryPoint.unifiedX;
+      const crosshairY = primaryPoint.unifiedY;
+      
+      this.crosshair.show();
+      this.crosshair.updatePosition(crosshairX, crosshairY);
+      this.crosshair.updateHighlights(actualDataPoints);
+      
+      // SHOW TOOLTIP - Debug this part carefully
+      if (this.tooltip) {
+        console.log('About to call tooltip.show with:', {
+          dataPoints: actualDataPoints.length,
+          mouseX: mouseX,
+          mouseY: mouseY
+        });
+        
+        this.tooltip.show(actualDataPoints, mouseX, mouseY);
+        
+        console.log('Tooltip state after show:', this.tooltip.getState());
+      } else {
+        console.log('No tooltip object available');
+      }
+      
+    } catch (error) {
+      console.error('Error updating crosshair:', error);
+      if (this.tooltip) {
+        this.tooltip.hide();
+      }
+    }
+  }
+
+  /**
+   * Find the best X coordinate across all candidate points
+   * @private
+   */
+  _findBestDataX(candidatePoints, mouseDataX) {
+    if (candidatePoints.length === 0) return null;
+    if (candidatePoints.length === 1) return candidatePoints[0].dataX;
+    
+    // FIXED: Find X coordinate closest to mouse position
+    let bestX = null;
+    let minDistance = Infinity;
+    
+    // Group by X coordinate and find closest to mouse
+    const xGroups = new Map();
+    candidatePoints.forEach(point => {
+      const dataX = point.dataX;
+      if (!xGroups.has(dataX)) {
+        xGroups.set(dataX, []);
+      }
+      xGroups.get(dataX).push(point);
+    });
+    
+    for (const [dataX, points] of xGroups) {
+      const distance = Math.abs(dataX - mouseDataX);
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestX = dataX;
+      }
+    }
+    
+    console.log(`Best X: ${bestX}, distance from mouse: ${minDistance}ms`);
+    return bestX;
+  }
+
+  /**
+   * Find candidate data points from all datasets
+   * @private
+   */
+  _findCandidateDataPoints(targetDataX) {
+    const candidates = [];
+    
+    if (!Array.isArray(this.config.data)) {
+      return candidates;
+    }
+    
+    // Get closest points from each dataset
+    for (const dataset of this.config.data) {
+      if (dataset.data && Array.isArray(dataset.data) && dataset.data.length > 0) {
+        const closestPoints = this.findClosestDataPoints(targetDataX, dataset);
+        if (closestPoints && closestPoints.length > 0) {
+          candidates.push(...closestPoints);
+        }
+      }
+    }
+    
+    return candidates;
+  }
+
+  testNewCrosshairLogic(mouseDataX) {
+    console.log(`\n=== Testing New Crosshair Logic at ${mouseDataX} ===`);
+    
+    const tolerance = this._calculateMouseProximityTolerance();
+    console.log(`Global tolerance: ${tolerance}ms (${tolerance/60000} minutes)`);
+    
+    this.config.data.forEach((dataset, i) => {
+      const points = this.getDataPointsAtX(mouseDataX, dataset);
+      console.log(`\nDataset ${i} (${dataset.name}):`);
+      console.log(`  Found ${points.length} points within tolerance`);
+      
+      points.forEach(point => {
+        const diff = Math.abs(point.dataX - mouseDataX);
+        console.log(`    Point at ${point.dataX}, diff: ${diff}ms (${diff/60000} minutes)`);
+      });
+      
+      if (points.length === 0) {
+        // Find actual closest for comparison
+        const closest = this.findClosestDataPoints(mouseDataX, dataset);
+        if (closest.length > 0) {
+          const diff = Math.abs(closest[0].dataX - mouseDataX);
+          console.log(`    Closest point (rejected): ${closest[0].dataX}, diff: ${diff}ms (${diff/60000} minutes)`);
+        }
+      }
     });
   }
 
+  // PLACEHOLDER METHODS (implemented in LineChart/BarChart)
+  findClosestDataPoints(targetDataX, dataset) {
+    console.warn('findClosestDataPoints not implemented');
+    return [];
+  }
+
+  getDataPointsAtX(exactDataX, dataset) {
+    console.warn('getDataPointsAtX not implemented');
+    return [];
+  }
+  
   /**
-   * Copy SVG to clipboard
-   * @public
-   * @param {Object} options - Export options
-   * @returns {Promise<Chart>} This chart instance
+   * Configure tooltip appearance
    */
-  async copySVGToClipboard(options = {}) {
-    console.log('Chart.copySVGToClipboard called');
-    
-    try {
-      const svgContent = this.exportSVG(options);
-      await navigator.clipboard.writeText(svgContent);
-      console.log('SVG copied to clipboard');
-    } catch (error) {
-      console.error('Failed to copy SVG to clipboard:', error);
-      throw error;
+  setTooltipConfig(config) {
+    if (this.tooltip) {
+      this.tooltip.updateConfig(config);
     }
-    
     return this;
   }
 
   /**
-   * Copy PNG to clipboard
-   * @public
-   * @param {Object} options - Export options
-   * @returns {Promise<Chart>} This chart instance
+   * Enable/disable tooltip
    */
-  async copyPNGToClipboard(options = {}) {
-    console.log('Chart.copyPNGToClipboard called');
+  toggleTooltip(enabled = null) {
+    const shouldEnable = enabled !== null ? enabled : !this.tooltip;
     
-    try {
-      const pngDataUrl = await this.exportPNG(options);
-      
-      // Convert data URL to blob
-      const response = await fetch(pngDataUrl);
-      const blob = await response.blob();
-      
-      // Copy to clipboard
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': blob })
-      ]);
-      
-      console.log('PNG copied to clipboard');
-    } catch (error) {
-      console.error('Failed to copy PNG to clipboard:', error);
-      throw error;
+    if (shouldEnable && !this.tooltip) {
+      this.tooltip = new CrosshairTooltip();
+    } else if (!shouldEnable && this.tooltip) {
+      this.tooltip.destroy();
+      this.tooltip = null;
     }
     
-    return this;
+    return shouldEnable;
   }
-  
+
   /**
-   * Clean up hover features using InteractionManager
-   * @private
+   * Get tooltip state for debugging
    */
-  cleanupHoverFeatures() {
-    console.log('cleanupHoverFeatures called');
-    
-    // Clean up recession lines and zero lines (not handled by InteractionManager)
-    if (this.state.components.recessionLines) {
-      this.state.components.recessionLines.destroy();
-      this.state.components.recessionLines = null;
-    }
-
-    if (this.state.components.zeroLine) {
-      this.state.components.zeroLine.destroy();
-      this.state.components.zeroLine = null;
-    }
-    
-    // Use InteractionManager for all interaction cleanup
-    InteractionManager.cleanup(this);
+  getTooltipInfo() {
+    return this.tooltip ? this.tooltip.getState() : { enabled: false };
   }
-  
- /**
- * Destroy the chart and clean up
- * @public
- */
-destroy() {
-  console.log('destroy called');
-  
-  // Remove event listeners
-  window.removeEventListener('resize', this.resizeHandler);
-  
-  // Clean up resize observer
-  if (this.state.resizeObserver) {
-    this.state.resizeObserver.disconnect();
-    this.state.resizeObserver = null;
-  }
-  
-  // Clean up hover features
-  this.cleanupHoverFeatures();
-
-  // Remove statistical lines
-  StatisticalLines.cleanup(this);
-
-  // Destroy axes
-  this.cleanupAxes();
-
-  // Destroy grids
-  if (this.state.components.grid) {
-    this.state.components.grid.destroy();
-    this.state.components.grid = null;
-  }
-
-  // Destroy legend
-  if (this.state.components.legend) {
-    this.state.components.legend.destroy();
-    this.state.components.legend = null;
-  }
-  
-  // Remove SVG
-  if (this.state.svg && this.state.container) {
-    if (this.state.container.contains(this.state.svg)) {
-      this.state.container.removeChild(this.state.svg);
-    }
-  }
-  
-  // Reset state
-  this.state.rendered = false;
-  this.state.svg = null;
-  this.state.chart = null;
- }
 }

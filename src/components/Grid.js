@@ -1,297 +1,331 @@
-import SvgRenderer from '../renderers/SvgRenderer.js';
-
 /**
- * Grid component for rendering chart grid lines
+ * Grid.js - Canvas Grid Rendering
+ * 
+ * Renders grid lines on Canvas 2D using the unified Scale system for perfect
+ * alignment with axes. Uses HYBRID RENDERING ARCHITECTURE:
+ * 
+ * - Grid: Always Canvas 2D (this component)
+ * - Data: Canvas 2D (<50K points) or WebGL (50K+ points)  
+ * - Axes: Always SVG
+ * 
+ * This ensures grid rendering is simple and reliable while data rendering
+ * can scale to WebGL for performance without affecting grid compatibility.
  */
-export default class Grid {
-  /**
-   * Create a new grid instance
-   * @param {Object} options - Grid configuration
-   */
-  constructor(options = {}) {
+
+export class Grid {
+  constructor(config = {}) {
+    this.scales = {
+      x: config.xScale || null,
+      y: config.yScale || null
+    };
+    
+    this.chartArea = config.chartArea || { x: 0, y: 0, width: 400, height: 300 };
+    
+    // Grid options
     this.options = {
-      show: true,
-      color: '#e0e0e0',
-      strokeWidth: 1,
-      dashArray: '4,4',
-      showX: true,
-      showY: true,
-      opacity: 1,
-      ...options
+      showXGrid: config.showXGrid !== false,
+      showYGrid: config.showYGrid !== false,
+      
+      // X Grid styling
+      xGridColor: config.xGridColor || '#e0e0e0',
+      xGridWidth: config.xGridWidth || 1,
+      xGridOpacity: config.xGridOpacity || 1,
+      xGridDash: config.xGridDash || [], // [5, 5] for dashed lines
+      
+      // Y Grid styling  
+      yGridColor: config.yGridColor || '#e0e0e0',
+      yGridWidth: config.yGridWidth || 1,
+      yGridOpacity: config.yGridOpacity || 1,
+      yGridDash: config.yGridDash || [],
+      
+      // Tick overrides
+      xTickCount: config.xTickCount || 'auto',
+      yTickCount: config.yTickCount || 'auto',
+      
+      // Skip edge lines (often redundant with axes)
+      skipEdgeLines: config.skipEdgeLines !== false,
+      
+      ...config.options
     };
     
-    this.elements = {
-      group: null,
-      xLines: [],
-      yLines: []
-    };
+    // Internal state
+    this.xTicks = [];
+    this.yTicks = [];
   }
   
   /**
-   * Render grid for single-panel mode
-   * @param {SVGElement} container - Container element
-   * @param {Object} xScale - X scale
-   * @param {Object} yScale - Y scale
-   * @param {number} width - Chart width
-   * @param {number} height - Chart height
-   * @param {Object} chartOptions - Chart options for tick generation
+   * Update scales (called when chart updates)
    */
-  render(container, xScale, yScale, width, height, chartOptions = {}) {
-    if (!this.options.show || !container) return;
-    
-    console.log('Grid.render called');
-    
-    // Clean up existing grid
-    this.destroy();
-    
-    // Create grid group
-    this.elements.group = SvgRenderer.createGroup({ 
-      class: 'visioncharts-grid',
-      opacity: this.options.opacity
-    });
-    
-    // Render Y grid lines (vertical lines)
-    if (this.options.showY && yScale) {
-      this.renderYGridLines(yScale, width, height, chartOptions);
-    }
-    
-    // Render X grid lines (horizontal lines)
-    if (this.options.showX && xScale) {
-      this.renderXGridLines(xScale, width, height, chartOptions);
-    }
-    
-    // Add grid to container (insert at beginning so it's behind other elements)
-    container.insertBefore(this.elements.group, container.firstChild);
+  updateScales(xScale, yScale) {
+    this.scales.x = xScale;
+    this.scales.y = yScale;
+    return this;
   }
   
   /**
-   * Render Y grid lines (vertical lines at Y tick positions)
-   * @private
+   * Update chart area (called when chart resizes)
    */
-  renderYGridLines(yScale, width, height, chartOptions = {}) {
-    // Use simple approach: generate evenly spaced lines across the height
-    const tickCount = chartOptions.yTickCount || 5;
-    
-    // Generate evenly spaced Y positions
-    for (let i = 0; i < tickCount; i++) {
-      const y = (height / (tickCount - 1)) * i;
-      
-      // Skip if outside bounds
-      if (y < 0 || y > height) continue;
-      
-      const line = SvgRenderer.createLine(
-        0, y,
-        width, y,
-        {
-          stroke: this.options.color,
-          'stroke-width': this.options.strokeWidth,
-          'stroke-dasharray': this.options.dashArray,
-          class: 'visioncharts-grid-y-line'
-        }
-      );
-      
-      this.elements.yLines.push(line);
-      this.elements.group.appendChild(line);
-    }
+  updateChartArea(chartArea) {
+    this.chartArea = chartArea;
+    return this;
   }
   
   /**
-   * Render X grid lines (horizontal lines at X tick positions)
-   * @private
+   * Update grid options
    */
-  renderXGridLines(xScale, width, height, chartOptions = {}) {
-    // Use simple approach: generate evenly spaced lines across the width
-    const tickCount = chartOptions.xTickCount || 6;
-    
-    // Generate evenly spaced X positions
-    for (let i = 0; i < tickCount; i++) {
-      const x = (width / (tickCount - 1)) * i;
-      
-      // Skip if outside bounds
-      if (x < 0 || x > width) continue;
-      
-      const line = SvgRenderer.createLine(
-        x, 0,
-        x, height,
-        {
-          stroke: this.options.color,
-          'stroke-width': this.options.strokeWidth,
-          'stroke-dasharray': this.options.dashArray,
-          class: 'visioncharts-grid-x-line'
-        }
-      );
-      
-      this.elements.xLines.push(line);
-      this.elements.group.appendChild(line);
-    }
+  updateOptions(newOptions) {
+    Object.assign(this.options, newOptions);
+    return this;
   }
   
   /**
-   * Generate tick values for a scale
-   * @private
+   * Calculate grid line positions using scales
    */
-  generateTicks(scale, tickCount) {
-    // Try different methods to get the domain based on how the scale is implemented
-    let domain;
+  calculateGridLines() {
+    this.xTicks = [];
+    this.yTicks = [];
     
-    if (typeof scale.getDomain === 'function') {
-      domain = scale.getDomain();
-    } else if (typeof scale.domain === 'function') {
-      domain = scale.domain();
-    } else if (scale.domain && Array.isArray(scale.domain)) {
-      domain = scale.domain;
-    } else if (scale._domain && Array.isArray(scale._domain)) {
-      domain = scale._domain;
+    // Get X grid lines
+    if (this.options.showXGrid && this.scales.x) {
+      const tickCount = this.options.xTickCount === 'auto' ? 
+        this._getOptimalTickCount('x') : 
+        this.options.xTickCount;
+        
+      const scaleTicks = this.scales.x.getTicks(tickCount);
+      
+      this.xTicks = scaleTicks
+        .filter(tick => this._shouldIncludeTick(tick, 'x'))
+        .map(tick => ({
+          value: tick.value,
+          position: tick.position
+        }));
+    }
+    
+    // Get Y grid lines
+    if (this.options.showYGrid && this.scales.y) {
+      const tickCount = this.options.yTickCount === 'auto' ? 
+        this._getOptimalTickCount('y') : 
+        this.options.yTickCount;
+        
+      const scaleTicks = this.scales.y.getTicks(tickCount);
+      
+      this.yTicks = scaleTicks
+        .filter(tick => this._shouldIncludeTick(tick, 'y'))
+        .map(tick => ({
+          value: tick.value,
+          position: tick.position
+        }));
+    }
+    
+    return { xTicks: this.xTicks, yTicks: this.yTicks };
+  }
+  
+  /**
+   * Render grid to canvas
+   */
+  render(ctx) {
+    if (!ctx) {
+      console.warn('Grid: No canvas context provided');
+      return;
+    }
+    
+    // Calculate grid lines
+    this.calculateGridLines();
+    
+    // Save canvas state
+    ctx.save();
+    
+    // Set up clipping to chart area
+    ctx.beginPath();
+    ctx.rect(this.chartArea.x, this.chartArea.y, this.chartArea.width, this.chartArea.height);
+    ctx.clip();
+    
+    // Render X grid lines (vertical)
+    if (this.options.showXGrid) {
+      this._renderXGridLines(ctx);
+    }
+    
+    // Render Y grid lines (horizontal)
+    if (this.options.showYGrid) {
+      this._renderYGridLines(ctx);
+    }
+    
+    // Restore canvas state
+    ctx.restore();
+  }
+  
+  /**
+   * Render vertical grid lines (X axis ticks)
+   */
+  _renderXGridLines(ctx) {
+    if (!this.xTicks.length) return;
+    
+    // Set line style
+    ctx.strokeStyle = this.options.xGridColor;
+    ctx.lineWidth = this.options.xGridWidth;
+    ctx.globalAlpha = this.options.xGridOpacity;
+    
+    // Set dash pattern if specified
+    if (this.options.xGridDash.length > 0) {
+      ctx.setLineDash(this.options.xGridDash);
     } else {
-      console.warn('Could not access scale domain, using default');
-      return [];
+      ctx.setLineDash([]);
     }
     
-    const ticks = [];
+    // Draw vertical lines
+    ctx.beginPath();
     
-    if (!domain || domain.length < 2) {
-      console.warn('Invalid domain for grid ticks:', domain);
-      return [];
-    }
+    this.xTicks.forEach(tick => {
+      const x = tick.position;
+      
+      // Check if line is within chart area
+      if (x >= this.chartArea.x && x <= this.chartArea.x + this.chartArea.width) {
+        ctx.moveTo(x, this.chartArea.y);
+        ctx.lineTo(x, this.chartArea.y + this.chartArea.height);
+      }
+    });
     
-    if (scale.constructor.name === 'TimeScale') {
-      // For time scales, generate reasonable time intervals
-      const start = domain[0];
-      const end = domain[1];
-      const interval = (end.getTime() - start.getTime()) / (tickCount - 1);
-      
-      for (let i = 0; i < tickCount; i++) {
-        ticks.push(new Date(start.getTime() + i * interval));
-      }
-    } else if (scale.constructor.name === 'LogScale') {
-      // For log scales, generate logarithmic intervals
-      const start = Math.log10(domain[0]);
-      const end = Math.log10(domain[1]);
-      const interval = (end - start) / (tickCount - 1);
-      
-      for (let i = 0; i < tickCount; i++) {
-        ticks.push(Math.pow(10, start + i * interval));
-      }
+    ctx.stroke();
+    
+    // Reset alpha and dash
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+  }
+  
+  /**
+   * Render horizontal grid lines (Y axis ticks)
+   */
+  _renderYGridLines(ctx) {
+    if (!this.yTicks.length) return;
+    
+    // Set line style
+    ctx.strokeStyle = this.options.yGridColor;
+    ctx.lineWidth = this.options.yGridWidth;
+    ctx.globalAlpha = this.options.yGridOpacity;
+    
+    // Set dash pattern if specified
+    if (this.options.yGridDash.length > 0) {
+      ctx.setLineDash(this.options.yGridDash);
     } else {
-      // For linear scales, generate linear intervals
-      const start = domain[0];
-      const end = domain[1];
-      const interval = (end - start) / (tickCount - 1);
+      ctx.setLineDash([]);
+    }
+    
+    // Draw horizontal lines
+    ctx.beginPath();
+    
+    this.yTicks.forEach(tick => {
+      const y = tick.position;
       
-      for (let i = 0; i < tickCount; i++) {
-        ticks.push(start + i * interval);
+      // Check if line is within chart area
+      if (y >= this.chartArea.y && y <= this.chartArea.y + this.chartArea.height) {
+        ctx.moveTo(this.chartArea.x, y);
+        ctx.lineTo(this.chartArea.x + this.chartArea.width, y);
+      }
+    });
+    
+    ctx.stroke();
+    
+    // Reset alpha and dash
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([]);
+  }
+  
+  /**
+   * Determine if a tick should be included in grid
+   */
+  _shouldIncludeTick(tick, orientation) {
+    // Skip edge lines if requested
+    if (this.options.skipEdgeLines) {
+      const scale = this.scales[orientation];
+      const range = scale.range;
+      const tolerance = 2; // pixels
+      
+      // Skip if too close to edges
+      if (Math.abs(tick.position - range[0]) < tolerance ||
+          Math.abs(tick.position - range[1]) < tolerance) {
+        return false;
       }
     }
     
-    return ticks;
+    return true;
   }
   
   /**
-   * Static method to render grid for panels
-   * @param {SVGElement} panelGroup - Panel container
-   * @param {Object} xScale - X scale for this panel
-   * @param {Object} yScale - Y scale for this panel
-   * @param {number} width - Panel width
-   * @param {number} height - Panel height
-   * @param {Object} options - Grid options
-   * @param {Object} chartOptions - Chart options for tick counts
+   * Get optimal tick count for grid lines
    */
-  static renderForPanel(panelGroup, xScale, yScale, width, height, options = {}, chartOptions = {}) {
-    if (!options.show) return;
+  _getOptimalTickCount(orientation) {
+    const chartArea = this.chartArea;
     
-    console.log('Grid.renderForPanel called');
-    
-    // Create temporary grid instance for panel
-    const grid = new Grid(options);
-    grid.render(panelGroup, xScale, yScale, width, height, chartOptions);
-    
-    return grid;
+    if (orientation === 'x') {
+      // Base on chart width
+      const width = chartArea.width;
+      if (width < 200) return 4;
+      if (width < 400) return 6;
+      if (width < 600) return 8;
+      return 10;
+    } else {
+      // Base on chart height
+      const height = chartArea.height;
+      if (height < 150) return 3;
+      if (height < 300) return 5;
+      if (height < 450) return 7;
+      return 8;
+    }
   }
   
   /**
-   * Update grid with new scales or dimensions
-   * @param {Object} xScale - X scale
-   * @param {Object} yScale - Y scale
-   * @param {number} width - Chart width
-   * @param {number} height - Chart height
-   * @param {Object} chartOptions - Chart options for tick generation
+   * Toggle X grid visibility
    */
-  update(xScale, yScale, width, height, chartOptions = {}) {
-    if (!this.elements.group || !this.options.show) return;
-    
-    console.log('Grid.update called');
-    
-    // Clear existing lines
-    this.elements.xLines.forEach(line => {
-      if (line.parentNode) line.parentNode.removeChild(line);
+  toggleXGrid(show = null) {
+    this.options.showXGrid = show !== null ? show : !this.options.showXGrid;
+    return this.options.showXGrid;
+  }
+  
+  /**
+   * Toggle Y grid visibility
+   */
+  toggleYGrid(show = null) {
+    this.options.showYGrid = show !== null ? show : !this.options.showYGrid;
+    return this.options.showYGrid;
+  }
+  
+  /**
+   * Set grid color for both X and Y
+   */
+  setGridColor(color) {
+    this.options.xGridColor = color;
+    this.options.yGridColor = color;
+    return this;
+  }
+  
+  /**
+   * Set grid opacity for both X and Y
+   */
+  setGridOpacity(opacity) {
+    this.options.xGridOpacity = opacity;
+    this.options.yGridOpacity = opacity;
+    return this;
+  }
+  
+  /**
+   * Set grid dash pattern for both X and Y
+   */
+  setGridDash(dashArray) {
+    this.options.xGridDash = dashArray;
+    this.options.yGridDash = dashArray;
+    return this;
+  }
+  
+  /**
+   * Create a copy of this grid with new options
+   */
+  copy(newOptions = {}) {
+    return new Grid({
+      xScale: this.scales.x,
+      yScale: this.scales.y,
+      chartArea: { ...this.chartArea },
+      ...this.options,
+      ...newOptions
     });
-    this.elements.yLines.forEach(line => {
-      if (line.parentNode) line.parentNode.removeChild(line);
-    });
-    
-    this.elements.xLines = [];
-    this.elements.yLines = [];
-    
-    // Re-render grid lines
-    if (this.options.showY && yScale) {
-      this.renderYGridLines(yScale, width, height, chartOptions);
-    }
-    
-    if (this.options.showX && xScale) {
-      this.renderXGridLines(xScale, width, height, chartOptions);
-    }
-  }
-  
-  /**
-   * Hide the grid
-   */
-  hide() {
-    if (this.elements.group) {
-      this.elements.group.style.display = 'none';
-    }
-  }
-  
-  /**
-   * Show the grid
-   */
-  show() {
-    if (this.elements.group) {
-      this.elements.group.style.display = 'block';
-    }
-  }
-  
-  /**
-   * Set grid options
-   * @param {Object} options - New options
-   */
-  setOptions(options) {
-    this.options = { ...this.options, ...options };
-    
-    // Update existing elements if they exist
-    if (this.elements.group) {
-      this.elements.group.setAttribute('opacity', this.options.opacity);
-    }
-    
-    // Update line styles
-    [...this.elements.xLines, ...this.elements.yLines].forEach(line => {
-      line.setAttribute('stroke', this.options.color);
-      line.setAttribute('stroke-width', this.options.strokeWidth);
-      line.setAttribute('stroke-dasharray', this.options.dashArray);
-    });
-  }
-  
-  /**
-   * Clean up grid elements
-   */
-  destroy() {
-    if (this.elements.group && this.elements.group.parentNode) {
-      this.elements.group.parentNode.removeChild(this.elements.group);
-    }
-    
-    this.elements = {
-      group: null,
-      xLines: [],
-      yLines: []
-    };
   }
 }

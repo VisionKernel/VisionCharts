@@ -1,31 +1,956 @@
-// Import the VisionCharts library
-import { LineChart, BarChart, calculateIndicator } from '../../src/index.js';
+// Enhanced script.js - Working recession toggle version with Studies Integration
+// Location: /examples/scripts/script.js
+
+import { LineChart, BarChart } from '../../../src/index.js';
 
 // Global datasets storage
 let availableDatasets = {};
 
-// Debug helper function - logs to console only
-function log(message, obj = null) {
-  // Only log to console, not to UI
-  console.log(message, obj);
-}
+// Chart instances
+let lineChart = null;
+let barChart = null;
 
-// Error handler helper function
-function handleError(containerId, error) {
-  const container = document.getElementById(containerId);
-  if (container) {
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-message';
-    errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
-    
-    // Clear container and add error message
-    container.innerHTML = '';
-    container.appendChild(errorDiv);
+// Dataset counters for unique IDs
+let lineDatasetCounter = 1;
+let barDatasetCounter = 1;
+
+// Study counters for unique naming
+let lineStudyCounter = 1;
+let barStudyCounter = 1;
+
+// Default color palette from the library
+const DEFAULT_COLORS = [
+  '#1468a8', // Blue
+  '#34A853', // Green  
+  '#FBBC05', // Yellow
+  '#EA4335', // Red
+  '#9C27B0', // Purple
+  '#00ACC1', // Cyan
+  '#FF9800', // Orange
+  '#607D8B'  // Blue Grey
+];
+
+// Sample recession data for demonstration
+// In real applications, users would provide their own recession periods
+const SAMPLE_RECESSION_DATA = [
+  // Great Recession
+  { 
+    start: '2007-12-01', 
+    end: '2009-06-01',
+    name: 'Great Recession (2007-2009)'
+  },
+  
+  // Dot-com Recession
+  { 
+    start: '2001-03-01', 
+    end: '2001-11-01',
+    name: 'Dot-com Recession (2001)'
+  },
+  
+  // COVID-19 Recession
+  { 
+    start: '2020-02-01', 
+    end: '2020-04-01',
+    name: 'COVID-19 Recession (2020)'
+  },
+  
+  // 1990-1991 Gulf War Recession
+  { 
+    start: '1990-07-01', 
+    end: '1991-03-01',
+    name: 'Gulf War Recession (1990-1991)'
+  },
+  
+  // 1981-1982 Recession
+  { 
+    start: '1981-07-01', 
+    end: '1982-11-01',
+    name: 'Early 1980s Recession'
+  },
+  
+  // 1973-1975 Oil Crisis Recession
+  { 
+    start: '1973-11-01', 
+    end: '1975-03-01',
+    name: 'Oil Crisis Recession (1973-1975)'
   }
-  console.error(`Error in ${containerId}:`, error);
+];
+
+// Get default color by index
+function getDefaultColor(index) {
+  return DEFAULT_COLORS[index % DEFAULT_COLORS.length];
 }
 
-// Function to load all available datasets
+// Simple color picker using HTML5 color input
+function openColorPicker(currentColor, onColorChange) {
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = currentColor;
+  colorInput.style.position = 'absolute';
+  colorInput.style.left = '-9999px';
+  
+  document.body.appendChild(colorInput);
+  
+  colorInput.addEventListener('change', (e) => {
+    onColorChange(e.target.value);
+    document.body.removeChild(colorInput);
+  });
+  
+  colorInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (document.body.contains(colorInput)) {
+        document.body.removeChild(colorInput);
+      }
+    }, 100);
+  });
+  
+  colorInput.click();
+}
+
+// Create dataset item with controls
+function createDatasetItem(dataset, chartType) {
+  const item = document.createElement('div');
+  item.className = 'dataset-item';
+  item.setAttribute('data-id', dataset.id);
+  
+  // Fill checkbox only for line charts
+  const fillCheckboxHtml = chartType === 'line' ? `
+    <label class="fill-checkbox-container" style="margin-right: 8px; cursor: pointer;">
+      <input type="checkbox" class="fill-checkbox" ${dataset.fill ? 'checked' : ''} style="margin-right: 4px;">
+      <span style="font-size: 12px; color: #666;">Fill</span>
+    </label>
+  ` : '';
+  
+  item.innerHTML = `
+    <div class="dataset-info">
+      <button class="color-picker-button" style="
+        width: 20px; 
+        height: 20px; 
+        border: 1px solid #ccc; 
+        border-radius: 3px; 
+        background-color: ${dataset.color}; 
+        cursor: pointer; 
+        margin-right: 8px;
+      " title="Click to change color"></button>
+      
+      ${fillCheckboxHtml}
+      
+      <span class="dataset-name">${dataset.name}</span>
+      <span class="dataset-points">(${dataset.data.length} points)</span>
+    </div>
+    <div class="dataset-controls">
+      <button class="remove-dataset">Remove</button>
+    </div>
+  `;
+  
+  // Color picker
+  const colorButton = item.querySelector('.color-picker-button');
+  colorButton.addEventListener('click', () => {
+    openColorPicker(dataset.color, (newColor) => {
+      const chart = chartType === 'line' ? lineChart : barChart;
+      if (chart && chart.updateDatasetColor(dataset.id, newColor)) {
+        colorButton.style.backgroundColor = newColor;
+        dataset.color = newColor; // Update local reference
+        console.log(`Updated ${chartType} dataset ${dataset.id} color to ${newColor}`);
+      }
+    });
+  });
+  
+  // Fill checkbox (line charts only)
+  if (chartType === 'line') {
+    const fillCheckbox = item.querySelector('.fill-checkbox');
+    if (fillCheckbox) {
+      fillCheckbox.addEventListener('change', (e) => {
+        const fillEnabled = e.target.checked;
+        if (lineChart && lineChart.updateDatasetFill(dataset.id, fillEnabled)) {
+          dataset.fill = fillEnabled; // Update local reference
+          console.log(`Updated ${chartType} dataset ${dataset.id} fill to ${fillEnabled}`);
+        }
+      });
+    }
+  }
+  
+  // Remove button
+  const removeBtn = item.querySelector('.remove-dataset');
+  removeBtn.addEventListener('click', () => {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (chart) {
+      chart.removeDataset(dataset.id);
+      item.remove();
+      // Update study dropdowns after removing dataset
+      updateStudyDatasetDropdowns();
+      console.log(`Removed dataset: ${dataset.id}`);
+    }
+  });
+  
+  return item;
+}
+
+// Add dataset to chart
+function addDatasetToChart(chartType) {
+  try {
+    const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+    const randomizeCheckbox = document.getElementById(`${chartType}-randomize`);
+    const datasetManager = document.getElementById(`${chartType}-datasets`);
+    
+    if (!sourceSelect || !datasetManager) {
+      console.error('Dataset controls not found');
+      return;
+    }
+    
+    const selectedSource = sourceSelect.value;
+    const shouldRandomize = randomizeCheckbox?.checked || false;
+    
+    // Get raw data
+    let rawData = availableDatasets[selectedSource];
+    if (!rawData || rawData.length === 0) {
+      console.error('No data available for selected source:', selectedSource);
+      return;
+    }
+    
+    // Apply randomization if requested
+    if (shouldRandomize) {
+      rawData = rawData.map(point => ({
+        ...point,
+        y: point.y * (1 + (Math.random() - 0.5) * 0.3) // 30% variation
+      }));
+    }
+    
+    // Generate dataset properties
+    let datasetId, datasetName, datasetColor, counter;
+    
+    if (chartType === 'line') {
+      counter = lineDatasetCounter++;
+      datasetId = `line-dataset-${counter}`;
+      datasetName = `Line Dataset ${counter}`;
+    } else {
+      counter = barDatasetCounter++;
+      datasetId = `bar-dataset-${counter}`;
+      datasetName = `Bar Dataset ${counter}`;
+    }
+    
+    datasetColor = getDefaultColor(counter - 1);
+    
+    // Format data for chart
+    const formattedData = rawData.map(item => {
+      if (chartType === 'line') {
+        return { date: new Date(item.x), price: item.y };
+      } else {
+        return { x: new Date(item.x), y: item.y };
+      }
+    });
+    
+    // Create dataset object
+    const dataset = {
+      id: datasetId,
+      name: datasetName,
+      color: datasetColor,
+      data: formattedData,
+      width: 2,
+      fill: false // Default to no fill
+    };
+    
+    // Add to chart
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (chart) {
+      chart.addDataset(dataset);
+      
+      // Add to UI
+      const datasetItem = createDatasetItem(dataset, chartType);
+      datasetManager.appendChild(datasetItem);
+      
+      // Update study dropdowns after adding dataset
+      updateStudyDatasetDropdowns();
+      
+      console.log(`Added ${chartType} dataset: ${datasetName} with ${formattedData.length} points`);
+    }
+    
+  } catch (error) {
+    console.error('Error adding dataset:', error);
+  }
+}
+
+// Initialize Line Chart
+async function initLineChart() {
+  console.log('Initializing Line Chart');
+  
+  try {
+    const container = document.getElementById('line-chart');
+    if (!container) {
+      throw new Error('Line chart container not found');
+    }
+    
+    // Load data
+    if (!availableDatasets.timeseries) {
+      availableDatasets = await loadAllDatasets();
+    }
+    
+    // Create initial dataset
+    const timeSeriesData = availableDatasets.timeseries.map(item => ({
+      date: new Date(item.x),
+      price: item.y
+    }));
+    
+    const initialDataset = {
+      id: 'line-dataset-1',
+      name: 'Line Dataset 1',
+      color: getDefaultColor(0),
+      width: 2,
+      fill: false,
+      data: timeSeriesData
+    };
+    
+    lineDatasetCounter = 2;
+    
+    // Create chart
+    lineChart = new LineChart({
+      container: container,
+      data: [initialDataset],
+      options: {
+        title: 'Time Series Data',
+        xField: 'date',
+        yField: 'value',
+        xType: 'time',
+        yType: 'number',
+        xAxisName: document.getElementById('line-x-name')?.value || 'Date',
+        yAxisName: document.getElementById('line-y-name')?.value || 'Price ($)',
+        showGrid: true
+      }
+    });
+
+    await lineChart._initPromise;
+    
+    // CRITICAL: Set up recession data after chart creation
+    if (lineChart.recessionLines) {
+      lineChart.recessionLines.setRecessionData(SAMPLE_RECESSION_DATA);
+      console.log('Line chart: Loaded sample recession data');
+    }
+    
+    await lineChart.render();
+    window.lineChart = lineChart; // Debug access
+    
+    setupLineChartControls();
+    setupDatasetManagement('line');
+    
+    // Add initial dataset to UI
+    const datasetManager = document.getElementById('line-datasets');
+    if (datasetManager) {
+      const datasetItem = createDatasetItem(initialDataset, 'line');
+      datasetManager.appendChild(datasetItem);
+    }
+    
+    // Initialize study dataset dropdowns
+    updateStudyDatasetDropdowns();
+    
+    console.log('Line chart initialized successfully with sample recession data');
+    
+  } catch (error) {
+    console.error('Error initializing line chart:', error);
+    handleError('line-chart', error);
+  }
+}
+
+// Initialize Bar Chart
+async function initBarChart() {
+  console.log('Initializing Bar Chart');
+  
+  try {
+    const container = document.getElementById('bar-chart');
+    if (!container) {
+      throw new Error('Bar chart container not found');
+    }
+    
+    // Load data if needed
+    if (!availableDatasets.timeseries) {
+      availableDatasets = await loadAllDatasets();
+    }
+    
+    // Create initial dataset
+    const timeSeriesData = availableDatasets.timeseries.map(item => ({
+      x: new Date(item.x),
+      y: item.y
+    }));
+    
+    const initialDataset = {
+      id: 'bar-dataset-1',
+      name: 'Bar Dataset 1',
+      color: getDefaultColor(0),
+      fill: false,
+      data: timeSeriesData
+    };
+    
+    barDatasetCounter = 2;
+    
+    // Create chart
+    barChart = new BarChart({
+      container: container,
+      data: [initialDataset],
+      options: {
+        title: 'Bar Chart',
+        xField: 'x',
+        yField: 'y',
+        xType: 'time',
+        yType: 'number',
+        xAxisName: document.getElementById('bar-x-name')?.value || 'Date',
+        yAxisName: document.getElementById('bar-y-name')?.value || 'Value',
+        showGrid: true
+      }
+    });
+    
+    // CRITICAL: Set up recession data after chart creation
+    if (barChart.recessionLines) {
+      barChart.recessionLines.setRecessionData(SAMPLE_RECESSION_DATA);
+      console.log('Bar chart: Loaded sample recession data');
+    }
+    
+    await barChart.render();
+    window.barChart = barChart; // Debug access
+    
+    setupBarChartControls();
+    setupDatasetManagement('bar');
+    
+    // Add initial dataset to UI
+    const datasetManager = document.getElementById('bar-datasets');
+    if (datasetManager) {
+      const datasetItem = createDatasetItem(initialDataset, 'bar');
+      datasetManager.appendChild(datasetItem);
+    }
+    
+    // Initialize study dataset dropdowns
+    updateStudyDatasetDropdowns();
+    
+    console.log('Bar chart initialized successfully with sample recession data');
+    
+    } catch (error) {
+    console.error('Error initializing bar chart:', error);
+    handleError('bar-chart', error);
+  }
+}
+
+// Setup line chart controls with working recession toggle
+function setupLineChartControls() {
+  if (!lineChart) return;
+  
+  // Axis names
+  const xNameInput = document.getElementById('line-x-name');
+  if (xNameInput) {
+    xNameInput.addEventListener('change', (e) => {
+      lineChart.config.options.xAxisName = e.target.value;
+      lineChart.render();
+    });
+  }
+  
+  const yNameInput = document.getElementById('line-y-name');
+  if (yNameInput) {
+    yNameInput.addEventListener('change', (e) => {
+      lineChart.config.options.yAxisName = e.target.value;
+      lineChart.render();
+    });
+  }
+  
+  // Recession toggle that actually works
+  const recessionToggle = document.getElementById('line-toggle-recession');
+  if (recessionToggle) {
+    // Initialize button state - recessions start disabled
+    recessionToggle.classList.remove('active');
+    let recessionVisible = false; // Track state manually like legend toggle
+    
+    recessionToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        recessionVisible = !recessionVisible;
+        
+        // Apply the new state
+        lineChart.toggleRecessionLines(recessionVisible);
+        
+        console.log('Line chart recession toggle - new state:', recessionVisible);
+        
+        // Update button appearance based on manual state
+        recessionToggle.classList.toggle('active', recessionVisible);
+        
+        console.log('Line recession button classes after toggle:', recessionToggle.className);
+      } catch (error) {
+        console.error('Error toggling line chart recessions:', error);
+      }
+    });
+  }
+  
+  // Logarithmic scale toggle
+  const logToggle = document.getElementById('line-toggle-log');
+  if (logToggle) {
+    logToggle.addEventListener('click', () => {
+      try {
+        const isLog = lineChart.toggleLogarithmicScale();
+        logToggle.classList.toggle('active', isLog);
+        console.log(`Line chart log scale ${isLog ? 'enabled' : 'disabled'}`);
+      } catch (error) {
+        console.error('Error toggling logarithmic scale:', error);
+      }
+    });
+  }
+  
+  // Legend toggle with proper state tracking
+  const legendToggle = document.getElementById('line-toggle-legend');
+  if (legendToggle) {
+    // Initialize button state - legend starts visible
+    legendToggle.classList.add('active');
+    let legendVisible = true; // Track state manually
+    
+    legendToggle.addEventListener('click', () => {
+      try {
+        if (lineChart.legend) {
+          // Toggle the state
+          legendVisible = !legendVisible;
+          
+          // Apply the new state
+          lineChart.legend.setVisible(legendVisible);
+          
+          console.log('Legend toggle - new state:', legendVisible);
+          
+          // Update button appearance
+          legendToggle.classList.toggle('active', legendVisible);
+          
+          console.log('Legend button classes after toggle:', legendToggle.className);
+        }
+      } catch (error) {
+        console.error('Error toggling legend:', error);
+      }
+    });
+  }
+
+  const endingLabelsToggle = document.getElementById('line-toggle-endinglabels');
+  if (endingLabelsToggle) {
+    // Initialize button state - ending labels start disabled
+    endingLabelsToggle.classList.remove('active');
+    let endingLabelsVisible = false; // Track state manually
+    
+    endingLabelsToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        endingLabelsVisible = !endingLabelsVisible;
+        
+        // Apply the new state - DON'T pass parameters, let it toggle naturally
+        lineChart.toggleEndingLabels();
+        
+        console.log('Line chart ending labels toggle - new state:', endingLabelsVisible);
+        
+        // Update button appearance based on manual state (like recession toggle)
+        endingLabelsToggle.classList.toggle('active', endingLabelsVisible);
+        
+        console.log('Line ending labels button classes after toggle:', endingLabelsToggle.className);
+      } catch (error) {
+        console.error('Error toggling line chart ending labels:', error);
+      }
+    });
+  }
+
+  const zeroToggle = document.getElementById('line-toggle-zero');
+  if (zeroToggle) {
+    // Initialize button state - zero line starts disabled
+    zeroToggle.classList.remove('active');
+    let zeroVisible = false;
+    
+    zeroToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        zeroVisible = !zeroVisible;
+        
+        // Apply the new state
+        lineChart.toggleZeroLine();
+        
+        console.log('Line chart zero line toggle - new state:', zeroVisible);
+        
+        // Update button appearance
+        zeroToggle.classList.toggle('active', zeroVisible);
+        
+      } catch (error) {
+        console.error('Error toggling line chart zero line:', error);
+      }
+    });
+  }
+
+  const averageToggle = document.getElementById('line-toggle-average');
+  if (averageToggle) {
+    // Initialize button state - average line starts disabled
+    averageToggle.classList.remove('active');
+    let averageVisible = false;
+    
+    averageToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        averageVisible = !averageVisible;
+        
+        // Apply the new state
+        lineChart.toggleAverageLine();
+        
+        console.log('Line chart average line toggle - new state:', averageVisible);
+        
+        // Update button appearance
+        averageToggle.classList.toggle('active', averageVisible);
+        
+      } catch (error) {
+        console.error('Error toggling line chart average line:', error);
+      }
+    });
+  }
+
+  // Median line toggle
+  const medianToggle = document.getElementById('line-toggle-median');
+  if (medianToggle) {
+    // Initialize button state - median line starts disabled
+    medianToggle.classList.remove('active');
+    let medianVisible = false;
+    
+    medianToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        medianVisible = !medianVisible;
+        
+        // Apply the new state
+        lineChart.toggleMedianLine();
+        
+        console.log('Line chart median line toggle - new state:', medianVisible);
+        
+        // Update button appearance
+        medianToggle.classList.toggle('active', medianVisible);
+        
+      } catch (error) {
+        console.error('Error toggling line chart median line:', error);
+      }
+    });
+  }
+
+  // ✅ ADDED: Curve type handler - affects all lines on chart and all panels
+  const curveTypeSelect = document.getElementById('line-curve');
+  if (curveTypeSelect) {
+    curveTypeSelect.addEventListener('change', (e) => {
+      try {
+        const curveType = e.target.value;
+        console.log('Setting curve type to:', curveType);
+        
+        // This will affect all lines on the chart and all panels if in panel mode
+        lineChart.setCurveType(curveType);
+        
+        console.log('Curve type updated successfully');
+      } catch (error) {
+        console.error('Error setting curve type:', error);
+      }
+    });
+  }
+
+  const linePanelToggle = document.getElementById('line-toggle-panel');
+  if (linePanelToggle) {
+    linePanelToggle.addEventListener('click', async () => {
+      try {
+        // Check if we have multiple datasets
+        if (!lineChart.config.data || lineChart.config.data.length <= 1) {
+          alert('Panel mode requires multiple datasets. Please add more datasets first.');
+          return;
+        }
+        
+        // Show loading state
+        linePanelToggle.textContent = 'Loading...';
+        linePanelToggle.disabled = true;
+        
+        // Toggle panel mode
+        const isPanelMode = await lineChart.togglePanelMode();
+        
+        // Update button appearance
+        linePanelToggle.classList.toggle('active', isPanelMode);
+        linePanelToggle.textContent = 'Toggle Panel View';
+        linePanelToggle.disabled = false;
+        
+        console.log('Line chart panel mode:', isPanelMode ? 'enabled' : 'disabled');
+        
+      } catch (error) {
+        console.error('Error toggling line chart panel mode:', error);
+        
+        // Reset button state on error
+        linePanelToggle.textContent = 'Toggle Panel View';
+        linePanelToggle.disabled = false;
+        linePanelToggle.classList.remove('active');
+        alert('Error switching panel mode. Please try again.');
+      }
+    });
+  }
+}
+
+// Setup bar chart controls with working recession toggle
+function setupBarChartControls() {
+  if (!barChart) return;
+  
+  // Axis names
+  const xNameInput = document.getElementById('bar-x-name');
+  if (xNameInput) {
+    xNameInput.addEventListener('change', (e) => {
+      barChart.config.options.xAxisName = e.target.value;
+      barChart.render();
+    });
+  }
+  
+  const yNameInput = document.getElementById('bar-y-name');
+  if (yNameInput) {
+    yNameInput.addEventListener('change', (e) => {
+      barChart.config.options.yAxisName = e.target.value;
+      barChart.render();
+    });
+  }
+  
+  // Recession toggle that actually works
+  const recessionToggle = document.getElementById('bar-toggle-recession');
+  if (recessionToggle) {
+    // Initialize button state - recessions start disabled
+    recessionToggle.classList.remove('active');
+    let recessionVisible = false; // Track state manually like legend toggle
+    
+    recessionToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        recessionVisible = !recessionVisible;
+        
+        // Apply the new state
+        barChart.toggleRecessionLines(recessionVisible);
+        
+        console.log('Bar chart recession toggle - new state:', recessionVisible);
+        
+        // Update button appearance based on manual state
+        recessionToggle.classList.toggle('active', recessionVisible);
+        
+        console.log('Bar recession button classes after toggle:', recessionToggle.className);
+      } catch (error) {
+        console.error('Error toggling bar chart recessions:', error);
+      }
+    });
+  }
+  
+  // Logarithmic scale toggle
+  const barLogToggle = document.getElementById('bar-toggle-log');
+  if (barLogToggle) {
+    barLogToggle.addEventListener('click', () => {
+      try {
+        const isLog = barChart.toggleLogarithmicScale();
+        barLogToggle.classList.toggle('active', isLog);
+        console.log(`Bar chart log scale ${isLog ? 'enabled' : 'disabled'}`);
+      } catch (error) {
+        console.error('Error toggling bar chart logarithmic scale:', error);
+      }
+    });
+  }
+  
+  // Legend toggle with proper state tracking
+  const legendToggle = document.getElementById('bar-toggle-legend');
+  if (legendToggle) {
+    // Initialize button state - legend starts visible
+    legendToggle.classList.add('active');
+    let legendVisible = true; // Track state manually
+    
+    legendToggle.addEventListener('click', () => {
+      try {
+        if (barChart.legend) {
+          // Toggle the state
+          legendVisible = !legendVisible;
+          
+          // Apply the new state
+          barChart.legend.setVisible(legendVisible);
+          
+          console.log('Bar legend toggle - new state:', legendVisible);
+          
+          // Update button appearance
+          legendToggle.classList.toggle('active', legendVisible);
+          
+          console.log('Bar legend button classes after toggle:', legendToggle.className);
+        }
+      } catch (error) {
+        console.error('Error toggling bar legend:', error);
+      }
+    });
+  }
+
+  const endingLabelsToggle = document.getElementById('bar-toggle-endinglabels');
+  if (endingLabelsToggle) {
+    // Initialize button state - ending labels start disabled
+    endingLabelsToggle.classList.remove('active');
+    let endingLabelsVisible = false; // Track state manually
+    
+    endingLabelsToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        endingLabelsVisible = !endingLabelsVisible;
+        
+        // Apply the new state - DON'T pass parameters, let it toggle naturally
+        barChart.toggleEndingLabels();
+        
+        console.log('Bar chart ending labels toggle - new state:', endingLabelsVisible);
+        
+        // Update button appearance based on manual state (like recession toggle)
+        endingLabelsToggle.classList.toggle('active', endingLabelsVisible);
+        
+        console.log('Bar ending labels button classes after toggle:', endingLabelsToggle.className);
+      } catch (error) {
+        console.error('Error toggling bar chart ending labels:', error);
+      }
+    });
+  }
+  const zeroToggle = document.getElementById('bar-toggle-zero');
+  if (zeroToggle) {
+    // Initialize button state - zero line starts enabled for bar charts
+    zeroToggle.classList.add('active');
+    let zeroVisible = true;
+    
+    // Enable zero line by default for bar chart
+    setTimeout(() => {
+      if (barChart && barChart.zeroLine) {
+        barChart.toggleZeroLine(true);
+      }
+    }, 100);
+    
+    zeroToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        zeroVisible = !zeroVisible;
+        
+        // Apply the new state
+        barChart.toggleZeroLine();
+        
+        console.log('Bar chart zero line toggle - new state:', zeroVisible);
+        
+        // Update button appearance
+        zeroToggle.classList.toggle('active', zeroVisible);
+        
+      } catch (error) {
+        console.error('Error toggling bar chart zero line:', error);
+      }
+    });
+  }
+
+  const averageToggle = document.getElementById('bar-toggle-average');
+  if (averageToggle) {
+    // Initialize button state - average line starts disabled
+    averageToggle.classList.remove('active');
+    let averageVisible = false;
+    
+    averageToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        averageVisible = !averageVisible;
+        
+        // Apply the new state
+        barChart.toggleAverageLine();
+        
+        console.log('Bar chart average line toggle - new state:', averageVisible);
+        
+        // Update button appearance
+        averageToggle.classList.toggle('active', averageVisible);
+        
+      } catch (error) {
+        console.error('Error toggling bar chart average line:', error);
+      }
+    });
+  }
+
+  // Median line toggle
+  const medianToggle = document.getElementById('bar-toggle-median');
+  if (medianToggle) {
+    // Initialize button state - median line starts disabled
+    medianToggle.classList.remove('active');
+    let medianVisible = false;
+    
+    medianToggle.addEventListener('click', () => {
+      try {
+        // Toggle the state manually
+        medianVisible = !medianVisible;
+        
+        // Apply the new state
+        barChart.toggleMedianLine();
+        
+        console.log('Bar chart median line toggle - new state:', medianVisible);
+        
+        // Update button appearance
+        medianToggle.classList.toggle('active', medianVisible);
+        
+      } catch (error) {
+        console.error('Error toggling bar chart median line:', error);
+      }
+    });
+  }
+
+  const barPanelToggle = document.getElementById('bar-toggle-panel');
+  if (barPanelToggle) {
+    barPanelToggle.addEventListener('click', async () => {
+      try {
+        // Check if we have multiple datasets
+        if (!barChart.config.data || barChart.config.data.length <= 1) {
+          alert('Panel mode requires multiple datasets. Please add more datasets first.');
+          return;
+        }
+        
+        // Show loading state
+        barPanelToggle.textContent = 'Loading...';
+        barPanelToggle.disabled = true;
+        
+        // Toggle panel mode
+        const isPanelMode = await barChart.togglePanelMode();
+        
+        // Update button appearance
+        barPanelToggle.classList.toggle('active', isPanelMode);
+        barPanelToggle.textContent = 'Toggle Panel View';
+        barPanelToggle.disabled = false;
+        
+        console.log('Bar chart panel mode:', isPanelMode ? 'enabled' : 'disabled');
+        
+      } catch (error) {
+        console.error('Error toggling bar chart panel mode:', error);
+        
+        // Reset button state on error
+        barPanelToggle.textContent = 'Toggle Panel View';
+        barPanelToggle.disabled = false;
+        barPanelToggle.classList.remove('active');
+        alert('Error switching panel mode. Please try again.');
+      }
+    });
+  }
+}
+
+// Setup dataset management
+function setupDatasetManagement(chartType) {
+  // Dataset source change handler
+  const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+  if (sourceSelect) {
+    sourceSelect.addEventListener('change', () => {
+      updateDatasetPreview(chartType);
+    });
+    updateDatasetPreview(chartType); // Initialize preview
+  }
+  
+  // Add dataset button
+  const addButton = document.getElementById(`${chartType}-add-dataset`);
+  if (addButton) {
+    addButton.addEventListener('click', () => {
+      addDatasetToChart(chartType);
+    });
+  }
+}
+
+// Update dataset preview
+function updateDatasetPreview(chartType) {
+  const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
+  const previewDiv = document.getElementById(`${chartType}-dataset-preview`);
+  
+  if (sourceSelect && previewDiv && availableDatasets) {
+    const selectedDataset = availableDatasets[sourceSelect.value];
+    if (selectedDataset && selectedDataset.length > 0) {
+      const firstPoint = selectedDataset[0];
+      const lastPoint = selectedDataset[selectedDataset.length - 1];
+      const startDate = new Date(firstPoint.x).toLocaleDateString();
+      const endDate = new Date(lastPoint.x).toLocaleDateString();
+      previewDiv.textContent = `${selectedDataset.length} points from ${startDate} to ${endDate}`;
+    } else {
+      previewDiv.textContent = 'No data available';
+    }
+  }
+}
+
+// Load datasets with better date ranges for recession visibility
 async function loadAllDatasets() {
   const datasets = {};
   
@@ -33,1346 +958,136 @@ async function loadAllDatasets() {
     // Load timeseries data
     datasets.timeseries = await fetch('../examples/data/timeseries.json')
       .then(response => response.json())
-      .catch(error => {
-        console.error('Error loading timeseries data:', error);
-        return [
-          {"x": 1325397600000, "y": 395047.21724},
-          {"x": 1333256400000, "y": 383193.04203},
-          {"x": 1341118800000, "y": 395197.96324},
-          {"x": 1349067600000, "y": 396612.1442},
-          {"x": 1357020000000, "y": 400485.37204},
-          {"x": 1364792400000, "y": 385334.45099},
-          {"x": 1372654800000, "y": 360941.57118},
-          {"x": 1380603600000, "y": 370633.93024},
-          {"x": 1388556000000, "y": 361745.01486},
-          {"x": 1396328400000, "y": 375814.71808},
-          {"x": 1404190800000, "y": 372347.33206},
-          {"x": 1412139600000, "y": 346274.20792},
-          {"x": 1420092000000, "y": 320882.67004},
-          {"x": 1427756400000, "y": 340662.67896},
-          {"x": 1435708800000, "y": 335174.23472},
-          {"x": 1443657600000, "y": 310456.78998},
-          {"x": 1451610000000, "y": 285678.45321},
-          {"x": 1459468800000, "y": 295234.89765},
-          {"x": 1467331200000, "y": 312456.78901},
-          {"x": 1475280000000, "y": 298765.43210},
-          {"x": 1483232400000, "y": 276543.21098},
-          {"x": 1491004800000, "y": 289876.54321},
-          {"x": 1498867200000, "y": 267890.12345},
-          {"x": 1506816000000, "y": 245678.90123},
-          {"x": 1514768400000, "y": 234567.89012}
-        ];
+      .then(data => {
+        console.log(`Loaded timeseries data: ${data.length} points`);
+        if (data.length > 0) {
+          const firstDate = new Date(data[0].x);
+          const lastDate = new Date(data[data.length - 1].x);
+          console.log(`Timeseries date range: ${firstDate.toLocaleDateString()} to ${lastDate.toLocaleDateString()}`);
+        }
+        return data;
+      })
+      .catch(() => {
+        console.log('Timeseries data not found, generating fallback data with recessions');
+        return generateFallbackData('timeseries');
       });
-
-    // Load daily returns data
+    
+    // Load daily returns
     datasets['daily-returns'] = await fetch('../examples/data/daily-returns.json')
       .then(response => response.json())
-      .catch(error => {
-        console.error('Error loading daily returns data:', error);
-        return [
-          {"x": 1704067200000, "y": 0.0234},
-          {"x": 1704153600000, "y": -0.0156},
-          {"x": 1704240000000, "y": 0.0089},
-          {"x": 1704326400000, "y": 0.0234},
-          {"x": 1704412800000, "y": -0.0078},
-          {"x": 1704499200000, "y": 0.0156},
-          {"x": 1704585600000, "y": -0.0234},
-          {"x": 1704672000000, "y": 0.0098},
-          {"x": 1704758400000, "y": 0.0187},
-          {"x": 1704844800000, "y": -0.0065}
-        ];
+      .catch(() => {
+        console.log('Daily returns data not found, generating fallback data');
+        return generateFallbackData('daily-returns');
       });
-
+    
     // Load monthly data
     datasets.monthly = await fetch('../examples/data/timeseries-monthly.json')
       .then(response => response.json())
-      .catch(error => {
-        console.error('Error loading monthly data:', error);
-        return [
-          {"x": 1420070400000, "y": 345000},
-          {"x": 1422748800000, "y": 378000},
-          {"x": 1425168000000, "y": 312000},
-          {"x": 1427846400000, "y": 389000},
-          {"x": 1430438400000, "y": 423000},
-          {"x": 1433116800000, "y": 456000},
-          {"x": 1435708800000, "y": 398000},
-          {"x": 1438387200000, "y": 434000},
-          {"x": 1441065600000, "y": 467000},
-          {"x": 1443657600000, "y": 412000}
-        ];
+      .catch(() => {
+        console.log('Monthly data not found, generating fallback data');
+        return generateFallbackData('monthly');
       });
-
-    return datasets;
+    
+    // Load NASDAQ data
+    datasets.nasdaq = await fetch('../examples/data/NASDAQCOM.json')
+      .then(response => response.json())
+      .catch(() => {
+        console.log('NASDAQ data not found, generating fallback data');
+        return generateFallbackData('nasdaq');
+      });
+    
+    // Log overall date ranges for debugging
+    Object.keys(datasets).forEach(key => {
+      const dataset = datasets[key];
+      if (dataset && dataset.length > 0) {
+        const firstDate = new Date(dataset[0].x);
+        const lastDate = new Date(dataset[dataset.length - 1].x);
+        console.log(`${key} dataset: ${dataset.length} points from ${firstDate.getFullYear()} to ${lastDate.getFullYear()}`);
+      }
+    });
+    
   } catch (error) {
-    console.error('Error in loadAllDatasets:', error);
-    return {
-      timeseries: [],
-      'daily-returns': [],
-      monthly: []
-    };
+    console.error('Error loading datasets:', error);
   }
+  
+  return datasets;
 }
 
-// Helper function to format dates for the bar chart
-function formatDate(timestamp) {
-  const date = new Date(timestamp);
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short'
-  }).format(date);
-}
-
-// Chart instances
-let lineChart = null;
-let barChart = null;
-
-// Event listener management - prevent duplicate listeners
-const eventListenerState = {
-  lineStatisticalListenersAttached: false,
-  barStatisticalListenersAttached: false
-};
-
-// Define recession data for charts
-const recessions = [
-  { start: new Date('2007-12-01'), end: new Date('2009-06-30') },
-  { start: new Date('2020-02-01'), end: new Date('2020-04-30') }
-];
-
-// Helper function to create a dataset item in the dataset manager
-function createDatasetItem(container, dataset, index, chartType) {
-  // Create dataset item container
-  const item = document.createElement('div');
-  item.className = 'dataset-item';
-  item.dataset.id = dataset.id;
+// Generate fallback data that includes recession periods
+function generateFallbackData(type) {
+  const data = [];
+  // Start from 2000 to include multiple recession periods
+  const startDate = new Date('2000-01-01');
+  const count = type === 'monthly' ? 300 : 6000; // More data points to cover recession periods
+  let value = 100;
   
-  // Create name input
-  const nameGroup = document.createElement('div');
-  nameGroup.className = 'control-group';
-  
-  const nameLabel = document.createElement('label');
-  nameLabel.textContent = 'Name';
-  
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.value = dataset.name;
-  nameInput.placeholder = 'Dataset Name';
-  
-  nameInput.addEventListener('change', (e) => {
-    // Update dataset name in the chart
-    if (chartType === 'line' && lineChart) {
-      const datasets = lineChart.config.data;
-      const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-      if (datasetIndex >= 0) {
-        datasets[datasetIndex].name = e.target.value;
-        lineChart.update();
-      }
-    } else if (chartType === 'bar' && barChart) {
-      const datasets = barChart.config.data;
-      const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-      if (datasetIndex >= 0) {
-        datasets[datasetIndex].name = e.target.value;
-        barChart.update();
-      }
-    }
-  });
-  
-  nameGroup.appendChild(nameLabel);
-  nameGroup.appendChild(nameInput);
-  
-  // Create color input
-  const colorGroup = document.createElement('div');
-  colorGroup.className = 'control-group';
-  
-  const colorLabel = document.createElement('label');
-  colorLabel.textContent = 'Color';
-  
-  const colorInput = document.createElement('input');
-  colorInput.type = 'color';
-  colorInput.value = dataset.color || '#1468a8';
-  
-  colorInput.addEventListener('change', (e) => {
-    // Update dataset color in the chart
-    if (chartType === 'line' && lineChart) {
-      const datasets = lineChart.config.data;
-      const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-      if (datasetIndex >= 0) {
-        datasets[datasetIndex].color = e.target.value;
-        lineChart.update();
-      }
-    } else if (chartType === 'bar' && barChart) {
-      const datasets = barChart.config.data;
-      const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-      if (datasetIndex >= 0) {
-        datasets[datasetIndex].color = e.target.value;
-        barChart.update();
-      }
-    }
-  });
-  
-  colorGroup.appendChild(colorLabel);
-  colorGroup.appendChild(colorInput);
-  
-  // Create width input for line charts
-  if (chartType === 'line') {
-    const widthGroup = document.createElement('div');
-    widthGroup.className = 'control-group';
-    
-    const widthLabel = document.createElement('label');
-    widthLabel.textContent = 'Width';
-    
-    const widthInput = document.createElement('input');
-    widthInput.type = 'range';
-    widthInput.min = '1';
-    widthInput.max = '5';
-    widthInput.step = '0.5';
-    widthInput.value = dataset.width || '2';
-    
-    widthInput.addEventListener('change', (e) => {
-      // Update dataset width in the chart
-      if (lineChart) {
-        const datasets = lineChart.config.data;
-        const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-        if (datasetIndex >= 0) {
-          datasets[datasetIndex].width = parseFloat(e.target.value);
-          lineChart.update();
-        }
-      }
-    });
-    
-    widthGroup.appendChild(widthLabel);
-    widthGroup.appendChild(widthInput);
-    
-    item.appendChild(widthGroup);
-    
-    // Add area controls for line charts
-    const areaControls = document.createElement('div');
-    areaControls.className = 'area-controls';
-    
-    // Area checkbox
-    const areaCheckbox = document.createElement('input');
-    areaCheckbox.type = 'checkbox';
-    areaCheckbox.id = `area-${dataset.id}`;
-    areaCheckbox.checked = Boolean(dataset.area);
-    
-    const areaLabel = document.createElement('label');
-    areaLabel.htmlFor = `area-${dataset.id}`;
-    areaLabel.textContent = 'Area Fill';
-    
-    areaCheckbox.addEventListener('change', (e) => {
-      if (lineChart) {
-        lineChart.toggleDatasetArea(dataset.id, e.target.checked);
-      }
-    });
-    
-    // Area opacity slider
-    const opacityLabel = document.createElement('label');
-    opacityLabel.textContent = 'Opacity:';
-    opacityLabel.style.marginLeft = '15px';
-    
-    const opacityInput = document.createElement('input');
-    opacityInput.type = 'range';
-    opacityInput.min = '0';
-    opacityInput.max = '1';
-    opacityInput.step = '0.1';
-    opacityInput.value = dataset.areaOpacity || '0.2';
-    opacityInput.style.width = '80px';
-    
-    const opacityValue = document.createElement('span');
-    opacityValue.className = 'opacity-value';
-    opacityValue.textContent = opacityInput.value;
-    
-    opacityInput.addEventListener('input', (e) => {
-      opacityValue.textContent = e.target.value;
-      if (lineChart) {
-        // Update the dataset in config.data directly
-        const datasets = lineChart.config.data;
-        const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-        if (datasetIndex >= 0) {
-          datasets[datasetIndex].areaOpacity = parseFloat(e.target.value);
-          // Only update if area is enabled
-          if (datasets[datasetIndex].area) {
-            lineChart.update();
-          }
-        }
-      }
-    });
-    
-    areaControls.appendChild(areaCheckbox);
-    areaControls.appendChild(areaLabel);
-    areaControls.appendChild(opacityLabel);
-    areaControls.appendChild(opacityInput);
-    areaControls.appendChild(opacityValue);
-    
-    item.appendChild(areaControls);
-  }
-  
-  // Create actions
-  const actionsGroup = document.createElement('div');
-  actionsGroup.className = 'dataset-actions';
-  
-  const hideButton = document.createElement('button');
-  hideButton.className = 'btn-sm';
-  hideButton.textContent = 'Hide';
-  hideButton.dataset.visible = 'true';
-  
-  hideButton.addEventListener('click', (e) => {
-    const isVisible = e.target.dataset.visible === 'true';
-    
-    // Toggle visibility
-    const newVisibility = !isVisible;
-    e.target.dataset.visible = newVisibility ? 'true' : 'false';
-    e.target.textContent = newVisibility ? 'Hide' : 'Show';
-    
-    if (chartType === 'line' && lineChart) {
-      // For line chart, we'll just keep the data but not render it
-      // This is a simplified approach - a real implementation would handle this better
-      const datasetIndex = lineChart.config.data.findIndex(d => d.id === dataset.id);
-      if (datasetIndex >= 0) {
-        // Store original data and use empty data for hiding
-        if (newVisibility) {
-          // Show dataset again with original data
-          if (lineChart.config.data[datasetIndex]._originalData) {
-            lineChart.config.data[datasetIndex].data = lineChart.config.data[datasetIndex]._originalData;
-            delete lineChart.config.data[datasetIndex]._originalData;
-          }
-        } else {
-          // Hide dataset by storing original data and setting empty data
-          lineChart.config.data[datasetIndex]._originalData = lineChart.config.data[datasetIndex].data;
-          lineChart.config.data[datasetIndex].data = [];
-        }
-        lineChart.update();
-      }
-    } else if (chartType === 'bar' && barChart) {
-      // Similar approach for bar chart
-      const datasetIndex = barChart.config.data.findIndex(d => d.id === dataset.id);
-      if (datasetIndex >= 0) {
-        if (newVisibility) {
-          if (barChart.config.data[datasetIndex]._originalData) {
-            barChart.config.data[datasetIndex].data = barChart.config.data[datasetIndex]._originalData;
-            delete barChart.config.data[datasetIndex]._originalData;
-          }
-        } else {
-          barChart.config.data[datasetIndex]._originalData = barChart.config.data[datasetIndex].data;
-          barChart.config.data[datasetIndex].data = [];
-        }
-        barChart.update();
-      }
-    }
-  });
-  
-  // Create remove button for additional datasets (don't allow removing the first one)
-  if (index > 0) {
-    const removeButton = document.createElement('button');
-    removeButton.className = 'btn-sm';
-    removeButton.textContent = 'Remove';
-    removeButton.style.marginLeft = '5px';
-    
-    removeButton.addEventListener('click', () => {
-      // Remove the dataset from the chart
-      if (chartType === 'line' && lineChart) {
-        const datasets = lineChart.config.data;
-        const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-        if (datasetIndex >= 0) {
-          datasets.splice(datasetIndex, 1);
-          lineChart.update();
-          // Also remove from UI
-          container.removeChild(item);
-          
-          // Update study dataset options
-          updateStudyDatasetOptions();
-        }
-      } else if (chartType === 'bar' && barChart) {
-        const datasets = barChart.config.data;
-        const datasetIndex = datasets.findIndex(d => d.id === dataset.id);
-        if (datasetIndex >= 0) {
-          datasets.splice(datasetIndex, 1);
-          barChart.update();
-          // Also remove from UI
-          container.removeChild(item);
-          
-          // Update study dataset options
-          updateStudyDatasetOptions();
-        }
-      }
-    });
-    
-    actionsGroup.appendChild(removeButton);
-  }
-  
-  actionsGroup.appendChild(hideButton);
-  
-  // Put it all together
-  item.appendChild(nameGroup);
-  item.appendChild(colorGroup);
-  item.appendChild(actionsGroup);
-  
-  // Add to container
-  container.appendChild(item);
-}
-
-// Function to update dataset manager UI based on chart data
-function updateDatasetManager(chartType) {
-  // Get the target chart and container
-  let chart, container;
-  
-  if (chartType === 'line') {
-    chart = lineChart;
-    container = document.getElementById('line-datasets');
-  } else if (chartType === 'bar') {
-    chart = barChart;
-    container = document.getElementById('bar-datasets');
-  }
-  
-  if (!chart || !container) return;
-  
-  // Clear existing items
-  container.innerHTML = '';
-  
-  // Add items for each dataset
-  chart.config.data.forEach((dataset, index) => {
-    createDatasetItem(container, dataset, index, chartType);
-  });
-  
-  // Update study dataset select option
-  const studyDatasetSelect = document.getElementById(`${chartType}-study-dataset`);
-  if (studyDatasetSelect) {
-    studyDatasetSelect.innerHTML = '';
-    chart.config.data.forEach(dataset => {
-      const option = document.createElement('option');
-      option.value = dataset.id;
-      option.textContent = dataset.name;
-      studyDatasetSelect.appendChild(option);
-    });
-  }
-}
-
-// Function to generate a randomized dataset based on a source dataset
-function createRandomizedDataset(sourceDataset, index) {
-  // Create a new array to avoid modifying original data
-  const newData = sourceDataset.data.map(point => {
-    // Clone the point to avoid modifying original
-    const newPoint = {...point};
-    
-    // Add random variation (±10% of original value)
-    const randomFactor = 0.9 + Math.random() * 0.2; // Between 0.9 and 1.1
-    
-    // Handle different data formats
-    if (point.price !== undefined) {
-      newPoint.price = point.price * randomFactor;
-    }
-    if (point.y !== undefined) {
-      newPoint.y = point.y * randomFactor;
-    }
-    
-    return newPoint;
-  });
-  
-  // Define colors for datasets
-  const colors = [
-    '#1468a8', // Blue - already used by first dataset
-    '#34A853', // Green
-    '#FBBC05', // Yellow
-    '#EA4335', // Red
-    '#9C27B0', // Purple
-    '#00ACC1', // Cyan
-    '#FF9800', // Orange
-    '#607D8B'  // Blue Grey
+  // Define recession periods for realistic data simulation
+  const recessionPeriods = [
+    { start: new Date('2020-02-01'), end: new Date('2020-04-01') }, // COVID recession
+    { start: new Date('2007-12-01'), end: new Date('2009-06-01') }, // Great Recession
+    { start: new Date('2001-03-01'), end: new Date('2001-11-01') }  // Dot-com recession
   ];
   
-  // Return the new dataset
-  return {
-    id: `dataset-${index + 1}`,
-    name: `Dataset ${index + 1}`,
-    color: colors[index % colors.length],
-    width: 2,
-    area: false, // Default to no area for new datasets
-    areaOpacity: 0.2, // Default opacity
-    data: newData
-  };
-}
-
-// Helper function to format datasets for preview
-function formatDatasetPreview(data, maxItems = 3) {
-  if (!data || !data.length) return 'No data available';
-  
-  const preview = data.slice(0, maxItems).map(item => {
-    const date = new Date(item.x).toLocaleDateString();
-    const value = typeof item.y === 'number' ? item.y.toLocaleString() : item.y;
-    return `${date}: ${value}`;
-  }).join('\n');
-  
-  return preview + (data.length > maxItems ? `\n... and ${data.length - maxItems} more items` : '');
-}
-
-// Setup dataset selector functionality
-function setupDatasetSelector(chartType) {
-  const sourceSelect = document.getElementById(`${chartType}-dataset-source`);
-  const randomizeCheckbox = document.getElementById(`${chartType}-randomize`);
-  const previewDiv = document.getElementById(`${chartType}-dataset-preview`);
-  
-  if (!sourceSelect || !previewDiv) return;
-  
-  // Update preview when source changes
-  sourceSelect.addEventListener('change', () => {
-    const selectedDataset = availableDatasets[sourceSelect.value];
-    previewDiv.textContent = formatDatasetPreview(selectedDataset);
-  });
-  
-  // Initialize preview
-  const initialDataset = availableDatasets[sourceSelect.value];
-  previewDiv.textContent = formatDatasetPreview(initialDataset);
-}
-
-// =============================================================================
-// STUDIES/TECHNICAL INDICATORS IMPLEMENTATION
-// =============================================================================
-
-/**
- * Set up studies functionality for both line and bar charts
- */
-function setupStudies() {
-  console.log('Setting up studies functionality');
-  
-  // Set up for line chart
-  setupStudiesForChart('line', lineChart);
-  
-  // Set up for bar chart  
-  setupStudiesForChart('bar', barChart);
-}
-
-/**
- * Set up studies for a specific chart
- * @param {string} chartType - 'line' or 'bar'
- * @param {Chart} chart - Chart instance
- */
-function setupStudiesForChart(chartType, chart) {
-  if (!chart) return;
-  
-  const addButton = document.querySelector(`#${chartType}-section .accordion-content .control-row .control-group:last-child button`);
-  const studyTypeSelect = document.getElementById(`${chartType}-study-type`);
-  const studyPeriodInput = document.getElementById(`${chartType}-study-period`);
-  const studyDatasetSelect = document.getElementById(`${chartType}-study-dataset`);
-  const studyColorInput = document.getElementById(`${chartType}-study-color`);
-  const activeStudiesContainer = document.querySelector(`#${chartType}-section .accordion-content > div:last-child`);
-  
-  if (!addButton) {
-    console.warn(`Add study button not found for ${chartType} chart`);
-    return;
-  }
-  
-  if (!studyTypeSelect || !studyPeriodInput || !studyDatasetSelect || !studyColorInput) {
-    console.warn(`Some study form elements not found for ${chartType} chart`);
-    return;
-  }
-  
-  // Add event listener for "Add Study" button
-  addButton.addEventListener('click', () => {
-    try {
-      const studyType = studyTypeSelect.value;
-      const period = parseInt(studyPeriodInput.value, 10);
-      const datasetId = studyDatasetSelect.value;
-      const color = studyColorInput.value;
-      
-      // Validation
-      if (!studyType) {
-        alert('Please select a study type');
-        return;
-      }
-      
-      if (!period || period < 1 || period > 200) {
-        alert('Please enter a valid period (1-200)');
-        return;
-      }
-      
-      if (!datasetId) {
-        alert('Please select a dataset to apply the study to');
-        return;
-      }
-      
-      // Create study parameters based on data structure
-      let studyParams = {
-        period: period
-      };
-      
-      // Determine field names based on chart type and data structure
-      const targetDataset = chart.config.data.find(d => d.id === datasetId);
-      if (targetDataset && targetDataset.data && targetDataset.data.length > 0) {
-        const samplePoint = targetDataset.data[0];
-        
-        // For line charts, use 'date' and 'price' if available, otherwise 'x' and 'y'
-        if (chartType === 'line') {
-          studyParams.xField = samplePoint.date ? 'date' : 'x';
-          studyParams.yField = samplePoint.price ? 'price' : 'y';
-        } else {
-          // For bar charts, always use 'x' and 'y' as defined in the chart options
-          studyParams.xField = chart.options.xField || 'x';
-          studyParams.yField = chart.options.yField || 'y';
-        }
-      } else {
-        // Fallback defaults
-        studyParams.xField = 'x';
-        studyParams.yField = 'y';
-      }
-      
-      // Add additional parameters for specific study types
-      if (studyType === 'macd') {
-        studyParams.fastPeriod = 12;
-        studyParams.slowPeriod = 26;
-        studyParams.signalPeriod = 9;
-      } else if (studyType === 'bollinger') {
-        studyParams.deviations = 2;
-      }
-      
-      // Create study configuration
-      const studyConfig = {
-        id: `study-${studyType}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        type: studyType,
-        name: getStudyDisplayName(studyType, studyParams),
-        params: studyParams,
-        color: color,
-        width: chartType === 'bar' ? (chart.options.studyLineWidth || 2) : 2,
-        datasetId: datasetId
-      };
-      
-      console.log('Adding study:', studyConfig);
-      
-      // Add study to chart
-      chart.addStudy(datasetId, studyConfig);
-      
-      // Update active studies UI
-      updateActiveStudiesUI(chartType, chart);
-      
-      // Reset form
-      studyPeriodInput.value = '14';
-      studyColorInput.value = '#FBBC05';
-      
-    } catch (error) {
-      console.error('Error adding study:', error);
-      alert('Error adding study: ' + error.message);
-    }
-  });
-  
-  // Initial setup of active studies UI
-  updateActiveStudiesUI(chartType, chart);
-}
-
-/**
- * Get display name for study
- * @param {string} type - Study type
- * @param {Object} params - Study parameters
- * @returns {string} Display name
- */
-function getStudyDisplayName(type, params) {
-  switch (type) {
-    case 'sma':
-      return `SMA(${params.period})`;
-    case 'ema':
-      return `EMA(${params.period})`;
-    case 'rsi':
-      return `RSI(${params.period})`;
-    case 'macd':
-      return `MACD(${params.fastPeriod || 12},${params.slowPeriod || 26},${params.signalPeriod || 9})`;
-    case 'bollinger':
-      return `Bollinger(${params.period},${params.deviations || 2})`;
-    default:
-      return type.toUpperCase();
-  }
-}
-
-/**
- * Update the active studies UI display
- * @param {string} chartType - 'line' or 'bar'
- * @param {Chart} chart - Chart instance
- */
-function updateActiveStudiesUI(chartType, chart) {
-  const activeStudiesContainer = document.querySelector(`#${chartType}-section .accordion-content > div:last-child`);
-  
-  if (!activeStudiesContainer) return;
-  
-  // Get active studies from chart options
-  const studies = chart.options.studies || [];
-  
-  if (studies.length === 0) {
-    activeStudiesContainer.innerHTML = '<strong>Active Studies:</strong><div>No studies added</div>';
-    return;
-  }
-  
-  // Create studies list
-  let studiesHTML = '<strong>Active Studies:</strong>';
-  studies.forEach(study => {
-    studiesHTML += `
-      <div class="study-item" style="display: flex; align-items: center; gap: 10px; margin: 5px 0; padding: 5px; background: #f5f5f5; border-radius: 4px;">
-        <span style="color: ${study.color}; font-weight: bold;">●</span>
-        <span>${study.name}</span>
-        <button class="btn-sm remove-study" data-chart="${chartType}" data-study-id="${study.id}" data-dataset-id="${study.datasetId}" style="margin-left: auto; background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">Remove</button>
-      </div>
-    `;
-  });
-  
-  activeStudiesContainer.innerHTML = studiesHTML;
-  
-  // Add event listeners for remove buttons
-  activeStudiesContainer.querySelectorAll('.remove-study').forEach(button => {
-    button.addEventListener('click', (e) => {
-      const studyId = e.target.dataset.studyId;
-      const datasetId = e.target.dataset.datasetId;
-      const chartType = e.target.dataset.chart;
-      const chart = chartType === 'line' ? lineChart : barChart;
-      
-      if (chart) {
-        chart.removeStudy(datasetId, studyId);
-        updateActiveStudiesUI(chartType, chart);
-      }
-    });
-  });
-}
-
-/**
- * Update dataset options in study selectors when datasets change
- */
-function updateStudyDatasetOptions() {
-  // Update line chart study dataset options
-  if (lineChart) {
-    const lineSelect = document.getElementById('line-study-dataset');
-    if (lineSelect) {
-      lineSelect.innerHTML = '';
-      lineChart.config.data.forEach(dataset => {
-        const option = document.createElement('option');
-        option.value = dataset.id;
-        option.textContent = dataset.name;
-        lineSelect.appendChild(option);
-      });
-    }
-  }
-  
-  // Update bar chart study dataset options
-  if (barChart) {
-    const barSelect = document.getElementById('bar-study-dataset');
-    if (barSelect) {
-      barSelect.innerHTML = '';
-      barChart.config.data.forEach(dataset => {
-        const option = document.createElement('option');
-        option.value = dataset.id;
-        option.textContent = dataset.name;
-        barSelect.appendChild(option);
-      });
-    }
-  }
-}
-
-// Initialize Line Chart
-async function initLineChart() {
-  log('Initializing Line Chart');
-  
-  try {
-    // Load all datasets
-    availableDatasets = await loadAllDatasets();
+  for (let i = 0; i < count; i++) {
+    const date = new Date(startDate);
     
-    // Use timeseries data for initial chart
-    const timeSeriesData = availableDatasets.timeseries;
-    
-    // Format data for the line chart
-    const formattedData = timeSeriesData.map(item => ({
-      date: new Date(item.x),
-      price: item.y
-    }));
-    
-    // Create a single dataset with area ENABLED by default for testing
-    const data = [
-      {
-        id: 'dataset-1',
-        name: 'Time Series Data',
-        color: '#1468a8', 
-        width: 2,
-        area: true, // Area ENABLED by default for testing
-        areaOpacity: 0.3, // Increased opacity for visibility
-        data: formattedData
-      }
-    ];
-    
-    // Get initial values from inputs
-    const xAxisName = document.getElementById('line-x-name').value;
-    const yAxisName = document.getElementById('line-y-name').value;
-    
-    // Create the line chart
-    lineChart = new LineChart({
-      container: '#line-chart',
-      data: data,
-      options: {
-        title: 'Time Series Data',
-        xField: 'date',
-        yField: 'price',
-        xType: 'time',
-        yType: 'number',
-        xAxisName: xAxisName,
-        yAxisName: yAxisName,
-        curve: 'monotone',
-        showPoints: false, // Ensuring points are off as per previous request
-        area: false,
-        showZeroLine: false,
-        showLegend: true, // Enable legend by default
-        gradient: false, // Gradient disabled by default
-        recessions: recessions,
-        grid: { // Added to enable and configure the grid
-          show: true
-          // You can override other grid defaults here if needed, e.g.:
-          // color: '#d3d3d3',
-          // dashArray: '5,5'
-        },
-        studies: [] // Initialize empty studies array
-      }
-    });
-    
-    window.debugLineChart = lineChart;
-    
-    // Render the chart (this will also render the legend)
-    lineChart.render();
-    
-    log('Line chart rendered successfully');
-    
-    // Update dataset manager UI
-    updateDatasetManager('line');
-    
-    // Setup event listeners for controls
-    setupLineChartControls();
-    
-    // Setup dataset selector
-    setupDatasetSelector('line');
-  } catch (error) {
-    log('Error initializing line chart:', error);
-    handleError('line-chart', error);
-  }
-}
-
-// Add event listeners for Line Chart Controls
-function setupLineChartControls() {
-  if (!lineChart) return;
-  
-  // X axis name
-  const xNameInput = document.getElementById('line-x-name');
-  if (xNameInput) {
-    xNameInput.addEventListener('change', (e) => {
-      lineChart.setXAxisName(e.target.value);
-    });
-  }
-  
-  // Y axis name
-  const yNameInput = document.getElementById('line-y-name');
-  if (yNameInput) {
-    yNameInput.addEventListener('change', (e) => {
-      lineChart.setYAxisName(e.target.value);
-    });
-  }
-  
-  // Toggle logarithmic scale
-  const logToggle = document.getElementById('line-toggle-log');
-  if (logToggle) {
-    logToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isLogarithmic = e.target.classList.contains('active');
-      lineChart.toggleLogarithmic(isLogarithmic);
-    });
-  }
-  
-  // Toggle zero line
-  const zeroToggle = document.getElementById('line-toggle-zero');
-  if (zeroToggle) {
-    zeroToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showZeroLine = e.target.classList.contains('active');
-      lineChart.toggleZeroLine(showZeroLine);
-    });
-  }
-  
-  // Toggle recession lines
-  const recessionToggle = document.getElementById('line-toggle-recession');
-  if (recessionToggle) {
-    recessionToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showRecessionLines = e.target.classList.contains('active');
-      lineChart.toggleRecessionLines(showRecessionLines);
-    });
-  }
-  
-  // Toggle panel view
-  const panelToggle = document.getElementById('line-toggle-panel');
-  if (panelToggle) {
-    panelToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isPanelView = e.target.classList.contains('active');
-      console.log('Line panel view toggle clicked:', isPanelView);
-      lineChart.togglePanelView(isPanelView);
-    });
-  }
-  
-  // Toggle legend
-  const legendToggle = document.getElementById('line-toggle-legend');
-  if (legendToggle) {
-    legendToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showLegend = e.target.classList.contains('active');
-      
-      // Find and toggle the legend element directly
-      if (lineChart && lineChart.state.svg) {
-        const legend = lineChart.state.svg.querySelector('.visioncharts-legend');
-        if (legend) {
-          // If legend exists, toggle its visibility
-          legend.style.display = showLegend ? 'block' : 'none';
-        } else if (showLegend) {
-          // If legend doesn't exist but we want to show it, re-render the chart
-          // This ensures the legend will be properly created and positioned
-          lineChart.options.showLegend = true;
-          lineChart.render();
-        }
-      }
-    });
-  }
-  
-  // Curve type
-  const curveSelect = document.getElementById('line-curve');
-  if (curveSelect) {
-    curveSelect.addEventListener('change', (e) => {
-      if (!lineChart) return;
-      
-      // Update the curve option
-      lineChart.options.curve = e.target.value;
-      
-      // Update the chart
-      lineChart.update();
-    });
-  }
-  
-  // Add dataset button
-  const addDatasetBtn = document.getElementById('line-add-dataset');
-  if (addDatasetBtn) {
-    addDatasetBtn.addEventListener('click', () => {
-      if (!lineChart) return;
-      
-      const sourceSelect = document.getElementById('line-dataset-source');
-      const randomizeCheckbox = document.getElementById('line-randomize');
-      
-      const selectedDatasetKey = sourceSelect.value;
-      const selectedDataset = availableDatasets[selectedDatasetKey];
-      const applyRandomization = randomizeCheckbox.checked;
-      
-      if (!selectedDataset) return;
-      
-      // Transform data for line chart
-      const transformedData = selectedDataset.map(item => ({
-        date: new Date(item.x),
-        price: item.y
-      }));
-      
-      // Create new dataset
-      const newDataset = createRandomizedDataset({data: transformedData}, lineChart.config.data.length);
-      
-      // Override randomization if not wanted
-      if (!applyRandomization) {
-        newDataset.data = transformedData;
-      }
-      
-      // Set appropriate name based on source
-      const sourceNames = {
-        'timeseries': 'Time Series',
-        'daily-returns': 'Daily Returns',
-        'monthly': 'Monthly Data'
-      };
-      newDataset.name = `${sourceNames[selectedDatasetKey]} ${lineChart.config.data.length + 1}`;
-      
-      // Add to chart
-      lineChart.config.data.push(newDataset);
-      lineChart.update();
-      
-      // Update UI
-      updateDatasetManager('line');
-      updateStudyDatasetOptions();
-    });
-
-    const endingLabelsToggle = document.getElementById('line-toggle-endinglabels');
-    if (endingLabelsToggle) {
-      endingLabelsToggle.addEventListener('click', (e) => {
-        e.target.classList.toggle('active');
-        const showEndingLabels = e.target.classList.contains('active');
-        console.log('Line ending labels toggle clicked:', showEndingLabels);
-        lineChart.toggleEndingLabels(showEndingLabels);
-      });
-    }
-  }
-  
-  // FIXED: Setup statistical controls only once for line chart
-  setupLineStatisticalControls();
-}
-
-// Initialize Bar Chart with time series data and studies support
-async function initBarChart() {
-  log('Initializing Bar Chart with Time Series Data and Studies Support');
-  try {
-    // Load all datasets if not already loaded
-    if (!availableDatasets.timeseries) {
-      availableDatasets = await loadAllDatasets();
+    if (type === 'monthly') {
+      date.setMonth(date.getMonth() + i);
+    } else {
+      date.setDate(date.getDate() + i);
     }
     
-    const timeSeriesData = availableDatasets.timeseries;
+    // Check if current date is in a recession period
+    const isInRecession = recessionPeriods.some(recession => 
+      date >= recession.start && date <= recession.end
+    );
     
-    // Transform data: 'x' should be Date objects for xType: 'time'
-    const transformedData = timeSeriesData.map(item => ({
-      x: new Date(item.x), // Ensure 'x' is a Date object
-      y: item.y
-    }));
+    if (type === 'daily-returns') {
+      // More volatile during recessions
+      const volatilityMultiplier = isInRecession ? 2.0 : 1.0;
+      value = (Math.random() - 0.5) * 0.1 * volatilityMultiplier; // Daily returns
+    } else {
+      // During recessions, add more downward pressure
+      const recessionEffect = isInRecession ? -15 : 0;
+      const baseChange = (Math.random() - 0.45) * 20;
+      value += baseChange + recessionEffect * (Math.random() * 0.5);
+      
+      // Prevent value from going below a reasonable minimum
+      value = Math.max(value, 10);
+    }
     
-    const data = [
-      {
-        id: 'dataset-1',
-        name: 'Time Series Data',
-        color: '#1468a8',
-        data: transformedData
-      }
-    ];
-    
-    const xAxisName = document.getElementById('bar-x-name').value;
-    const yAxisName = document.getElementById('bar-y-name').value;
-    
-    barChart = new BarChart({
-      container: '#bar-chart',
-      data: data,
-      options: {
-        title: 'Bar Chart with Studies Support',
-        xField: 'x',         // Point to the 'x' field which contains Date objects
-        yField: 'y',
-        xType: 'time',       // Explicitly set to 'time'
-        yType: 'number',
-        xAxisName: xAxisName,
-        yAxisName: yAxisName,
-        showValues: false,
-        showZeroLine: true,
-        showLegend: true,
-        isLogarithmic: false,
-        recessions: recessions,
-        dateFormat: { year: 'numeric', month: 'short', day: 'numeric' },
-        grid: {
-          show: true
-        },
-        // Studies-specific options for BarChart
-        studiesAsLines: true,    // Render studies as lines overlaid on bars
-        studyLineWidth: 2,       // Default line width for studies
-        studyPointRadius: 0,     // No points for studies by default
-        studies: []              // Initialize empty studies array
-      }
-    });
-    
-    barChart.render();
-    log('Bar chart with studies support rendered successfully');
-    updateDatasetManager('bar');
-    setupBarChartControls();
-    setupDatasetSelector('bar');
-  } catch (error) {
-    log('Error initializing bar chart:', error);
-    handleError('bar-chart', error);
+    data.push({ x: date.getTime(), y: value });
   }
+  
+  console.log(`Generated ${type} data from ${startDate.toLocaleDateString()} to ${new Date(startDate.getTime() + (count * (type === 'monthly' ? 30 : 1) * 24 * 60 * 60 * 1000)).toLocaleDateString()}`);
+  
+  return data;
 }
 
-// FIXED: Line chart statistical controls - only set up once
-function setupLineStatisticalControls() {
-  if (!lineChart || eventListenerState.lineStatisticalListenersAttached) {
-    console.log('Line statistical controls already attached or chart not ready');
-    return;
-  }
-  
-  console.log('Setting up line statistical controls');
-  
-  // Toggle average line
-  const avgToggle = document.getElementById('line-toggle-average');
-  if (avgToggle) {
-    avgToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showAverageLine = e.target.classList.contains('active');
-      console.log('Line average toggle clicked:', showAverageLine);
-      lineChart.toggleAverageLine(showAverageLine);
-    });
-  }
-  
-  // Toggle median line
-  const medianToggle = document.getElementById('line-toggle-median');
-  if (medianToggle) {
-    medianToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showMedianLine = e.target.classList.contains('active');
-      console.log('Line median toggle clicked:', showMedianLine);
-      lineChart.toggleMedianLine(showMedianLine);
-    });
-  }
-  
-  eventListenerState.lineStatisticalListenersAttached = true;
-  console.log('Line statistical controls setup complete');
-}
-
-// FIXED: Bar chart statistical controls - only set up once
-function setupBarStatisticalControls() {
-  if (!barChart || eventListenerState.barStatisticalListenersAttached) {
-    console.log('Bar statistical controls already attached or chart not ready');
-    return;
-  }
-  
-  console.log('Setting up bar statistical controls');
-  
-  // Toggle average line
-  const avgToggle = document.getElementById('bar-toggle-average');
-  if (avgToggle) {
-    // Remove any existing listeners first
-    const newAvgToggle = avgToggle.cloneNode(true);
-    avgToggle.parentNode.replaceChild(newAvgToggle, avgToggle);
-    
-    newAvgToggle.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      e.target.classList.toggle('active');
-      const showAverageLine = e.target.classList.contains('active');
-      console.log('Bar average toggle clicked:', showAverageLine, 'Chart exists:', !!barChart);
-      
-      if (barChart && typeof barChart.toggleAverageLine === 'function') {
-        try {
-          barChart.toggleAverageLine(showAverageLine);
-          console.log('Bar average line toggled successfully');
-        } catch (error) {
-          console.error('Error toggling bar average line:', error);
-        }
-      } else {
-        console.error('Bar chart or toggleAverageLine method not available');
-      }
-    });
-    console.log('Bar average toggle listener attached');
-  } else {
-    console.error('Bar average toggle button not found');
-  }
-  
-  // Toggle median line
-  const medianToggle = document.getElementById('bar-toggle-median');
-  if (medianToggle) {
-    // Remove any existing listeners first
-    const newMedianToggle = medianToggle.cloneNode(true);
-    medianToggle.parentNode.replaceChild(newMedianToggle, medianToggle);
-    
-    newMedianToggle.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      e.target.classList.toggle('active');
-      const showMedianLine = e.target.classList.contains('active');
-      console.log('Bar median toggle clicked:', showMedianLine, 'Chart exists:', !!barChart);
-      
-      if (barChart && typeof barChart.toggleMedianLine === 'function') {
-        try {
-          barChart.toggleMedianLine(showMedianLine);
-          console.log('Bar median line toggled successfully');
-        } catch (error) {
-          console.error('Error toggling bar median line:', error);
-        }
-      } else {
-        console.error('Bar chart or toggleMedianLine method not available');
-      }
-    });
-    console.log('Bar median toggle listener attached');
-  } else {
-    console.error('Bar median toggle button not found');
-  }
-  
-  eventListenerState.barStatisticalListenersAttached = true;
-  console.log('Bar statistical controls setup complete');
-}
-
-// Add event listeners for Bar Chart Controls
-function setupBarChartControls() {
-  if (!barChart) return;
-  
-  // X axis name
-  const xNameInput = document.getElementById('bar-x-name');
-  if (xNameInput) {
-    xNameInput.addEventListener('change', (e) => {
-      barChart.setXAxisName(e.target.value);
-    });
-  }
-  
-  // Y axis name
-  const yNameInput = document.getElementById('bar-y-name');
-  if (yNameInput) {
-    yNameInput.addEventListener('change', (e) => {
-      barChart.setYAxisName(e.target.value);
-    });
-  }
-  
-  // Toggle logarithmic scale
-  const logToggle = document.getElementById('bar-toggle-log');
-  if (logToggle) {
-    logToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isLogarithmic = e.target.classList.contains('active');
-      barChart.toggleLogarithmic(isLogarithmic);
-    });
-  }
-  
-  // Toggle zero line
-  const zeroToggle = document.getElementById('bar-toggle-zero');
-  if (zeroToggle) {
-    zeroToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showZeroLine = e.target.classList.contains('active');
-      barChart.toggleZeroLine(showZeroLine);
-    });
-  }
-  
-  // Toggle recession lines
-  const recessionToggle = document.getElementById('bar-toggle-recession');
-  if (recessionToggle) {
-    recessionToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showRecessionLines = e.target.classList.contains('active');
-      barChart.toggleRecessionLines(showRecessionLines);
-    });
-  }
-  
-  // Toggle panel view
-  const barPanelToggle = document.getElementById('bar-toggle-panel');
-  if (barPanelToggle) {
-    barPanelToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const isPanelView = e.target.classList.contains('active');
-      console.log('Bar panel view toggle clicked:', isPanelView);
-      barChart.togglePanelView(isPanelView);
-    });
-  }
-  
-  // Toggle legend
-  const legendToggle = document.getElementById('bar-toggle-legend');
-  if (legendToggle) {
-    legendToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showLegend = e.target.classList.contains('active');
-      
-      // Find and toggle the legend element directly
-      if (barChart && barChart.state.svg) {
-        const legend = barChart.state.svg.querySelector('.visioncharts-legend');
-        if (legend) {
-          // If legend exists, toggle its visibility
-          legend.style.display = showLegend ? 'block' : 'none';
-        } else if (showLegend) {
-          // If legend doesn't exist but we want to show it, re-render the chart
-          // This ensures the legend will be properly created and positioned
-          barChart.options.showLegend = true;
-          barChart.render();
-        }
-      }
-    });
-  }
-  
-  // Bar width control
-  const barWidthInput = document.getElementById('bar-width');
-  if (barWidthInput) {
-    barWidthInput.addEventListener('input', (e) => {
-      if (!barChart) return;
-      
-      // Update bar width option
-      barChart.options.barWidth = parseFloat(e.target.value);
-      
-      // Update the chart
-      barChart.update();
-    });
-  }
-
-  const barEndingLabelsToggle = document.getElementById('bar-toggle-endinglabels');
-  if (barEndingLabelsToggle) {
-    barEndingLabelsToggle.addEventListener('click', (e) => {
-      e.target.classList.toggle('active');
-      const showEndingLabels = e.target.classList.contains('active');
-      console.log('Bar chart ending labels toggle clicked:', showEndingLabels);
-      barChart.toggleEndingLabels(showEndingLabels);
-    });
-  }
-  
-  // Add dataset button
-  const addDatasetBtn = document.getElementById('bar-add-dataset');
-  if (addDatasetBtn) {
-    addDatasetBtn.addEventListener('click', () => {
-      if (!barChart) return;
-      
-      const sourceSelect = document.getElementById('bar-dataset-source');
-      const randomizeCheckbox = document.getElementById('bar-randomize');
-      
-      const selectedDatasetKey = sourceSelect.value;
-      const selectedDataset = availableDatasets[selectedDatasetKey];
-      const applyRandomization = randomizeCheckbox.checked;
-      
-      if (!selectedDataset) return;
-      
-      // Transform data for bar chart
-      const transformedData = selectedDataset.map(item => ({
-        x: new Date(item.x),
-        y: item.y
-      }));
-      
-      // Create new dataset
-      const newDataset = createRandomizedDataset({data: transformedData}, barChart.config.data.length);
-      
-      // Override randomization if not wanted
-      if (!applyRandomization) {
-        newDataset.data = transformedData;
-      }
-      
-      // Set appropriate name based on source
-      const sourceNames = {
-        'timeseries': 'Time Series',
-        'daily-returns': 'Daily Returns',
-        'monthly': 'Monthly Data'
-      };
-      newDataset.name = `${sourceNames[selectedDatasetKey]} ${barChart.config.data.length + 1}`;
-      
-      // Add to chart
-      barChart.config.data.push(newDataset);
-      barChart.update();
-      
-      // Update UI
-      updateDatasetManager('bar');
-      updateStudyDatasetOptions();
-    });
-  }
-  
-  // FIXED: Setup statistical controls only once for bar chart
-  setupBarStatisticalControls();
-}
-
-// Tab functionality - FIXED to prevent duplicate listeners
+// Setup tabs
 function setupTabs() {
   const tabs = document.querySelectorAll('.tab');
   const sections = document.querySelectorAll('.chart-section');
   
   tabs.forEach(tab => {
     tab.addEventListener('click', function() {
-      const tabName = this.getAttribute('data-tab');
-      log(`Tab clicked: ${tabName}`);
+      const tabName = this.dataset.tab;
       
-      // Update active tab
+      // Update tab appearance
       tabs.forEach(t => t.classList.remove('active'));
       this.classList.add('active');
       
-      // Show corresponding section, hide others
+      // Show/hide sections
       sections.forEach(section => {
         if (section.id === `${tabName}-section`) {
           section.style.display = 'block';
           
-          // Initialize chart if not already done
+          // Initialize chart if needed
           if (tabName === 'line' && !lineChart) {
-            initLineChart().then(() => {
-              setupStudies();
-              updateStudyDatasetOptions();
-            });
+            initLineChart();
           } else if (tabName === 'bar' && !barChart) {
-            initBarChart().then(() => {
-              setupStudies();
-              updateStudyDatasetOptions();
-            });
+            initBarChart();
           }
-          // REMOVED: Duplicate setupStudies() and setupXXXStatisticalControls() calls
-          // The controls are already set up in the init functions
         } else {
           section.style.display = 'none';
         }
@@ -1381,43 +1096,303 @@ function setupTabs() {
   });
 }
 
-// Handle accordion toggling
-function setupAccordions() {
-  const accordionHeaders = document.querySelectorAll('.accordion-header');
-  
-  accordionHeaders.forEach(header => {
-    header.addEventListener('click', function() {
-      const content = this.nextElementSibling;
-      const isActive = content.classList.contains('active');
-      
-      // Toggle active class
-      if (isActive) {
-        content.classList.remove('active');
-        this.querySelector('span').textContent = '+';
-      } else {
-        content.classList.add('active');
-        this.querySelector('span').textContent = '-';
-      }
-    });
+// Error handler
+function handleError(containerId, error) {
+  const container = document.getElementById(containerId);
+  if (container) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+    container.innerHTML = '';
+    container.appendChild(errorDiv);
+  }
+  console.error(`Error in ${containerId}:`, error);
+}
+
+// Wait for DOM ready
+function waitForDOMReady() {
+  return new Promise((resolve) => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', resolve);
+    } else {
+      resolve();
+    }
   });
 }
 
-// Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-  log('DOM fully loaded');
+// ========== STUDY MANAGEMENT FUNCTIONALITY ==========
+
+// Initialize study functionality
+function initStudyControls() {
+  console.log('Initializing study controls...');
   
-  // Set up tab switching
-  setupTabs();
+  // Line chart study controls
+  initLineStudyControls();
   
-  // Set up accordions
-  setupAccordions();
+  // Bar chart study controls  
+  initBarStudyControls();
   
-  // Initialize line chart by default (since it's the active tab)
-  initLineChart().then(() => {
-    // Set up studies after line chart is initialized
-    setupStudies();
-    updateStudyDatasetOptions();
+  // Initialize accordion functionality for studies sections
+  initStudyAccordions();
+}
+
+// Initialize line chart study controls
+function initLineStudyControls() {
+  const addStudyButton = document.querySelector('#line-section .accordion-content button');
+  if (addStudyButton) {
+    addStudyButton.addEventListener('click', () => addStudyToChart('line'));
+  }
+  
+  console.log('Line study controls initialized');
+}
+
+// Initialize bar chart study controls
+function initBarStudyControls() {
+  const addStudyButton = document.querySelector('#bar-section .accordion-content button');
+  if (addStudyButton) {
+    addStudyButton.addEventListener('click', () => addStudyToChart('bar'));
+  }
+  
+  console.log('Bar study controls initialized');
+}
+
+// Add study to chart
+function addStudyToChart(chartType) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (!chart) {
+      console.error(`${chartType} chart not initialized`);
+      return;
+    }
+
+    // Get study parameters from UI
+    const studyType = document.getElementById(`${chartType}-study-type`).value;
+    const period = parseInt(document.getElementById(`${chartType}-study-period`).value);
+    const datasetSelect = document.getElementById(`${chartType}-study-dataset`);
+    const datasetId = datasetSelect.value;
+    const color = document.getElementById(`${chartType}-study-color`).value;
+
+    // Validate inputs
+    if (!studyType || !period || period < 1) {
+      alert('Please provide valid study parameters');
+      return;
+    }
+
+    // Check if study type is supported (core library supports sma, ema, bollinger)
+    const supportedTypes = ['sma', 'ema', 'bollinger'];
+    if (!supportedTypes.includes(studyType)) {
+      alert(`Study type "${studyType}" is not yet implemented in the core library. Currently supported: ${supportedTypes.join(', ')}`);
+      return;
+    }
+
+    // Generate study name
+    const counter = chartType === 'line' ? lineStudyCounter++ : barStudyCounter++;
+    const studyName = `${studyType.toUpperCase()} (${period})`;
+
+    // Create study configuration
+    const studyConfig = {
+      name: studyName,
+      datasetId: datasetId,
+      parameters: { period: period },
+      color: color,
+      strokeWidth: 2,
+      visible: true
+    };
+
+    // Add study to chart using the core library method
+    const studyId = chart.addStudy(studyType, studyConfig);
+    
+    // Add study to UI
+    addStudyToUI(chartType, studyId, studyName, studyType, period, color);
+    
+    console.log(`Added ${studyType} study to ${chartType} chart: ${studyName}`);
+    
+  } catch (error) {
+    console.error('Error adding study:', error);
+    alert(`Error adding study: ${error.message}`);
+  }
+}
+
+// Add study item to UI
+function addStudyToUI(chartType, studyId, studyName, studyType, period, color) {
+  const activeStudiesContainer = document.querySelector(`#${chartType}-section .accordion-content > div:last-child`);
+  if (!activeStudiesContainer) return;
+
+  // Remove "No studies added" text if it exists
+  if (activeStudiesContainer.textContent.includes('No studies added')) {
+    activeStudiesContainer.innerHTML = '';
+  }
+
+  // Create study item
+  const studyItem = document.createElement('div');
+  studyItem.className = 'study-item';
+  studyItem.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 4px 0;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+  `;
+  studyItem.setAttribute('data-study-id', studyId);
+
+  studyItem.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 12px; height: 12px; background-color: ${color}; border-radius: 2px;"></div>
+      <span style="font-weight: 500;">${studyName}</span>
+      <span style="color: #6c757d; font-size: 12px;">${studyType}</span>
+    </div>
+    <div style="display: flex; gap: 4px;">
+      <button class="study-toggle-btn" style="padding: 2px 6px; font-size: 11px; background-color: #198754; color: white; border: none; border-radius: 3px; cursor: pointer;">
+        Hide
+      </button>
+      <button class="study-remove-btn" style="padding: 2px 6px; font-size: 11px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+        ✕
+      </button>
+    </div>
+  `;
+
+  // Add event listeners
+  const toggleBtn = studyItem.querySelector('.study-toggle-btn');
+  const removeBtn = studyItem.querySelector('.study-remove-btn');
+  
+  let isVisible = true;
+  toggleBtn.addEventListener('click', () => {
+    isVisible = !isVisible;
+    toggleStudyVisibility(chartType, studyId, isVisible);
+    toggleBtn.textContent = isVisible ? 'Hide' : 'Show';
+    toggleBtn.style.backgroundColor = isVisible ? '#198754' : '#6c757d';
+  });
+
+  removeBtn.addEventListener('click', () => {
+    removeStudyFromChart(chartType, studyId, studyItem);
+  });
+
+  activeStudiesContainer.appendChild(studyItem);
+}
+
+// Toggle study visibility
+function toggleStudyVisibility(chartType, studyId, isVisible) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (chart && chart.updateStudy) {
+      chart.updateStudy(studyId, { visible: isVisible });
+      console.log(`${isVisible ? 'Showed' : 'Hidden'} study: ${studyId}`);
+    }
+  } catch (error) {
+    console.error('Error toggling study visibility:', error);
+  }
+}
+
+// Remove study from chart
+function removeStudyFromChart(chartType, studyId, studyItem) {
+  try {
+    const chart = chartType === 'line' ? lineChart : barChart;
+    if (chart && chart.removeStudy) {
+      chart.removeStudy(studyId);
+      studyItem.remove();
+      
+      // Check if no studies remain
+      const activeStudiesContainer = studyItem.parentNode;
+      if (activeStudiesContainer && activeStudiesContainer.children.length === 0) {
+        activeStudiesContainer.innerHTML = '<div>No studies added</div>';
+      }
+      
+      console.log(`Removed study: ${studyId}`);
+    }
+  } catch (error) {
+    console.error('Error removing study:', error);
+  }
+}
+
+// Update dataset dropdowns when datasets are added/removed
+function updateStudyDatasetDropdowns() {
+  updateStudyDatasetDropdown('line');
+  updateStudyDatasetDropdown('bar');
+}
+
+function updateStudyDatasetDropdown(chartType) {
+  const dropdown = document.getElementById(`${chartType}-study-dataset`);
+  if (!dropdown) return;
+
+  // Clear existing options
+  dropdown.innerHTML = '';
+  
+  // Get datasets from chart
+  const chart = chartType === 'line' ? lineChart : barChart;
+  if (!chart || !chart.config || !chart.config.data) {
+    dropdown.innerHTML = '<option value="">No datasets available</option>';
+    return;
+  }
+
+  // Add options for each dataset
+  chart.config.data.forEach((dataset, index) => {
+    const option = document.createElement('option');
+    option.value = dataset.id;
+    option.textContent = dataset.name || `Dataset ${index + 1}`;
+    dropdown.appendChild(option);
   });
   
-  log('Initialization complete');
-});
+  // Select first option by default
+  if (dropdown.children.length > 0) {
+    dropdown.selectedIndex = 0;
+  }
+}
+
+// Initialize study accordion functionality
+function initStudyAccordions() {
+  const accordionHeaders = document.querySelectorAll('.accordion-header');
+  
+  accordionHeaders.forEach(header => {
+    header.addEventListener('click', () => {
+      const content = header.nextElementSibling;
+      const span = header.querySelector('span');
+      
+      if (content.style.display === 'none' || !content.style.display) {
+        content.style.display = 'block';
+        span.style.transform = 'rotate(45deg)';
+      } else {
+        content.style.display = 'none';
+        span.style.transform = 'rotate(0deg)';
+      }
+    });
+  });
+  
+  // Initialize accordion states (closed by default)
+  accordionHeaders.forEach(header => {
+    const content = header.nextElementSibling;
+    content.style.display = 'none';
+  });
+}
+
+// ========== MAIN INITIALIZATION ==========
+
+// Initialize everything
+async function initializeCharts() {
+  try {
+    await waitForDOMReady();
+    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+    
+    setupTabs();
+    await initLineChart(); // Initialize line chart first (default tab)
+    
+    // Initialize study controls after charts are ready
+    initStudyControls();
+    
+    console.log('Chart initialization complete with working recession toggles and studies');
+    
+  } catch (error) {
+    console.error('Failed to initialize charts:', error);
+    
+    // Show error to user
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'position: fixed; top: 10px; left: 10px; background: red; color: white; padding: 10px; z-index: 9999;';
+    errorDiv.textContent = `Chart initialization failed: ${error.message}`;
+    document.body.appendChild(errorDiv);
+  }
+}
+
+// Start initialization
+initializeCharts();

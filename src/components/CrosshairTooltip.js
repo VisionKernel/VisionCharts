@@ -1,0 +1,347 @@
+/**
+ * CrosshairTooltip.js - Professional tooltip for crosshair data points
+ * Location: /src/components/CrosshairTooltip.js
+ * 
+ * Shows dataset values and timestamps when crosshair is active
+ */
+
+export class CrosshairTooltip {
+  constructor(config = {}) {
+    this.config = {
+      // Positioning
+      offsetX: 15,        // Pixels from mouse
+      offsetY: -10,       // Pixels from mouse
+      
+      // Styling
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      borderRadius: 6,
+      padding: 12,
+      fontSize: 12,
+      fontFamily: 'Arial, sans-serif',
+      textColor: '#ffffff',
+      headerColor: '#ffffff',
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+      
+      // Content formatting
+      dateFormat: 'medium', // 'short', 'medium', 'long'
+      valueDecimals: 2,
+      showValueChange: false, // Show change from previous value
+      
+      ...config
+    };
+    
+    // DOM elements
+    this.element = null;
+    this.isVisible = false;
+    this.currentData = null;
+    
+    // Create tooltip element
+    this._createTooltip();
+  }
+
+  /**
+   * Show tooltip with data points
+   */
+  show(dataPoints, mouseX, mouseY) {
+    if (!dataPoints || dataPoints.length === 0) {
+      this.hide();
+      return;
+    }
+    
+    this.currentData = dataPoints;
+    
+    // Update content
+    this._updateContent(dataPoints);
+    
+    // Position tooltip
+    this._positionTooltip(mouseX, mouseY);
+    
+    // Show tooltip with additional debug
+    this.element.style.display = 'block';
+    this.isVisible = true;
+    
+    // Force a reflow to ensure styles are applied
+    void this.element.offsetWidth;
+    
+    // Debug
+    const rect = this.element.getBoundingClientRect();
+    console.log('Tooltip positioned at:', {
+      left: this.element.style.left,
+      top: this.element.style.top,
+      actualRect: {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width, 
+        height: rect.height
+      }
+    });
+  }
+
+  /**
+   * Hide tooltip
+   */
+  hide() {
+    if (this.element) {
+      this.element.style.display = 'none';
+    }
+    this.isVisible = false;
+    this.currentData = null;
+  }
+
+  /**
+   * Update tooltip position
+   */
+  updatePosition(mouseX, mouseY) {
+    if (this.isVisible) {
+      this._positionTooltip(mouseX, mouseY);
+    }
+  }
+
+  /**
+   * Create tooltip DOM element
+   * @private
+   */
+  _createTooltip() {
+    this.element = document.createElement('div');
+    this.element.className = 'crosshair-tooltip';
+    this.element.style.cssText = `
+      position: fixed; /* Change from absolute to fixed */
+      z-index: 999999; /* Even higher z-index */
+      background: ${this.config.backgroundColor};
+      border: 1px solid ${this.config.borderColor};
+      border-radius: ${this.config.borderRadius}px;
+      padding: ${this.config.padding}px;
+      font-size: ${this.config.fontSize}px;
+      font-family: ${this.config.fontFamily};
+      color: ${this.config.textColor};
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      white-space: nowrap;
+      display: none;
+      max-width: 300px;
+      opacity: 1 !important; /* Force opacity */
+      visibility: visible !important; /* Force visibility */
+      transform: none !important; /* Prevent transform issues */
+    `;
+    
+    // Add to document body
+    document.body.appendChild(this.element);
+    
+    // Debug output to console
+    console.log('Tooltip element created and added to DOM');
+  }
+
+  /**
+   * Update tooltip content with data points
+   * @private
+   */
+  _updateContent(dataPoints) {
+    if (dataPoints.length === 0) return;
+    
+    // Get the timestamp from the first point (should be same for all in crosshair)
+    const timestamp = dataPoints[0].dataX;
+    const formattedDate = this._formatDate(timestamp);
+    
+    // Build HTML content
+    let html = `
+      <div style="
+        font-weight: bold; 
+        color: ${this.config.headerColor}; 
+        margin-bottom: 8px; 
+        padding-bottom: 6px; 
+        border-bottom: 1px solid ${this.config.borderColor};
+        font-size: ${this.config.fontSize + 1}px;
+      ">
+        ${formattedDate}
+      </div>
+    `;
+    
+    // Add dataset values
+    dataPoints.forEach((point, index) => {
+      const datasetName = point.dataset.name || point.datasetId || `Dataset ${index + 1}`;
+      const value = point.dataY;
+      const color = point.color || point.dataset.color || '#666';
+      const formattedValue = this._formatValue(value);
+      
+      html += `
+        <div style="
+          display: flex; 
+          align-items: center; 
+          margin-bottom: 4px;
+          ${index === dataPoints.length - 1 ? 'margin-bottom: 0;' : ''}
+        ">
+          <div style="
+            width: 10px; 
+            height: 10px; 
+            background-color: ${color}; 
+            border-radius: 2px; 
+            margin-right: 8px;
+            flex-shrink: 0;
+          "></div>
+          <div style="
+            display: flex; 
+            justify-content: space-between; 
+            width: 100%; 
+            min-width: 120px;
+          ">
+            <span style="margin-right: 12px; color: #ccc;">${datasetName}:</span>
+            <span style="font-weight: 500;">${formattedValue}</span>
+          </div>
+        </div>
+      `;
+    });
+    
+    this.element.innerHTML = html;
+  }
+
+  /**
+   * Position tooltip near mouse but avoid screen edges
+   * @private
+   */
+  _positionTooltip(mouseX, mouseY) {
+    if (!this.element) return;
+    
+    // Get tooltip dimensions
+    const rect = this.element.getBoundingClientRect();
+    const tooltipWidth = rect.width;
+    const tooltipHeight = rect.height;
+    
+    // Calculate initial position
+    let left = mouseX + this.config.offsetX;
+    let top = mouseY + this.config.offsetY;
+    
+    // Prevent tooltip from going off right edge
+    if (left + tooltipWidth > window.innerWidth) {
+      left = mouseX - tooltipWidth - this.config.offsetX;
+    }
+    
+    // Prevent tooltip from going off bottom edge  
+    if (top + tooltipHeight > window.innerHeight) {
+      top = mouseY - tooltipHeight - Math.abs(this.config.offsetY);
+    }
+    
+    // Prevent tooltip from going off left edge
+    if (left < 0) {
+      left = 10;
+    }
+    
+    // Prevent tooltip from going off top edge
+    if (top < 0) {
+      top = 10;
+    }
+    
+    this.element.style.left = left + 'px';
+    this.element.style.top = top + 'px';
+  }
+
+  /**
+   * Format date for display
+   * @private
+   */
+  _formatDate(timestamp) {
+    const date = new Date(timestamp);
+    
+    switch (this.config.dateFormat) {
+      case 'short':
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        });
+        
+      case 'long':
+        return date.toLocaleDateString('en-US', { 
+          weekday: 'long',
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+      case 'medium':
+      default:
+        return date.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+    }
+  }
+
+  /**
+   * Format value for display
+   * @private
+   */
+  _formatValue(value) {
+    if (value == null || isNaN(value)) {
+      return 'N/A';
+    }
+    
+    // Format large numbers with K/M/B suffixes
+    const absValue = Math.abs(value);
+    
+    if (absValue >= 1000000000) {
+      return (value / 1000000000).toFixed(this.config.valueDecimals) + 'B';
+    } else if (absValue >= 1000000) {
+      return (value / 1000000).toFixed(this.config.valueDecimals) + 'M';
+    } else if (absValue >= 1000) {
+      return (value / 1000).toFixed(this.config.valueDecimals) + 'K';
+    } else {
+      return value.toLocaleString('en-US', {
+        minimumFractionDigits: this.config.valueDecimals,
+        maximumFractionDigits: this.config.valueDecimals
+      });
+    }
+  }
+
+  /**
+   * Update tooltip styling
+   */
+  updateConfig(newConfig) {
+    Object.assign(this.config, newConfig);
+    
+    // Update element styles
+    if (this.element) {
+      const style = this.element.style;
+      style.backgroundColor = this.config.backgroundColor;
+      style.borderColor = this.config.borderColor;
+      style.borderRadius = this.config.borderRadius + 'px';
+      style.padding = this.config.padding + 'px';
+      style.fontSize = this.config.fontSize + 'px';
+      style.fontFamily = this.config.fontFamily;
+      style.color = this.config.textColor;
+    }
+    
+    // Refresh content if visible
+    if (this.isVisible && this.currentData) {
+      this._updateContent(this.currentData);
+    }
+  }
+
+  /**
+   * Get current tooltip state
+   */
+  getState() {
+    return {
+      isVisible: this.isVisible,
+      hasData: this.currentData && this.currentData.length > 0,
+      dataPointCount: this.currentData ? this.currentData.length : 0
+    };
+  }
+
+  /**
+   * Destroy tooltip and clean up
+   */
+  destroy() {
+    if (this.element && this.element.parentElement) {
+      this.element.parentElement.removeChild(this.element);
+    }
+    
+    this.element = null;
+    this.isVisible = false;
+    this.currentData = null;
+  }
+}

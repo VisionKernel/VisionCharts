@@ -4,437 +4,407 @@
  * Supports both single panel and multi-panel modes
  */
 
-import SvgRenderer from '../renderers/SvgRenderer.js';
 import { formatLargeNumber } from '../utils/chartUtils.js';
 
-export default class EndingLabels {
-  /**
-   * Create an ending labels instance
-   * @param {Object} options - Configuration options
-   */
-  constructor(options = {}) {
-    this.options = {
-      show: true,
-      fontSize: '11px',
+export class EndingLabels {
+  constructor(config = {}) {
+    this.config = {
+      // Positioning and layout
+      offsetX: 8,           // Horizontal offset from the last data point
+      offsetY: 0,           // Vertical offset from the last data point
+      
+      // Styling
+      fontSize: 11,
       fontFamily: 'Arial, sans-serif',
-      fontWeight: 'bold',
-      backgroundColor: '#ffffff',
-      borderColor: '#cccccc',
-      borderWidth: 1,
-      borderRadius: 3,
-      padding: { top: 2, right: 6, bottom: 2, left: 6 },
-      offsetX: 8, // Distance from the last point
-      offsetY: 0,
-      textColor: null, // If null, uses dataset color
-      showBorder: true,
+      fontWeight: '500',
+      
+      // Background styling
       showBackground: true,
-      ...options
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      backgroundPadding: 4,
+      borderRadius: 3,
+      borderWidth: 1,
+      
+      // Text formatting
+      formatValue: true,      // Use smart number formatting
+      decimals: 1,           // Decimal places for raw numbers
+      
+      // Behavior
+      enabled: false,        // Start disabled
+      
+      ...config
     };
     
-    this.elements = [];
+    // DOM elements
+    this.svgGroup = null;
+    this.labelElements = [];
+    
+    // Chart integration
+    this.chartArea = null;
+    this.datasets = [];
+    
+    // State
+    this.isVisible = false;
+    this.isRendered = false;
+    
+    console.log('EndingLabels component created');
   }
-  
+
   /**
-   * Render ending labels for single panel mode
-   * @param {Object} chart - Chart instance
-   * @param {SVGElement} container - Container element
+   * Update datasets and re-render labels
+   * @param {Array} datasets - Array of dataset objects with data
    */
-  renderForSinglePanel(chart, container) {
-    console.log('EndingLabels.renderForSinglePanel called');
+  updateDatasets(datasets) {
+    this.datasets = datasets || [];
     
-    if (!this.options.show || !chart.state.datasets || !container) {
-      console.log('EndingLabels: Skipping render - missing requirements');
-      return;
+    if (this.isRendered && this.isVisible) {
+      this._renderLabels();
     }
-    
-    // Clear existing elements
-    this.remove();
-    
-    // FIXED: Include ALL datasets (regular + studies) with data
-    const allDatasets = chart.state.datasets.filter(dataset => 
-      dataset.data && dataset.data.length > 0
-    );
-    
-    // Separate regular datasets and studies for proper ordering
-    const regularDatasets = allDatasets.filter(dataset => dataset.type !== 'study');
-    const studyDatasets = allDatasets.filter(dataset => dataset.type === 'study');
-    
-    console.log('EndingLabels: Rendering for', regularDatasets.length, 'regular datasets and', studyDatasets.length, 'studies');
-    
-    // Render regular datasets first
-    regularDatasets.forEach(dataset => {
-      this.renderDatasetEndingLabel(chart, dataset, container, chart.state.scales, false);
-    });
-    
-    // Then render studies with visual distinction
-    studyDatasets.forEach(dataset => {
-      this.renderDatasetEndingLabel(chart, dataset, container, chart.state.scales, true);
-    });
   }
-  
+
   /**
-   * Render ending label for panel mode
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Dataset to render label for
-   * @param {SVGElement} container - Panel container element
-   * @param {Object} xScale - X scale for this panel
-   * @param {Object} yScale - Y scale for this panel
+   * Render ending labels to SVG container
+   * @param {SVGElement} svgContainer - SVG element to render into
+   * @param {Object} chartArea - Chart area dimensions
    */
-  renderForPanel(chart, dataset, container, xScale, yScale) {
-    console.log('EndingLabels.renderForPanel called for dataset:', dataset.id, 'type:', dataset.type || 'regular');
-    
-    if (!this.options.show || !dataset || !container) {
-      console.log('EndingLabels: Skipping panel render - missing requirements');
+  render(svgContainer, chartArea) {
+    if (!svgContainer || !chartArea) {
+      console.warn('EndingLabels: SVG container and chart area required for rendering');
       return;
     }
-    
-    // FIXED: Remove the study filter - now includes studies
-    // Old code: if (dataset.type === 'study') { return; }
-    
-    const scales = { x: xScale, y: yScale };
-    const isStudy = dataset.type === 'study';
-    this.renderDatasetEndingLabel(chart, dataset, container, scales, isStudy);
-  }
-  
-  /**
-   * Render ending label for a specific dataset
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Dataset to render label for
-   * @param {SVGElement} container - Container element
-   * @param {Object} scales - Chart scales {x, y}
-   * @param {boolean} isStudy - Whether this is a study dataset
-   */
-  renderDatasetEndingLabel(chart, dataset, container, scales, isStudy = false) {
-    if (!dataset.data || dataset.data.length === 0) {
-      console.log('EndingLabels: No data for dataset', dataset.id);
-      return;
-    }
-    
-    const { xField, yField } = chart.options;
-    
-    // Get the last valid data point
-    const lastPoint = this.getLastValidPoint(dataset.data, xField, yField);
-    if (!lastPoint) {
-      console.log('EndingLabels: No valid last point for dataset', dataset.id);
-      return;
-    }
-    
-    // Get coordinates
-    const x = scales.x.scale(lastPoint[xField]);
-    const y = scales.y.scale(lastPoint[yField]);
-    
-    // Check if coordinates are valid
-    if (isNaN(x) || isNaN(y)) {
-      console.log('EndingLabels: Invalid coordinates for dataset', dataset.id);
-      return;
-    }
-    
-    // Format the value
-    const formattedValue = this.formatValue(lastPoint[yField], chart.options);
-    
-    console.log('EndingLabels: Creating label for', isStudy ? 'study' : 'dataset', dataset.id, 'value:', formattedValue);
-    
-    // ENHANCED: Study-specific styling
-    const labelOptions = this.getStudyAwareLabelOptions(isStudy);
-    
-    // Create label group
-    const labelGroup = SvgRenderer.createGroup({
-      class: `visioncharts-ending-label ${isStudy ? 'study-label' : 'regular-label'}`,
-      'data-dataset-id': dataset.id,
-      'data-is-study': isStudy
-    });
-    
-    // ENHANCED: Check for overlapping labels and add vertical offset
-    const verticalOffset = this.calculateVerticalOffset(container, x, y, isStudy);
-    const adjustedY = y + verticalOffset;
-    
-    // Create text element first to measure dimensions
-    const displayText = isStudy ? `📊 ${formattedValue}` : formattedValue;
-    const textElement = SvgRenderer.createText(
-      displayText,
-      0, 0,
-      {
-        'font-size': labelOptions.fontSize,
-        'font-family': labelOptions.fontFamily,
-        'font-weight': labelOptions.fontWeight,
-        fill: labelOptions.textColor || dataset.color,
-        'dominant-baseline': 'middle',
-        'text-anchor': 'start',
-        class: 'visioncharts-ending-label-text'
-      }
-    );
-    
-    // Add to container temporarily to measure
-    const tempGroup = SvgRenderer.createGroup({ opacity: 0 });
-    tempGroup.appendChild(textElement);
-    container.appendChild(tempGroup);
-    
-    // Get text dimensions
-    let textBBox;
-    try {
-      textBBox = textElement.getBBox();
-    } catch (error) {
-      // Fallback dimensions if getBBox fails
-      textBBox = {
-        width: displayText.length * (isStudy ? 6 : 7), // Slightly smaller for studies
-        height: isStudy ? 10 : 12
-      };
-    }
-    
-    // Remove temp group
-    container.removeChild(tempGroup);
-    
-    // Calculate background dimensions
-    const bgWidth = textBBox.width + labelOptions.padding.left + labelOptions.padding.right;
-    const bgHeight = textBBox.height + labelOptions.padding.top + labelOptions.padding.bottom;
-    
-    // Get container bounds for boundary checking
-    const containerWidth = chart.state.dimensions?.innerWidth || 800;
-    const availableRightSpace = containerWidth - x;
-    
-    // Calculate label position with boundary checking
-    let labelX, labelY;
-    let textAnchor = 'start';
-    
-    if (availableRightSpace >= bgWidth + labelOptions.offsetX) {
-      // Enough space to the right - position normally
-      labelX = x + labelOptions.offsetX;
-      textAnchor = 'start';
+
+    this.chartArea = chartArea;
+    this.svgContainer = svgContainer;
+
+    // Remove existing labels
+    this._remove();
+
+    // Create labels group
+    this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.svgGroup.setAttribute('class', 'ending-labels');
+    this.svgGroup.style.pointerEvents = 'none'; // Don't interfere with interactions
+
+    // Add to SVG
+    svgContainer.appendChild(this.svgGroup);
+
+    this.isRendered = true;
+
+    // Render labels if visible and we have datasets
+    if (this.config.enabled && this.datasets.length > 0) {
+      this.show();
     } else {
-      // Not enough space to the right - position to the left
-      labelX = x - labelOptions.offsetX - bgWidth;
-      textAnchor = 'start';
-      
-      // If still goes off the left edge, clamp to minimum position
-      if (labelX < 0) {
-        labelX = Math.max(5, x - bgWidth/2);
-        textAnchor = 'start';
-      }
+      this.hide();
     }
-    
-    labelY = adjustedY + labelOptions.offsetY;
-    
-    const bgX = labelX;
-    const bgY = labelY - bgHeight / 2;
-    
-    // Create background rectangle if enabled
-    if (labelOptions.showBackground || labelOptions.showBorder) {
-      const backgroundAttrs = {
-        class: 'visioncharts-ending-label-bg'
-      };
-      
-      if (labelOptions.showBackground) {
-        backgroundAttrs.fill = labelOptions.backgroundColor;
-      } else {
-        backgroundAttrs.fill = 'none';
-      }
-      
-      if (labelOptions.showBorder) {
-        backgroundAttrs.stroke = labelOptions.borderColor;
-        backgroundAttrs['stroke-width'] = labelOptions.borderWidth;
-      }
-      
-      if (labelOptions.borderRadius > 0) {
-        backgroundAttrs.rx = labelOptions.borderRadius;
-        backgroundAttrs.ry = labelOptions.borderRadius;
-      }
-      
-      // ENHANCED: Semi-transparent background for studies
-      if (isStudy && labelOptions.showBackground) {
-        backgroundAttrs['fill-opacity'] = 0.9;
-      }
-      
-      const background = SvgRenderer.createRect(
-        bgX, bgY, bgWidth, bgHeight,
-        backgroundAttrs
-      );
-      
-      labelGroup.appendChild(background);
-    }
-    
-    // Position and add text
-    textElement.setAttribute('x', bgX + labelOptions.padding.left);
-    textElement.setAttribute('y', labelY);
-    textElement.setAttribute('text-anchor', textAnchor);
-    labelGroup.appendChild(textElement);
-    
-    // Add to container
-    container.appendChild(labelGroup);
-    this.elements.push(labelGroup);
-    
-    console.log('EndingLabels: Label created for', isStudy ? 'study' : 'dataset', dataset.id, 'at position', labelX, labelY, 'with offset', verticalOffset);
+
+    console.log(`EndingLabels rendered for ${this.datasets.length} datasets`);
   }
-  
+
   /**
-   * NEW METHOD: Get study-aware label styling options
-   * @private
-   * @param {boolean} isStudy - Whether this is a study dataset
-   * @returns {Object} Label options with study-specific styling
+   * Show ending labels
    */
-  getStudyAwareLabelOptions(isStudy) {
-    const baseOptions = { ...this.options };
-    
-    if (isStudy) {
-      return {
-        ...baseOptions,
-        fontSize: '10px',           // Smaller font for studies
-        fontWeight: 'normal',       // Normal weight for studies
-        backgroundColor: '#f8f9fa', // Light gray background
-        borderColor: '#6c757d',     // Darker gray border
-        borderWidth: 1,
-        padding: { top: 1, right: 4, bottom: 1, left: 4 }, // Smaller padding
-        offsetX: 6,                 // Closer to the line
-        offsetY: 0
-      };
+  show() {
+    if (!this.isRendered) {
+      console.warn('EndingLabels: Must render before showing');
+      return false;
     }
-    
-    return baseOptions;
+
+    this.config.enabled = true;
+    this.isVisible = true;
+
+    if (this.svgGroup) {
+      this.svgGroup.style.display = 'block';
+      this._renderLabels();
+    }
+
+    return true;
   }
-  
+
   /**
-   * NEW METHOD: Calculate vertical offset to prevent overlapping labels
-   * @private
-   * @param {SVGElement} container - Container element
-   * @param {number} x - X coordinate
-   * @param {number} y - Y coordinate  
-   * @param {boolean} isStudy - Whether this is a study dataset
-   * @returns {number} Vertical offset to apply
+   * Hide ending labels
    */
-  calculateVerticalOffset(container, x, y, isStudy) {
-    // Get existing labels in this container
-    const existingLabels = container.querySelectorAll('.visioncharts-ending-label');
-    
-    let verticalOffset = 0;
-    const proximityThreshold = 50; // Labels within 50px horizontally
-    const verticalSpacing = isStudy ? 16 : 20; // Studies get tighter spacing
-    
-    existingLabels.forEach(existingLabel => {
-      const existingText = existingLabel.querySelector('text');
-      if (!existingText) return;
-      
-      const existingX = parseFloat(existingText.getAttribute('x')) || 0;
-      const existingY = parseFloat(existingText.getAttribute('y')) || 0;
-      
-      // Check if this label is close horizontally
-      if (Math.abs(existingX - x) < proximityThreshold) {
-        // Check if it would overlap vertically
-        const potentialY = y + verticalOffset;
-        if (Math.abs(existingY - potentialY) < verticalSpacing) {
-          // Adjust offset to avoid overlap
-          if (isStudy) {
-            // Studies go below regular datasets
-            verticalOffset = Math.max(verticalOffset, existingY + verticalSpacing - y);
-          } else {
-            // Regular datasets go above studies
-            verticalOffset = Math.min(verticalOffset, existingY - verticalSpacing - y);
-          }
-        }
+  hide() {
+    this.config.enabled = false;
+    this.isVisible = false;
+
+    if (this.svgGroup) {
+      this.svgGroup.style.display = 'none';
+    }
+
+    return true;
+  }
+
+  /**
+   * Toggle ending labels visibility
+   * @param {boolean} show - Force show/hide state, or null to toggle
+   * @returns {boolean} New visibility state
+   */
+  toggle(show = null) {
+    const newState = show !== null ? show : !this.config.enabled;
+
+    if (newState) {
+      return this.show();
+    } else {
+      return this.hide();
+    }
+  }
+
+  /**
+   * Render labels for all datasets
+   * @private
+   */
+  _renderLabels() {
+    if (!this.svgGroup) return;
+
+    // Clear existing labels
+    this.svgGroup.innerHTML = '';
+    this.labelElements = [];
+
+    // Don't render if no datasets
+    if (!this.datasets || this.datasets.length === 0) {
+      return;
+    }
+
+    // Create label for each dataset
+    this.datasets.forEach((dataset, index) => {
+      const label = this._createDatasetLabel(dataset, index);
+      if (label) {
+        this.svgGroup.appendChild(label);
+        this.labelElements.push(label);
       }
     });
-    
-    return verticalOffset;
+
+    console.log(`EndingLabels: Rendered ${this.labelElements.length} labels`);
   }
-  
+
   /**
-   * Get the last valid data point from dataset
-   * @private
-   * @param {Array} data - Dataset data
-   * @param {string} xField - X field name
-   * @param {string} yField - Y field name
-   * @returns {Object|null} Last valid data point or null
-   */
-  getLastValidPoint(data, xField, yField) {
-    for (let i = data.length - 1; i >= 0; i--) {
-      const point = data[i];
-      if (point[xField] !== undefined && point[xField] !== null &&
-          point[yField] !== undefined && point[yField] !== null &&
-          typeof point[yField] === 'number' && !isNaN(point[yField])) {
-        return point;
-      }
-    }
+ * Create ending label for a single dataset - UPDATED for global coordinates
+ * @private
+ */
+_createDatasetLabel(dataset, datasetIndex) {
+  if (!dataset || !dataset.data || dataset.data.length === 0) {
     return null;
   }
+
+  // Get the last data point
+  const lastPoint = dataset.data[dataset.data.length - 1];
+  if (!lastPoint) return null;
+
+  // Extract coordinates - check for unified coordinates first
+  const endX = lastPoint.unifiedX || lastPoint.screenX || lastPoint.pixelX;
+  const endY = lastPoint.unifiedY || lastPoint.screenY || lastPoint.pixelY;
+
+  if (endX == null || endY == null || !isFinite(endX) || !isFinite(endY)) {
+    console.warn(`EndingLabels: Invalid coordinates for dataset ${dataset.id || datasetIndex}`);
+    return null;
+  }
+
+  // ✅ UPDATED: More flexible chart area validation for global coordinates
+  // In panel mode, the chart area represents the entire container, so we need more lenient bounds checking
+  const tolerance = 100; // Increased tolerance for global coordinate system
+  const minX = Math.min(this.chartArea.x - tolerance, 0);
+  const maxX = this.chartArea.x + this.chartArea.width + tolerance;
+  const minY = Math.min(this.chartArea.y - tolerance, 0);
+  const maxY = this.chartArea.y + this.chartArea.height + tolerance;
   
+  if (endX < minX || endX > maxX || endY < minY || endY > maxY) {
+    console.log(`EndingLabels: Point outside extended chart area for dataset ${dataset.id || datasetIndex}`, {
+      point: { x: endX, y: endY },
+      bounds: { minX, maxX, minY, maxY },
+      chartArea: this.chartArea
+    });
+    return null;
+  }
+
+  // Extract and format the value
+  const value = this._extractValue(lastPoint);
+  if (value == null) {
+    console.warn(`EndingLabels: No valid value for dataset ${dataset.id || datasetIndex}`);
+    return null;
+  }
+
+  const formattedValue = this._formatValue(value);
+
+  // Get dataset color
+  const color = dataset.color || '#1468a8';
+
+  // Create label group
+  const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  labelGroup.setAttribute('class', 'ending-label');
+  labelGroup.setAttribute('data-dataset-id', dataset.id || datasetIndex);
+
+  // Calculate label position
+  const labelX = endX + this.config.offsetX;
+  const labelY = endY + this.config.offsetY;
+
+  // Create background if enabled
+  if (this.config.showBackground) {
+    const background = this._createLabelBackground(labelGroup, labelX, labelY, formattedValue, color);
+    if (background) {
+      labelGroup.appendChild(background);
+    }
+  }
+
+  // Create text element
+  const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  text.setAttribute('x', labelX + this.config.backgroundPadding);
+  text.setAttribute('y', labelY);
+  text.setAttribute('font-size', this.config.fontSize);
+  text.setAttribute('font-family', this.config.fontFamily);
+  text.setAttribute('font-weight', this.config.fontWeight);
+  text.setAttribute('fill', this._getTextColor(color));
+  text.setAttribute('dominant-baseline', 'central');
+  text.setAttribute('text-anchor', 'start');
+  text.textContent = formattedValue;
+
+  labelGroup.appendChild(text);
+
+  return labelGroup;
+}
+
+  /**
+   * Create background rectangle for label
+   * @private
+   */
+  _createLabelBackground(labelGroup, x, y, text, datasetColor) {
+    // Estimate text dimensions (rough approximation)
+    const charWidth = this.config.fontSize * 0.6;
+    const textWidth = text.length * charWidth;
+    const textHeight = this.config.fontSize;
+
+    const bgWidth = textWidth + (this.config.backgroundPadding * 2);
+    const bgHeight = textHeight + (this.config.backgroundPadding * 2);
+
+    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    background.setAttribute('x', x);
+    background.setAttribute('y', y - (bgHeight / 2));
+    background.setAttribute('width', bgWidth);
+    background.setAttribute('height', bgHeight);
+    background.setAttribute('fill', this.config.backgroundColor);
+    background.setAttribute('stroke', datasetColor);
+    background.setAttribute('stroke-width', this.config.borderWidth);
+    background.setAttribute('rx', this.config.borderRadius);
+
+    // Store dimensions for text positioning adjustment
+    labelGroup._backgroundWidth = bgWidth;
+    labelGroup._backgroundHeight = bgHeight;
+
+    return background;
+  }
+
+  /**
+   * Extract value from data point
+   * @private
+   */
+  _extractValue(point) {
+    // Try different common field names for the value
+    const value = point.y || point.value || point.price || point.close || point.amount;
+    
+    if (typeof value === 'number' && isFinite(value)) {
+      return value;
+    }
+
+    return null;
+  }
+
   /**
    * Format value for display
    * @private
-   * @param {number} value - Value to format
-   * @param {Object} chartOptions - Chart options for formatting context
-   * @returns {string} Formatted value
    */
-  formatValue(value, chartOptions) {
-    const { yType, yFormatOptions } = chartOptions;
-    
-    if (yType === 'percent' || yType === 'percentage') {
-      return (value * 100).toFixed(1) + '%';
-    } else if (yType === 'currency') {
-      return '$' + formatLargeNumber(value);
+  _formatValue(value) {
+    if (value == null || !isFinite(value)) {
+      return 'N/A';
+    }
+
+    if (this.config.formatValue) {
+      // Use smart formatting from chartUtils
+      return formatLargeNumber(value, { decimals: this.config.decimals });
     } else {
-      return formatLargeNumber(value);
+      // Simple decimal formatting
+      return value.toFixed(this.config.decimals);
     }
   }
-  
+
   /**
-   * Remove all ending labels
-   * @public
+   * Get appropriate text color based on background
+   * @private
    */
-  remove() {
-    this.elements.forEach(element => {
-      if (element && element.parentNode) {
-        element.parentNode.removeChild(element);
-      }
-    });
-    this.elements = [];
+  _getTextColor(datasetColor) {
+    // For now, use dataset color for text
+    // In the future, could calculate contrast ratio for better readability
+    return datasetColor;
   }
-  
+
+  /**
+   * Update ending labels when dataset changes
+   * @param {string} datasetId - ID of dataset that changed
+   * @param {string} newColor - New color value
+   */
+  updateDatasetColor(datasetId, newColor) {
+    // Find the label for this dataset and update its color
+    const labelElement = this.svgGroup?.querySelector(`[data-dataset-id="${datasetId}"]`);
+    if (labelElement) {
+      const textElement = labelElement.querySelector('text');
+      const backgroundElement = labelElement.querySelector('rect');
+      
+      if (textElement) {
+        textElement.setAttribute('fill', this._getTextColor(newColor));
+      }
+      
+      if (backgroundElement) {
+        backgroundElement.setAttribute('stroke', newColor);
+      }
+    }
+  }
+
+  /**
+   * Get ending labels state
+   */
+  getState() {
+    return {
+      enabled: this.config.enabled,
+      isVisible: this.isVisible,
+      isRendered: this.isRendered,
+      labelCount: this.labelElements.length,
+      datasetCount: this.datasets.length
+    };
+  }
+
   /**
    * Update configuration
-   * @public
-   * @param {Object} newOptions - New configuration options
    */
-  updateConfig(newOptions) {
-    this.options = { ...this.options, ...newOptions };
+  updateConfig(newConfig) {
+    Object.assign(this.config, newConfig);
+    
+    if (this.isRendered && this.isVisible) {
+      this._renderLabels();
+    }
   }
-  
+
   /**
-   * Show ending labels
-   * @public
+   * Remove ending labels from DOM
+   * @private
    */
-  show() {
-    this.elements.forEach(element => {
-      if (element) {
-        element.style.display = 'block';
-      }
-    });
+  _remove() {
+    if (this.svgGroup && this.svgGroup.parentElement) {
+      this.svgGroup.parentElement.removeChild(this.svgGroup);
+    }
+
+    this.svgGroup = null;
+    this.labelElements = [];
+    this.isRendered = false;
   }
-  
+
   /**
-   * Hide ending labels
-   * @public
+   * Destroy ending labels and clean up
    */
-  hide() {
-    this.elements.forEach(element => {
-      if (element) {
-        element.style.display = 'none';
-      }
-    });
-  }
-  
-  /**
-   * Static method for rendering in panels (used by PanelDataRenderer)
-   * @static
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Dataset to render label for
-   * @param {SVGElement} container - Panel container
-   * @param {Object} xScale - X scale for this panel
-   * @param {Object} yScale - Y scale for this panel
-   * @param {Object} options - Configuration options
-   * @returns {EndingLabels} EndingLabels instance
-   */
-  static renderForPanel(chart, dataset, container, xScale, yScale, options = {}) {
-    const endingLabels = new EndingLabels(options);
-    endingLabels.renderForPanel(chart, dataset, container, xScale, yScale);
-    return endingLabels;
+  destroy() {
+    this._remove();
+    this.datasets = [];
+    this.chartArea = null;
+    this.svgContainer = null;
+    this.isVisible = false;
+    this.isRendered = false;
+
+    console.log('EndingLabels destroyed');
   }
 }

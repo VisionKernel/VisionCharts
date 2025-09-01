@@ -23,6 +23,31 @@ export function mean(values) {
 }
 
 /**
+ * Calculate the median of an array of numbers
+ * @param {Array<number>} values - Array of values
+ * @returns {number} Median value
+ */
+export function median(values) {
+  if (!values || values.length === 0) return 0;
+  
+  // Filter out non-finite values and sort
+  const validValues = values.filter(val => typeof val === 'number' && isFinite(val));
+  
+  if (validValues.length === 0) return 0;
+  
+  const sorted = [...validValues].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  
+  if (sorted.length % 2 === 0) {
+    // Even number of values - return average of middle two
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  } else {
+    // Odd number of values - return middle value
+    return sorted[mid];
+  }
+}
+
+/**
  * Calculate the variance of an array of numbers
  * @param {Array<number>} values - Array of values
  * @param {boolean} sample - Whether to calculate sample variance (n-1) or population variance (n)

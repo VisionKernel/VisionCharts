@@ -1,293 +1,953 @@
-import Axis from '../core/Axis.js';
-import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
+import { Axis } from '../core/Axis.js';
+import { Scale } from '../core/Scale.js';
 import PanelDataRenderer from './PanelDataRenderer.js';
-import ScaleManager from '../core/ScaleManager.js';
-import RecessionLines from './RecessionLines.js';
-import ZeroLine from './ZeroLine.js';
-import Grid from './Grid.js';
-import StatisticalLines from './StatisticalLines.js';
-import StudiesRenderer from './StudiesRenderer.js';
+import { RecessionLines } from './RecessionLines.js';
+import { ZeroLine } from './ZeroLine.js';
+import { Grid } from './Grid.js';
+import { StatisticalLines } from './StatisticalLines.js';
+import { StudiesRenderer } from './StudiesRenderer.js';
+import { PathGenerator } from '../utils/PathGenerator.js';
 
 /**
  * Panel component for rendering multi-panel charts
- * Handles common panel functionality across different chart types
+ * Each panel renders a single dataset independently with shared X-axis
  */
-export default class Panel {
-    /**
-     * Render panels for a chart - main entry point
-     * @param {Chart} chart - Chart instance
-     * @returns {Array} Panel scales for hover functionality
-     */
-    static renderForChart(chart) {
-        console.log('Panel.renderForChart called');
-        
-        if (!chart.state.chart) {
-            console.error('Cannot render panels: chart element is null');
-            return [];
-        }
-        
-        try {
-            const { innerWidth, innerHeight } = chart.state.dimensions;
-            
-            // FIXED: Only create panels for non-study datasets
-            const regularDatasets = chart.state.datasets.filter(dataset => dataset.type !== 'study');
-            
-            // Determine number of panels (one per regular dataset only)
-            const panelCount = regularDatasets.length;
-            if (panelCount === 0) {
-                console.log('No regular datasets for panels');
-                return [];
-            }
-            
-            console.log('Rendering', panelCount, 'panels for regular datasets');
-            
-            // Store panel scales for hover functionality
-            const panelScales = [];
-            
-            // Create panel for each regular dataset
-            regularDatasets.forEach((dataset, index) => {
-                // IMPROVED: Calculate panel dimensions with space for axes on each panel
-                const panelHeight = innerHeight / panelCount;
-                const axisMargin = 35; // Space needed for X and Y axes on each panel
-                const effectivePanelHeight = panelHeight - axisMargin;
-                
-                // Create panel group
-                const panelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                panelGroup.setAttribute('class', `visioncharts-panel panel-${index}`);
-                // Position panels with consistent spacing
-                const yPos = index * panelHeight;
-                panelGroup.setAttribute('transform', `translate(0, ${yPos})`);
-                
-                // Create panel background
-                const panelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                panelBg.setAttribute('x', 0);
-                panelBg.setAttribute('y', 0);
-                panelBg.setAttribute('width', innerWidth);
-                panelBg.setAttribute('height', effectivePanelHeight);
-                panelBg.setAttribute('fill', '#f9f9f9');
-                panelBg.setAttribute('stroke', '#eee');
-                panelGroup.appendChild(panelBg);
-                
-                // Create scales for this panel using ScaleManager
-                const scales = ScaleManager.createPanelScales(dataset, chart.options, {
-                    innerWidth,
-                    effectivePanelHeight
-                });
-                
-                // Store scales for hover functionality
-                panelScales[index] = { 
-                    xScale: scales.xScale, 
-                    yScale: scales.yScale, 
-                    panelHeight: effectivePanelHeight,
-                    panelWidth: innerWidth,
-                    yPos: yPos
-                };
-                
-                // Render panel components (axes, grid, etc.) - EXCLUDING statistical lines for now
-                Panel.renderPanelComponents(
-                    panelGroup, 
-                    scales, 
-                    { innerWidth, effectivePanelHeight }, 
-                    chart.options, 
-                    index === regularDatasets.length - 1, // isLastPanel
-                    dataset // Pass dataset for statistical lines
-                );
-                
-                // Render the main dataset data
-                PanelDataRenderer.renderForPanel(
-                    chart, 
-                    panelGroup, 
-                    dataset, 
-                    scales.xScale, 
-                    scales.yScale, 
-                    effectivePanelHeight, 
-                    innerWidth,
-                    index
-                );
-                
-                // FIXED: Find and render studies that belong to this dataset
-                const relatedStudies = Panel.findStudiesForDataset(chart, dataset.id);
-                console.log(`Found ${relatedStudies.length} studies for dataset ${dataset.id}`);
-                
-                relatedStudies.forEach(studyDataset => {
-                    console.log(`Rendering study ${studyDataset.id} in panel for dataset ${dataset.id}`);
-                    StudiesRenderer.renderForPanel(
-                        chart, 
-                        studyDataset, 
-                        panelGroup, 
-                        scales.xScale, 
-                        scales.yScale, 
-                        effectivePanelHeight
-                    );
-                });
-                
-                // FIXED: Render statistical lines AFTER data so they appear on top
-                if ((chart.options.showAverageLine || chart.options.showMedianLine) && dataset) {
-                    console.log('Rendering statistical lines ON TOP for panel', index);
-                    StatisticalLines.renderForPanel(
-                        panelGroup,
-                        dataset,
-                        scales.xScale,
-                        scales.yScale,
-                        innerWidth,
-                        effectivePanelHeight,
-                        chart.options
-                    );
-                }
-                
-                // Render panel label
-                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                label.textContent = dataset.name;
-                label.setAttribute('x', 5);
-                label.setAttribute('y', 15);
-                label.setAttribute('font-size', '12px');
-                label.setAttribute('font-weight', 'bold');
-                label.setAttribute('fill', dataset.color);
-                panelGroup.appendChild(label);
-                
-                // Add panel to chart
-                chart.state.chart.appendChild(panelGroup);
-            });
-            
-            // Store panel scales on chart for hover functionality
-            chart.state.panelScales = panelScales;
-            
-            console.log('Panels rendered successfully');
-            return panelScales;
-        } catch (error) {
-            console.error('Error rendering panels:', error);
-            return [];
-        }
+export class Panel {
+  constructor(config = {}) {
+    this.config = {
+      dataset: null,                    // Single dataset for this panel
+      chartArea: null,                  // Panel-specific chart area
+      panelIndex: 0,                    // Index in panel stack
+      totalPanels: 1,                   // Total number of panels
+      sharedXScale: null,               // Shared X-axis scale
+      container: null,                  // Panel container element
+      chartType: 'line',                // 'line' or 'bar'
+      hasSharedXAxis: false,            // Whether to use shared X-axis
+      isLogarithmic: false,             // Whether the panel should use a log-transformed scale
+      
+      // Panel-specific options
+      height: 200,
+      padding: { 
+        top: Math.max(5, Math.floor(config.height * 0.05) || 8),  // 5% of height, min 5px
+        bottom: config.hasSharedXAxis ? 2 : Math.max(5, Math.floor(config.height * 0.05) || 8),
+        left: 60,  // Keep space for Y axis labels
+        right: 20 
+      },
+      showAxisLabels: true,
+      showTitle: true,
+      
+      // Rendering options
+      rendererType: 'canvas',           // 'canvas' or 'webgl'
+      
+      ...config
+    };
+
+    this.chart = config.chart;
+
+    if (config.height) {
+      this.config.padding.top = Math.max(5, Math.floor(config.height * 0.05));
+      this.config.padding.bottom = config.hasSharedXAxis ? 2 : Math.max(5, Math.floor(config.height * 0.05));
     }
     
-    /**
-     * Find study datasets that belong to a specific regular dataset
-     * @param {Object} chart - Chart instance
-     * @param {string} datasetId - ID of the regular dataset
-     * @returns {Array} Array of study datasets
-     */
-    static findStudiesForDataset(chart, datasetId) {
-        if (!chart.state.datasets) {
-            return [];
-        }
-        
-        // Find all study datasets that have this dataset as their parent
-        return chart.state.datasets.filter(dataset => {
-            // Check if it's a study dataset
-            if (dataset.type !== 'study') {
-                return false;
-            }
-            
-            // Check if this study belongs to the specified dataset
-            // Studies are linked to datasets through the studies configuration
-            if (chart.options.studies) {
-                const studyConfig = chart.options.studies.find(study => study.id === dataset.id);
-                return studyConfig && studyConfig.datasetId === datasetId;
-            }
-            
-            return false;
-        });
-    }
+    // Panel state
+    this.isInitialized = false;
+    this.isRendered = false;
+    
+    // Rendering components
+    this.yScale = null;
+    this.yAxis = null;
+    this.panelDataRenderer = null;
+    this.grid = null;
+    this.recessionLines = null;
+    this.canvas = null;
+    this.rendererInstance = null;
+    this.svgOverlay = null;
+    
+    // Panel-specific chart area
+    this.panelChartArea = null;
+
+    // Statistical lines
+    this.statisticalLines = null;
+
+    // Zero line
+    this.zeroLine = null;
+
+    // Studies renderer
+    this.studiesRenderer = null;
+    
+    console.log(`Panel created for dataset: ${this.config.dataset?.name || 'Unknown'}`);
+  }
   
-    /**
-     * Render panel components (axes, grid, zero line, recession lines) 
-     * FIXED: Statistical lines moved to main renderForChart method to appear on top
-     * @param {SVGElement} panelGroup - Panel container
-     * @param {Object} scales - Panel scales  
-     * @param {Object} dimensions - Panel dimensions
-     * @param {Object} options - Chart options
-     * @param {boolean} isLastPanel - Whether this is the last panel
-     * @param {Object} dataset - Dataset for this panel
-     */
-    static renderPanelComponents(panelGroup, scales, dimensions, options, isLastPanel, dataset) {
-        const { innerWidth, effectivePanelHeight } = dimensions;
-        const { xScale, yScale } = scales;
-        
-        // Render panel axes
-        Panel.renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, options, isLastPanel);
-        
-        // Render grid if enabled
-        if (options.grid?.show) {
-            Grid.renderForPanel(
-                panelGroup,
-                xScale,
-                yScale,
-                innerWidth,
-                effectivePanelHeight,
-                options.grid,
-                options
-            );
-        }
-        
-        // Render zero line for this panel if enabled
-        if (options.showZeroLine) {
-            ZeroLine.renderForPanel(panelGroup, yScale, innerWidth, options.zeroLineOptions);
-        }
-        
-        // Render recession lines for this panel if enabled
-        if (options.showRecessionLines && options.recessions && options.recessions.length) {
-            RecessionLines.renderForPanel(
-                panelGroup, 
-                options.recessions, 
-                xScale, 
-                effectivePanelHeight, 
-                innerWidth,
-                options.xType,
-                options.recessionLinesOptions || {}
-            );
-        }
-        
-        // REMOVED: Statistical lines rendering moved to main renderForChart method
-        // to ensure they appear on top of data
+  /**
+   * Initialize the panel
+   */
+  async initialize() {
+    if (this.isInitialized) {
+      console.warn('Panel already initialized');
+      return;
     }
+    
+    if (!this.config.dataset || !this.config.container || !this.config.sharedXScale) {
+      throw new Error('Panel requires dataset, container, and shared X scale');
+    }
+    
+    // Create panel container
+    this._createPanelContainer();
+    
+    // Calculate panel chart area
+    this._calculateChartArea();
+    
+    // Create Y scale for this panel's dataset
+    this._createYScale();
+    
+    // Create Y axis
+    this._createYAxis();
+    
+    // Create panel data renderer
+    this._createDataRenderer();
+
+    // Create grid for this panel
+    this._createGrid();
+
+    // Create recession lines
+    this._createRecessionLines();
+
+    // Create statistical lines for this panel
+    this._createStatisticalLines();
+
+    // Create zero line for this panel
+    this._createZeroLine();
+
+    // Create studies renderer
+    this._createStudiesRenderer();
+
+    // Initialize renderer (Canvas/WebGL)
+    await this._initializeRenderer();
+    
+    this.isInitialized = true;
+    console.log(`Panel initialized for ${this.config.dataset.name}`);
+  }
   
-    /**
-     * Render axes for a panel
-     * @param {SVGElement} panelGroup - Panel container
-     * @param {Object} xScale - X scale for this panel
-     * @param {Object} yScale - Y scale for this panel
-     * @param {number} innerWidth - Panel width
-     * @param {number} effectivePanelHeight - Panel height
-     * @param {Object} options - Chart options
-     * @param {boolean} isLastPanel - Whether this is the last panel
-     */
-    static renderPanelAxes(panelGroup, xScale, yScale, innerWidth, effectivePanelHeight, options, isLastPanel = false) {
-        console.log('Panel.renderPanelAxes called for panel, isLastPanel:', isLastPanel);
+  /**
+   * Render the panel
+   */
+  async render() {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+    
+    try {
+      // Clear previous render
+      this._clearPanel();
+      
+      // Render grid FIRST (background layer)
+      if (this.grid && this.config.showGrid !== false) {
+        console.log(`Rendering grid for panel: ${this.config.dataset.name}`);
+        this._renderGrid();
+      }
+      
+      // Render Y axis
+      this._renderYAxis();
+      
+      // Render data using panel data renderer
+      await this.panelDataRenderer.render(
+        this.config.dataset,
+        this.config.sharedXScale,
+        this.yScale,
+        this.panelChartArea,
+        this.rendererInstance
+      );
+      
+      // Render panel title if enabled
+      if (this.config.showTitle) {
+        this._renderPanelTitle();
+      }
+      
+      // Render statistical lines
+      this._renderStatisticalLines();
+      
+      // Render zero line
+      this._renderZeroLine();
+
+      // Render recession lines
+      this._renderRecessionLines();
+
+      // Render studies
+      if (this.studiesRenderer && this.chart.studiesManager) {
+        await this.studiesRenderer.renderPanelStudies(this);
+      }
+      
+      this.isRendered = true;
+      console.log(`Panel rendered: ${this.config.dataset.name}`);
+      
+    } catch (error) {
+      console.error('Error rendering panel:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Update panel with new data
+   */
+  async update(newDataset = null) {
+    if (newDataset) {
+      this.config.dataset = newDataset;
+      
+      // Recreate Y scale for new data domain
+      this._createYScale();
+      this._createYAxis();
+      
+      // Update grid with new Y scale
+      if (this.grid) {
+        console.log(`Updating grid for panel: ${this.config.dataset.name}`);
+        this.grid.updateScales(this.config.sharedXScale, this.yScale);
+        this.grid.updateChartArea(this.panelChartArea);
+      }
+    }
+    
+    // Re-render
+    await this.render();
+  }
+  
+  /**
+   * Destroy panel and cleanup
+   */
+  destroy() {
+    // Cleanup renderer
+    if (this.rendererInstance) {
+      this.rendererInstance.destroy();
+      this.rendererInstance = null;
+    }
+    
+    // Remove canvas
+    if (this.canvas && this.canvas.parentNode) {
+      this.canvas.parentNode.removeChild(this.canvas);
+    }
+    
+    // Remove SVG overlay
+    if (this.svgOverlay && this.svgOverlay.parentNode) {
+      this.svgOverlay.parentNode.removeChild(this.svgOverlay);
+    }
+    
+    // Remove panel container
+    if (this.panelContainer && this.panelContainer.parentNode) {
+      this.panelContainer.parentNode.removeChild(this.panelContainer);
+    }
+
+    if (this.recessionLines) {
+      this.recessionLines.destroy();
+      this.recessionLines = null;
+    }
+
+    if (this.statisticalLines) {
+        this.statisticalLines.destroy();
+        this.statisticalLines = null;
+    }
+
+    if (this.zeroLine) {
+        this.zeroLine.destroy();
+        this.zeroLine = null;
+    }
+
+    if (this.studiesRenderer) {
+      this.studiesRenderer = null;
+    }
+    
+    // Clear references
+    this.yScale = null;
+    this.yAxis = null;
+    this.panelDataRenderer = null;
+    this.grid = null;
+    this.canvas = null;
+    this.svgOverlay = null;
+    this.panelContainer = null;
+    
+    this.isInitialized = false;
+    this.isRendered = false;
+    
+    console.log(`Panel destroyed: ${this.config.dataset?.name || 'Unknown'}`);
+  }
+
+  
+  /**
+   * Create panel container with dynamic sizing
+   * @private
+   */
+  _createPanelContainer() {
+    this.panelContainer = document.createElement('div');
+    this.panelContainer.className = 'chart-panel-container';
+    this.panelContainer.style.cssText = `
+      position: relative;
+      width: 100%;
+      height: ${this.config.height}px;
+      overflow: hidden;
+      border-bottom: ${this.config.panelIndex < this.config.totalPanels - 1 ? '1px solid #eee' : 'none'};
+      box-sizing: border-box;
+    `;
+    
+    this.config.container.appendChild(this.panelContainer);
+  }
+  
+  /**
+   * Calculate panel-specific chart area
+   * @private
+   */
+  _calculateChartArea() {
+    const containerRect = this.panelContainer.getBoundingClientRect();
+    
+    this.panelChartArea = {
+      x: this.config.padding.left,
+      y: this.config.padding.top,
+      width: containerRect.width - this.config.padding.left - this.config.padding.right,
+      height: this.config.height - this.config.padding.top - this.config.padding.bottom
+    };
+  }
+  
+  /**
+   * Create Y scale for this panel
+   * @private
+   */
+  _createYScale() {
+    if (!this.config.dataset || !this.config.dataset.data) {
+      throw new Error('Panel dataset required for Y scale creation');
+    }
+    
+    // Calculate Y domain for this dataset only
+    const yValues = this.config.dataset.data
+      .map(d => d.y)
+      .filter(y => y != null && !isNaN(y));
+    
+    if (yValues.length === 0) {
+      throw new Error('No valid Y values found in panel dataset');
+    }
+    
+    let yMin = Math.min(...yValues);
+    let yMax = Math.max(...yValues);
+    
+    // Add 5% padding to Y domain for visual breathing room
+    const yDataRange = yMax - yMin;
+    const yPadding = yDataRange * 0.05; // 5% padding
+    const yDomain = [yMin - yPadding, yMax + yPadding];
+    
+    // Determine scale type
+    const scaleType = 'linear';
+    
+    // Y scale range: flip for canvas coordinate system (Y increases downward)
+    const yRange = [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y];
+    
+    this.yScale = new Scale({
+      type: scaleType,
+      domain: yDomain,
+      range: yRange,
+      coordinateSystem: 'unified',
+      orientation: 'vertical',
+      options: {
+        nice: false,
+        padding: 0,
+        clamp: true
+      }
+    });
+    
+    console.log(`Panel Y scale created for ${this.config.dataset.name}`);
+  }
+  
+  /**
+   * Create Y axis for this panel with height-aware tick count
+   * @private
+   */
+  _createYAxis() {
+    // Calculate optimal tick count based on panel height
+    const availableHeight = this.panelChartArea.height;
+    const minTickSpacing = 20; // Minimum pixels between ticks
+    const maxTicks = Math.max(2, Math.floor(availableHeight / minTickSpacing));
+    const optimalTicks = Math.min(5, maxTicks); // Cap at 5 ticks max
+    
+    // NEW: Axis options that adapt to logarithmic scale
+    const axisOptions = {
+      label: this.config.yAxisName || 'Value',
+      fontSize: Math.max(9, Math.min(11, this.config.height / 20)),
+      color: '#666',
+      showAxisLine: true,
+      showTicks: true,
+      showTickLabels: true,
+      tickCount: optimalTicks,
+      tickPadding: 4
+    };
+
+    // If logarithmic, disable abbreviation and format for decimals
+    if (this.config.isLogarithmic) {
+      axisOptions.abbreviateLabels = false;
+      axisOptions.tickFormatOptions = {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      };
+    } else {
+      axisOptions.abbreviateLabels = true;
+    }
+
+    console.log(`[Panel ${this.config.panelIndex}] Creating Y-Axis for dataset "${this.config.dataset.name}" with options:`, JSON.parse(JSON.stringify(axisOptions)));
+
+    this.yAxis = new Axis({
+      orientation: 'y',
+      scale: this.yScale,
+      options: axisOptions
+    });
+    
+    console.log(`Panel Y axis created with ${optimalTicks} ticks for ${availableHeight}px height`);
+  }
+  
+  /**
+   * Create panel data renderer
+   * @private
+   */
+  _createDataRenderer() {
+    this.panelDataRenderer = new PanelDataRenderer({
+      chartType: this.config.chartType,
+      rendererType: this.config.rendererType
+    });
+  }
+  
+  /**
+   * Initialize Canvas/WebGL renderer for this panel
+   * @private
+   */
+  async _initializeRenderer() {
+    // Create canvas element
+    this.canvas = document.createElement('canvas');
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.left = '0';
+    this.canvas.style.top = '0';
+    this.canvas.style.pointerEvents = 'none';
+    
+    // Set canvas size
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = this.panelContainer.offsetWidth * dpr;
+    this.canvas.height = this.config.height * dpr;
+    this.canvas.style.width = `${this.panelContainer.offsetWidth}px`;
+    this.canvas.style.height = `${this.config.height}px`;
+    
+    this.panelContainer.appendChild(this.canvas);
+    
+    // Create SVG overlay for axes and labels
+    this.svgOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svgOverlay.style.position = 'absolute';
+    this.svgOverlay.style.left = '0';
+    this.svgOverlay.style.top = '0';
+    this.svgOverlay.style.width = '100%';
+    this.svgOverlay.style.height = '100%';
+    this.svgOverlay.style.pointerEvents = 'none';
+    
+    this.panelContainer.appendChild(this.svgOverlay);
+    
+    // Initialize appropriate renderer
+    if (this.config.rendererType === 'webgl') {
+      const { default: WebGLRenderer } = await import('../renderers/WebGLRenderer.js');
+      this.rendererInstance = new WebGLRenderer();
+      await this.rendererInstance.initialize(this.canvas, {
+          width: this.panelContainer.offsetWidth,
+          height: this.config.height
+      });
+    } else {
+      const { default: CanvasRenderer } = await import('../renderers/CanvasRenderer.js');
+      this.rendererInstance = new CanvasRenderer();
+      await this.rendererInstance.initialize(this.canvas, {
+          width: this.panelContainer.offsetWidth,
+          height: this.config.height
+      });
+    }
+  }
+
+  /**
+   * Create grid for this panel
+   * @private
+   */
+  _createGrid() {
+    console.log(`Creating grid for panel: ${this.config.dataset.name}`);
+    
+    const gridOptions = {
+      showXGrid: this.config.showXGrid !== false,
+      showYGrid: this.config.showYGrid !== false,
+      
+      // Visual properties
+      xGridColor: '#e0e0e0',
+      yGridColor: '#e0e0e0',
+      xGridOpacity: 1,
+      yGridOpacity: 1,
+      xGridWidth: 0.5,
+      yGridWidth: 0.5,
+      
+      skipEdgeLines: true,
+    };
+
+    this.grid = new Grid({
+      xScale: this.config.sharedXScale,
+      yScale: this.yScale,
+      chartArea: this.panelChartArea,
+      ...gridOptions
+    });
+    
+    console.log(`Panel grid created for: ${this.config.dataset.name}`);
+  }
+
+  /**
+   * Create studies renderer for this panel
+   * @private
+   */
+  _createStudiesRenderer() {
+    // Create a specialized studies renderer for this panel
+    this.studiesRenderer = {
+      async renderPanelStudies(panel) {
+        if (!panel.chart.studiesManager) return;
         
-        // FIXED: Render axes using the static Axis method - ALL panels get full axes
-        Axis.renderForPanel(
-            panelGroup, 
-            xScale, 
-            yScale, 
-            innerWidth, 
-            effectivePanelHeight,
-            {
-                // CHANGED: All panels now get X axes and labels
-                showXAxis: true, // FIXED: Show X axis on ALL panels 
-                showYAxis: true,
-                showXLabels: true, // FIXED: Show X labels on ALL panels
-                showYLabels: true,
-                xAxisName: options.xAxisName || '', // Could show on all or just bottom
-                yAxisName: options.yAxisName,
-                isLogarithmic: options.isLogarithmic || false,
-                
-                // Custom axis options
-                xAxisOptions: {
-                    tickCount: options.xTickCount || 5,
-                    tickFormat: options.xTickFormat,
-                    formatType: options.xType === 'time' ? 'time' : 'number',
-                    formatOptions: options.xFormatOptions || {},
-                    tickRotation: options.xTickRotation || 0
-                },
-                
-                yAxisOptions: {
-                    tickCount: options.yTickCount || 4, // Fewer ticks for panels
-                    tickFormat: options.yTickFormat,
-                    formatType: 'number',
-                    formatOptions: options.yFormatOptions || {},
-                    tickRotation: options.yTickRotation || 0
-                }
-            }
+        try {
+          // Get studies for this panel's dataset
+          const panelStudies = panel.chart.studiesManager.getStudiesForDataset(panel.config.dataset.id);
+          const visibleStudies = panelStudies.filter(study => study.visible);
+          
+          if (visibleStudies.length === 0) {
+            console.log(`Panel ${panel.config.dataset.name}: No studies to render`);
+            return;
+          }
+          
+          console.log(`Panel ${panel.config.dataset.name}: Rendering ${visibleStudies.length} studies`);
+          
+          // Convert studies to datasets for rendering
+          const studyDatasets = panel._convertStudiesToDatasets(visibleStudies);
+          
+          // Use the existing PanelDataRenderer to render each study dataset
+          for (const studyDataset of studyDatasets) {
+            await panel.panelDataRenderer.render(
+              studyDataset,
+              panel.config.sharedXScale,
+              panel.yScale,
+              panel.panelChartArea,
+              panel.rendererInstance
+            );
+          }
+          
+        } catch (error) {
+          console.error(`Panel ${panel.config.dataset.name}: Error rendering studies:`, error);
+        }
+      }
+    };
+  }
+
+  /**
+   * Create recession lines for this panel
+   * @private
+   */
+  _createRecessionLines() {
+    if (!this.config.recessionData) {
+      return;
+    }
+    
+    this.recessionLines = new RecessionLines({
+      enabled: false, // Start disabled
+      fillColor: 'rgba(128, 128, 128, 0.2)',     // Grey instead of red
+      strokeColor: 'rgba(128, 128, 128, 0.3)',   // Grey border
+      strokeWidth: 0,
+      recessionData: this.config.recessionData
+    });
+    
+    console.log(`RecessionLines created for panel: ${this.config.dataset.name}`);
+  }
+
+  /**
+ * Render recession lines for this panel
+ * @private
+ */
+_renderRecessionLines() {
+  if (!this.recessionLines || !this.config.sharedXScale || !this.yScale || !this.svgOverlay) {
+    return;
+  }
+  
+  // Render recession lines directly into this panel's SVG overlay
+  // This ensures each panel gets its own recession rectangles within its boundaries
+  this.recessionLines.render(this.svgOverlay, this.panelChartArea, {
+    x: this.config.sharedXScale,
+    y: this.yScale
+  });
+  
+  console.log(`Recession lines rendered for panel: ${this.config.dataset.name}`);
+}
+
+  /**
+   * Toggle recession lines for this panel
+   */
+  toggleRecessionLines(show = null) {
+    if (!this.recessionLines) {
+      return false;
+    }
+    
+    const newState = this.recessionLines.toggle(show);
+    console.log(`Panel ${this.config.dataset.name} recession lines: ${newState ? 'enabled' : 'disabled'}`);
+    return newState;
+  }
+
+  /**
+   * Clear panel content
+   * @private
+   */
+  _clearPanel() {
+    if (this.rendererInstance) {
+      this.rendererInstance.clear();
+    }
+    
+    // Clear SVG overlay
+    if (this.svgOverlay) {
+      while (this.svgOverlay.firstChild) {
+        this.svgOverlay.removeChild(this.svgOverlay.firstChild);
+      }
+    }
+  }
+  
+  /**
+   * Render Y axis
+   * @private
+   */
+  _renderYAxis() {
+    if (this.yAxis && this.svgOverlay) {
+      this.yAxis.render(this.svgOverlay, {
+        x: this.config.padding.left,
+        y: 0
+      });
+    }
+  }
+  
+  /**
+   * Render panel title
+   * @private
+   */
+  _renderPanelTitle() {
+    if (!this.svgOverlay || !this.config.dataset.name) return;
+    
+    const titleElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    
+    titleElement.setAttribute('x', this.panelChartArea.x + 8);
+    titleElement.setAttribute('y', this.panelChartArea.y + 8);
+    titleElement.setAttribute('text-anchor', 'start');
+    titleElement.setAttribute('dominant-baseline', 'hanging');
+    titleElement.style.fontSize = '12px';
+    titleElement.style.fontWeight = '500';
+    titleElement.style.fill = this.config.dataset.color || '#333';
+    titleElement.textContent = this.config.dataset.name;
+    
+    this.svgOverlay.appendChild(titleElement);
+  }
+
+  toggleLogarithmicScale(isLog) {
+    this.config.isLogarithmic = isLog;
+    this._createYScale(); // Re-create Y scale with the new type
+    this._createYAxis(); // Re-create the axis with new options
+    this.render(); // Re-render the panel
+  }
+
+  toggleAverageLine(show) {
+    if (this.statisticalLines) {
+        this.statisticalLines.toggleAverage(show);
+    }
+  }
+
+  toggleMedianLine(show) {
+      if (this.statisticalLines) {
+          this.statisticalLines.toggleMedian(show);
+      }
+  }
+
+  toggleZeroLine(show) {
+    if (this.zeroLine) {
+        this.zeroLine.toggle(show);
+    }
+  }
+
+  _createStatisticalLines() {
+      this.statisticalLines = new StatisticalLines({
+          averageConfig: { useAllDatasets: false },
+          medianConfig: { useAllDatasets: false },
+      });
+  }
+
+  _renderStatisticalLines() {
+      if (this.statisticalLines) {
+          this.statisticalLines.updateDatasets([this.config.dataset]);
+          this.statisticalLines.render(this.panelContainer, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
+      }
+  }
+
+  _createZeroLine() {
+    this.zeroLine = new ZeroLine({
+      // Configuration for the zero line can be passed here if needed
+    });
+  }
+
+  _renderZeroLine() {
+    if (this.zeroLine) {
+      this.zeroLine.render(this.panelContainer, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
+    }
+  }
+
+  getDataPointsAtX(dataX) {
+    const tolerance = (this.config.sharedXScale.domain[1] - this.config.sharedXScale.domain[0]) * 0.01; 
+    const points = this.config.dataset.data.filter(p => Math.abs(p.x - dataX) < tolerance);
+
+    return points.map(p => ({
+        ...p,
+        pixelX: this.config.sharedXScale.scale(p.x),
+        pixelY: this.yScale.scale(p.y),
+        panelIndex: this.config.panelIndex,
+        datasetId: this.config.dataset.id,
+        color: this.config.dataset.color,
+    }));
+}
+
+  /**
+   * Render grid for this panel
+   * @private
+   */
+  _renderGrid() {
+    if (!this.grid || !this.canvas) {
+      console.log('No grid or canvas available for rendering');
+      return;
+    }
+    
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) {
+      console.log('No canvas context available for grid rendering');
+      return;
+    }
+    
+    console.log(`Grid rendering for panel: ${this.config.dataset.name}`);
+    
+    // Update grid with current scales and chart area
+    this.grid.updateScales(this.config.sharedXScale, this.yScale);
+    this.grid.updateChartArea(this.panelChartArea);
+    
+    ctx.save();
+    
+    
+    try {
+      this.grid.render(ctx);
+      console.log(`Grid rendered successfully for panel: ${this.config.dataset.name}`);
+    } catch (error) {
+      console.error('Error rendering grid:', error);
+    }
+    
+    ctx.restore();
+  }
+
+  /**
+   * Get the line endpoint data for this panel
+   * Used by PanelManager to collect endpoint coordinates for ending labels
+   */
+  getLineEndpoint() {
+    if (!this.config.dataset || !this.config.dataset.data || this.config.dataset.data.length === 0) {
+      return null;
+    }
+
+    const lastPoint = this.config.dataset.data[this.config.dataset.data.length - 1];
+    if (!lastPoint) return null;
+
+    // ✅ FIXED: Calculate coordinates using current scales instead of stored coordinates
+    if (!this.config.sharedXScale || !this.yScale) {
+      console.warn(`Panel ${this.config.dataset.name}: Missing scales for endpoint calculation`);
+      return null;
+    }
+
+    // Calculate fresh coordinates using current panel scales
+    const endX = this.config.sharedXScale.scale(lastPoint.x);
+    const endY = this.yScale.scale(lastPoint.y);
+
+    console.log(`🎯 PANEL ${this.config.panelIndex} LINE ENDPOINT DEBUG:`, {
+      datasetName: this.config.dataset.name,
+      
+      // Raw data point
+      lastDataPoint: {
+        x: lastPoint.x,
+        y: lastPoint.y
+      },
+      
+      // ✅ FRESH CALCULATED coordinates using current scales
+      freshCoords: { endX, endY },
+      
+      // ❌ OLD stored coordinates (for comparison)
+      oldStoredCoords: {
+        unifiedX: lastPoint.unifiedX,
+        unifiedY: lastPoint.unifiedY,
+        screenX: lastPoint.screenX,
+        screenY: lastPoint.screenY
+      },
+      
+      // Panel info
+      panelChartArea: this.panelChartArea,
+      
+      // Scale verification
+      scaleInfo: {
+        xScale: {
+          domain: this.config.sharedXScale.domain,
+          range: this.config.sharedXScale.range,
+          inputValue: lastPoint.x,
+          outputValue: endX
+        },
+        yScale: {
+          domain: this.yScale.domain,
+          range: this.yScale.range,
+          inputValue: lastPoint.y,
+          outputValue: endY
+        }
+      }
+    });
+
+    if (endX == null || endY == null || !isFinite(endX) || !isFinite(endY)) {
+      console.warn(`Panel ${this.config.dataset.name}: Invalid calculated endpoint coordinates`);
+      return null;
+    }
+
+    // Check if point is within panel chart area
+    const tolerance = 50;
+    if (endX < this.panelChartArea.x - tolerance || 
+        endX > this.panelChartArea.x + this.panelChartArea.width + tolerance ||
+        endY < this.panelChartArea.y - tolerance || 
+        endY > this.panelChartArea.y + this.panelChartArea.height + tolerance) {
+      console.log(`Panel ${this.config.dataset.name}: Calculated endpoint outside chart area`);
+      return null;
+    }
+
+    return {
+      // ✅ Panel-local coordinates calculated fresh from current scales
+      localX: endX,
+      localY: endY,
+      
+      // Original data values
+      dataX: lastPoint.x,
+      dataY: lastPoint.y,
+      
+      // Dataset info
+      dataset: this.config.dataset,
+      
+      // Panel context for coordinate translation
+      panelIndex: this.config.panelIndex,
+      panelHeight: this.config.height,
+      panelChartArea: this.panelChartArea
+    };
+  }
+
+  /**
+   * Get panel coordinate and positioning information
+   * Used by PanelManager for coordinate translation
+   */
+  getPanelCoordinateInfo() {
+    const containerRect = this.panelContainer ? this.panelContainer.getBoundingClientRect() : null;
+    const parentRect = this.config.container ? this.config.container.getBoundingClientRect() : null;
+    
+    return {
+      panelIndex: this.config.panelIndex,
+      panelHeight: this.config.height,
+      panelChartArea: this.panelChartArea,
+      
+      // Panel positioning within the overall container
+      panelStartY: this.config.panelIndex * this.config.height,
+      panelEndY: (this.config.panelIndex + 1) * this.config.height,
+      
+      // Container info
+      containerRect: containerRect,
+      parentRect: parentRect,
+      
+      // Padding info
+      padding: this.config.padding,
+      
+      // For debugging
+      debug: {
+        datasetName: this.config.dataset?.name || 'Unknown',
+        isRendered: this.isRendered,
+        chartAreaValid: !!this.panelChartArea
+      }
+    };
+  }
+
+    /**
+     * Get panel information for debugging
+     */
+    getInfo() {
+      return {
+        dataset: this.config.dataset?.name || 'Unknown',
+        panelIndex: this.config.panelIndex,
+        isInitialized: this.isInitialized,
+        isRendered: this.isRendered,
+        chartArea: this.panelChartArea,
+        yDomain: this.yScale?.domain || null,
+        rendererType: this.config.rendererType,
+        endingLabelsState: this.getEndingLabelsState()
+      };
+    }
+
+    /**
+   * Convert studies to datasets for rendering (panel-specific)
+   * @param {Array} studies - Studies for this panel
+   * @returns {Array} Study datasets
+   * @private
+   */
+  _convertStudiesToDatasets(studies) {
+    const studyDatasets = [];
+    
+    for (const study of studies) {
+      if (!study.data || study.data.length === 0) continue;
+      
+      if (study.type === 'bollinger') {
+        // Bollinger Bands: Create three lines
+        studyDatasets.push(
+          this._createBollingerDataset(study, 'upper'),
+          this._createBollingerDataset(study, 'middle'), 
+          this._createBollingerDataset(study, 'lower')
         );
+      } else {
+        // Single line studies (SMA, EMA)
+        studyDatasets.push({
+          id: `${study.id}_line`,
+          name: study.name,
+          color: study.color,
+          strokeWidth: study.strokeWidth,
+          strokeOpacity: study.strokeOpacity,
+          fill: false,
+          isStudy: true,
+          studyId: study.id,
+          studyType: study.type,
+          data: study.data
+        });
+      }
     }
+    
+    return studyDatasets;
+  }
+
+  /**
+   * Create Bollinger dataset for panel
+   * @param {Object} study - Bollinger study
+   * @param {string} line - Line type
+   * @returns {Object} Dataset
+   * @private
+   */
+  _createBollingerDataset(study, line) {
+    const colors = { upper: study.color, middle: study.color, lower: study.color };
+    const opacities = { upper: 0.6, middle: 0.8, lower: 0.6 };
+    
+    const lineData = study.data.map(point => ({
+      x: point.x,
+      y: point[line],
+      original: point.original
+    }));
+    
+    return {
+      id: `${study.id}_${line}`,
+      name: `${study.name} (${line})`,
+      color: colors[line],
+      strokeWidth: line === 'middle' ? study.strokeWidth : Math.max(1, study.strokeWidth - 1),
+      strokeOpacity: opacities[line],
+      fill: false,
+      isStudy: true,
+      studyId: study.id,
+      studyType: study.type,
+      bollingerLine: line,
+      data: lineData
+    };
+  }
 }

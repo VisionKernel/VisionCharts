@@ -1,308 +1,556 @@
 /**
- * Scale base class for transforming data values to visual coordinates
+ * Scale.js - Unified Scaling System (Updated for Renderer Agnostic Coordinates)
+ * 
+ * Provides consistent data-to-pixel mapping for both axes and chart rendering.
+ * Supports linear, logarithmic, and time scales with renderer-agnostic coordinate system.
  */
+
 export class Scale {
-    /**
-     * Create a scale
-     * @param {Array} domain - Data domain [min, max]
-     * @param {Array} range - Output range [min, max]
-     */
-    constructor(domain, range) {
-      this.domain = domain;
-      this.range = range;
-    }
+  constructor(config = {}) {
+    this.type = config.type || 'linear'; // 'linear', 'log', 'time', 'ordinal'
+    this.domain = config.domain || [0, 1]; // [min, max] data values
+    this.range = config.range || [0, 100]; // [min, max] pixel values
+    this.dataType = config.dataType || 'number'; // 'number', 'time', 'category'
     
-    /**
-     * Set domain
-     * @param {Array} domain - New domain [min, max]
-     * @returns {Scale} This scale instance
-     */
-    setDomain(domain) {
-      this.domain = domain;
-      return this;
-    }
+    // NEW: Coordinate system configuration
+    this.coordinateSystem = config.coordinateSystem || 'normalized'; // 'normalized', 'canvas', 'webgl'
+    this.orientation = config.orientation || 'horizontal'; // 'horizontal' for x-axis, 'vertical' for y-axis
     
-    /**
-     * Set range
-     * @param {Array} range - New range [min, max]
-     * @returns {Scale} This scale instance
-     */
-    setRange(range) {
-      this.range = range;
-      return this;
-    }
+    // Options
+    this.options = {
+      nice: false,
+      padding: 0,
+      clamp: true,
+      ...config.options
+    };
     
-    /**
-     * Convert a domain value to a range value
-     * @param {number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    scale(value) {
-      throw new Error('Method must be implemented by subclass');
-    }
+    // Internal state
+    this._domainExtent = null;
+    this._rangeExtent = null;
     
-    /**
-     * Invert a range value back to a domain value
-     * @param {number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    invert(value) {
-      throw new Error('Method must be implemented by subclass');
-    }
+    this._updateInternalState();
   }
   
   /**
-   * Linear scale for continuous data
+   * Update internal calculations
    */
-  export class LinearScale extends Scale {
-    /**
-     * Convert a domain value to a range value
-     * @param {number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    scale(value) {
-      const [d0, d1] = this.domain;
-      const [r0, r1] = this.range;
-      
-      // Handle edge cases
-      if (d0 === d1) return r0;
-      
-      // Linear interpolation
-      return r0 + (value - d0) * (r1 - r0) / (d1 - d0);
-    }
-    
-    /**
-     * Invert a range value back to a domain value
-     * @param {number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    invert(value) {
-      const [d0, d1] = this.domain;
-      const [r0, r1] = this.range;
-      
-      // Handle edge cases
-      if (r0 === r1) return d0;
-      
-      // Linear interpolation
-      return d0 + (value - r0) * (d1 - d0) / (r1 - r0);
-    }
+  _updateInternalState() {
+    this._domainExtent = this.domain[1] - this.domain[0];
+    this._rangeExtent = this.range[1] - this.range[0];
   }
   
   /**
-   * Time scale for date/time data
+   * Scale a data value to pixel position (forward transform)
+   * NOW RENDERER-AGNOSTIC: Always produces consistent output regardless of target renderer
    */
-  export class TimeScale extends LinearScale {
-    /**
-     * Convert a domain value to a range value
-     * @param {Date|number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    scale(value) {
-      // Convert to timestamp if needed
-      const timestamp = value instanceof Date ? value.getTime() : value;
-      return super.scale(timestamp);
+  scale(value) {
+    if (value == null || isNaN(value)) {
+      return null;
     }
     
-    /**
-     * Invert a range value back to a domain value
-     * @param {number} value - Value to convert
-     * @returns {Date} Converted value as Date
-     */
-    invert(value) {
-      const timestamp = super.invert(value);
-      return new Date(timestamp);
+    let normalizedValue;
+    
+    switch (this.type) {
+      case 'linear':
+        normalizedValue = this._linearScale(value);
+        break;
+      case 'log':
+        normalizedValue = this._logScale(value);
+        break;
+      case 'time':
+        normalizedValue = this._timeScale(value);
+        break;
+      case 'ordinal':
+        normalizedValue = this._ordinalScale(value);
+        break;
+      default:
+        normalizedValue = this._linearScale(value);
     }
+    
+    // Clamp if requested
+    if (this.options.clamp) {
+      normalizedValue = Math.max(0, Math.min(1, normalizedValue));
+    }
+    
+    // Convert to pixel range using RENDERER-AGNOSTIC coordinate system
+    return this._convertToPixelRange(normalizedValue);
   }
   
   /**
-   * Log scale for data with exponential distribution
+   * Convert normalized value to pixel range (renderer-agnostic)
+   * This replaces the old direct range conversion
    */
-  export class LogScale extends Scale {
-    /**
-     * Create a log scale
-     * @param {Array} domain - Data domain [min, max]
-     * @param {Array} range - Output range [min, max]
-     * @param {number} base - Logarithm base (default: 10)
-     */
-    constructor(domain, range, base = 10) {
-      super(domain, range);
-      this.base = base;
-      this.log = value => Math.log(value) / Math.log(base);
-      this.pow = value => Math.pow(base, value);
-    }
-    
-    /**
-     * Convert a domain value to a range value
-     * @param {number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    scale(value) {
-      const [d0, d1] = this.domain;
-      const [r0, r1] = this.range;
-      
-      // Handle edge cases
-      if (value <= 0) throw new Error('Log scale domain must be positive');
-      if (d0 === d1) return r0;
-      
-      // Log interpolation
-      return r0 + (this.log(value) - this.log(d0)) * (r1 - r0) / (this.log(d1) - this.log(d0));
-    }
-    
-    /**
-     * Invert a range value back to a domain value
-     * @param {number} value - Value to convert
-     * @returns {number} Converted value
-     */
-    invert(value) {
-      const [d0, d1] = this.domain;
-      const [r0, r1] = this.range;
-      
-      // Handle edge cases
-      if (r0 === r1) return d0;
-      
-      // Log interpolation
-      return this.pow(this.log(d0) + (value - r0) * (this.log(d1) - this.log(d0)) / (r1 - r0));
-    }
-  }
-  
-  /**
-   * Create a nice domain for axis ticks
-   * @param {number} min - Minimum value
-   * @param {number} max - Maximum value
-   * @param {number} count - Desired number of ticks
-   * @returns {Array} Nice domain [min, max]
-   */
-  export function createNiceDomain(min, max, count = 5) {
-    // Handle edge cases
-    if (min === max) {
-      return [min - 1, max + 1];
-    }
-    
-    // Calculate step size
-    const range = max - min;
-    let step = Math.pow(10, Math.floor(Math.log10(range / count)));
-    
-    // Adjust step for better tick values
-    const ratio = range / (count * step);
-    if (ratio >= 5) step *= 5;
-    else if (ratio >= 2) step *= 2;
-    
-    // Calculate nice min and max
-    const niceMin = Math.floor(min / step) * step;
-    const niceMax = Math.ceil(max / step) * step;
-    
-    return [niceMin, niceMax];
-  }
-  
-  /**
-   * Create nice time domain ticks
-   * @param {Date|number} min - Minimum date/time
-   * @param {Date|number} max - Maximum date/time
-   * @param {number} count - Desired number of ticks
-   * @returns {Array} Array of tick values as Date objects
-   */
-  export function createTimeTickValues(min, max, count = 5) {
-    // Convert to Date objects if needed
-    const minDate = min instanceof Date ? min : new Date(min);
-    const maxDate = max instanceof Date ? max : new Date(max);
-    
-    // Get timestamps
-    const minTime = minDate.getTime();
-    const maxTime = maxDate.getTime();
-    const range = maxTime - minTime;
-    
-    // Choose appropriate interval based on range
-    let interval, intervalMs;
-    
-    if (range < 1000 * 60 * 60) {
-      // Less than an hour: use minutes
-      interval = 'minute';
-      intervalMs = 1000 * 60;
-    } else if (range < 1000 * 60 * 60 * 24) {
-      // Less than a day: use hours
-      interval = 'hour';
-      intervalMs = 1000 * 60 * 60;
-    } else if (range < 1000 * 60 * 60 * 24 * 7) {
-      // Less than a week: use days
-      interval = 'day';
-      intervalMs = 1000 * 60 * 60 * 24;
-    } else if (range < 1000 * 60 * 60 * 24 * 30) {
-      // Less than a month: use weeks
-      interval = 'week';
-      intervalMs = 1000 * 60 * 60 * 24 * 7;
-    } else if (range < 1000 * 60 * 60 * 24 * 365) {
-      // Less than a year: use months
-      interval = 'month';
-      // Approximate month in milliseconds
-      intervalMs = 1000 * 60 * 60 * 24 * 30;
+  _convertToPixelRange(normalizedValue) {
+    if (this.coordinateSystem === 'normalized') {
+      // For normalized coordinate system, always use bottom-up for Y-axis
+      // This ensures consistent behavior regardless of renderer
+      if (this.orientation === 'vertical') {
+        // Y-axis: 0 at bottom, 1 at top (mathematical coordinate system)
+        return this.range[0] + (1 - normalizedValue) * this._rangeExtent;
+      } else {
+        // X-axis: 0 at left, 1 at right (standard left-to-right)
+        return this.range[0] + normalizedValue * this._rangeExtent;
+      }
     } else {
-      // More than a year: use years
-      interval = 'year';
-      // Approximate year in milliseconds
-      intervalMs = 1000 * 60 * 60 * 24 * 365;
+      // Legacy behavior for backward compatibility
+      return this.range[0] + normalizedValue * this._rangeExtent;
+    }
+  }
+  
+  /**
+   * Scale a pixel position back to data value (inverse transform)
+   */
+  invert(pixel) {
+    if (pixel == null || isNaN(pixel)) {
+      return null;
     }
     
-    // Calculate step size
-    const step = Math.max(1, Math.round(range / (count * intervalMs)));
+    // Convert pixel to normalized value (0-1) using renderer-agnostic system
+    const normalizedValue = this._convertFromPixelRange(pixel);
+    
+    // Clamp if requested
+    const clampedValue = this.options.clamp ? 
+      Math.max(0, Math.min(1, normalizedValue)) : 
+      normalizedValue;
+    
+    switch (this.type) {
+      case 'linear':
+        return this._linearInvert(clampedValue);
+      case 'log':
+        return this._logInvert(clampedValue);
+      case 'time':
+        return this._timeInvert(clampedValue);
+      case 'ordinal':
+        return this._ordinalInvert(clampedValue);
+      default:
+        return this._linearInvert(clampedValue);
+    }
+  }
+  
+  /**
+   * Convert pixel range to normalized value (renderer-agnostic)
+   */
+  _convertFromPixelRange(pixel) {
+    if (this.coordinateSystem === 'normalized') {
+      if (this.orientation === 'vertical') {
+        // Y-axis: Reverse the transformation applied in _convertToPixelRange
+        const rawNormalized = (pixel - this.range[0]) / this._rangeExtent;
+        return 1 - rawNormalized; // Flip back to mathematical coordinate system
+      } else {
+        // X-axis: Standard left-to-right
+        return (pixel - this.range[0]) / this._rangeExtent;
+      }
+    } else {
+      // Legacy behavior
+      return (pixel - this.range[0]) / this._rangeExtent;
+    }
+  }
+  
+  /**
+   * Update the domain (data range)
+   */
+  setDomain(newDomain) {
+    this.domain = [...newDomain];
+    this._updateInternalState();
+    return this;
+  }
+  
+  /**
+   * Update the range (pixel range)
+   */
+  setRange(newRange) {
+    this.range = [...newRange];
+    this._updateInternalState();
+    return this;
+  }
+  
+  /**
+   * NEW: Set coordinate system and orientation
+   */
+  setCoordinateSystem(coordinateSystem, orientation) {
+    this.coordinateSystem = coordinateSystem;
+    if (orientation) {
+      this.orientation = orientation;
+    }
+    return this;
+  }
+  
+  /**
+   * Get ticks for this scale
+   */
+  getTicks(count = 'auto') {
+    const tickCount = count === 'auto' ? this._getOptimalTickCount() : count;
+    
+    switch (this.type) {
+      case 'linear':
+        return this._getLinearTicks(tickCount);
+      case 'log':
+        return this._getLogTicks(tickCount);
+      case 'time':
+        return this._getTimeTicks(tickCount);
+      case 'ordinal':
+        return this._getOrdinalTicks();
+      default:
+        return this._getLinearTicks(tickCount);
+    }
+  }
+  
+  /**
+   * Copy this scale with new configuration
+   */
+  copy(newConfig = {}) {
+    return new Scale({
+      type: this.type,
+      domain: [...this.domain],
+      range: [...this.range],
+      dataType: this.dataType,
+      coordinateSystem: this.coordinateSystem,
+      orientation: this.orientation,
+      options: { ...this.options },
+      ...newConfig
+    });
+  }
+  
+  // ========================================================================
+  // PRIVATE SCALING METHODS (unchanged)
+  // ========================================================================
+  
+  /**
+   * Linear scaling (default)
+   */
+  _linearScale(value) {
+    return (value - this.domain[0]) / this._domainExtent;
+  }
+  
+  _linearInvert(normalizedValue) {
+    return this.domain[0] + normalizedValue * this._domainExtent;
+  }
+  
+  /**
+   * Logarithmic scaling
+   */
+  _logScale(value) {
+    if (value <= 0) return 0; // Handle non-positive values
+    
+    const logDomainMin = Math.log10(Math.max(this.domain[0], 1e-10));
+    const logDomainMax = Math.log10(this.domain[1]);
+    const logValue = Math.log10(value);
+    
+    return (logValue - logDomainMin) / (logDomainMax - logDomainMin);
+  }
+  
+  _logInvert(normalizedValue) {
+    const logDomainMin = Math.log10(Math.max(this.domain[0], 1e-10));
+    const logDomainMax = Math.log10(this.domain[1]);
+    
+    return Math.pow(10, logDomainMin + normalizedValue * (logDomainMax - logDomainMin));
+  }
+  
+  /**
+   * Time scaling (treats values as timestamps)
+   */
+  _timeScale(value) {
+    // Time is essentially linear scaling with timestamp values
+    return this._linearScale(value);
+  }
+  
+  _timeInvert(normalizedValue) {
+    return this._linearInvert(normalizedValue);
+  }
+  
+  /**
+   * Ordinal/categorical scaling
+   */
+  _ordinalScale(value) {
+    // For ordinal, domain should be an array of categories
+    const index = this.domain.indexOf(value);
+    if (index === -1) return 0;
+    
+    return index / (this.domain.length - 1);
+  }
+  
+  _ordinalInvert(normalizedValue) {
+    const index = Math.round(normalizedValue * (this.domain.length - 1));
+    return this.domain[index] || this.domain[0];
+  }
+  
+  // ========================================================================
+  // TICK GENERATION
+  // ========================================================================
+  
+  /**
+   * Generate linear ticks - SIMPLIFIED for no-padding mode
+   */
+  _getLinearTicks(count) {
+    const [min, max] = this.domain;
+    const range = max - min;
+    
+    // ✅ SIMPLE APPROACH: If nice numbers disabled, use simple even spacing
+    if (!this.options.nice) {
+      const ticks = [];
+      for (let i = 0; i < count; i++) {
+        const ratio = i / (count - 1);
+        const value = min + ratio * range;
+        ticks.push({
+          value: value,
+          position: this.scale(value)
+        });
+      }
+      return ticks;
+    }
+    
+    // Original complex nice number logic for when nice: true
+    const roughStep = range / (count - 1);
+    const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+    const normalizedStep = roughStep / magnitude;
+    
+    let niceStep;
+    if (normalizedStep <= 1) niceStep = 1;
+    else if (normalizedStep <= 2) niceStep = 2;
+    else if (normalizedStep <= 5) niceStep = 5;
+    else niceStep = 10;
+    
+    const step = niceStep * magnitude;
     
     // Generate tick values
-    const tickValues = [];
-    const startDate = new Date(minDate);
+    const ticks = [];
+    const start = Math.ceil(min / step) * step;
     
-    // Adjust to nice starting point
-    switch (interval) {
-      case 'minute':
-        startDate.setSeconds(0, 0);
-        break;
-      case 'hour':
-        startDate.setMinutes(0, 0, 0);
-        break;
-      case 'day':
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'week':
-        // Start on a Sunday or Monday
-        const day = startDate.getDay();
-        startDate.setDate(startDate.getDate() - day);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'month':
-        startDate.setDate(1);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'year':
-        startDate.setMonth(0, 1);
-        startDate.setHours(0, 0, 0, 0);
-        break;
+    for (let value = start; value <= max + step * 0.001; value += step) {
+      ticks.push({
+        value: value,
+        position: this.scale(value)
+      });
     }
     
-    // Generate ticks
-    const currentDate = new Date(startDate);
-    while (currentDate <= maxDate) {
-      tickValues.push(new Date(currentDate));
+    return ticks;
+  }
+  
+  /**
+   * Generate logarithmic ticks
+   */
+  _getLogTicks(count) {
+    const [min, max] = this.domain;
+    const logMin = Math.log10(Math.max(min, 1e-10));
+    const logMax = Math.log10(max);
+    
+    const ticks = [];
+    const step = (logMax - logMin) / (count - 1);
+    
+    for (let i = 0; i < count; i++) {
+      const logValue = logMin + i * step;
+      const value = Math.pow(10, logValue);
       
-      // Increment by step
-      switch (interval) {
-        case 'minute':
-          currentDate.setMinutes(currentDate.getMinutes() + step);
-          break;
-        case 'hour':
-          currentDate.setHours(currentDate.getHours() + step);
-          break;
-        case 'day':
-          currentDate.setDate(currentDate.getDate() + step);
-          break;
-        case 'week':
-          currentDate.setDate(currentDate.getDate() + 7 * step);
-          break;
-        case 'month':
-          currentDate.setMonth(currentDate.getMonth() + step);
-          break;
-        case 'year':
-          currentDate.setFullYear(currentDate.getFullYear() + step);
-          break;
+      ticks.push({
+        value: value,
+        position: this.scale(value)
+      });
+    }
+    
+    return ticks;
+  }
+  
+  /**
+   * Generate time ticks - SIMPLIFIED for no-padding mode
+   */
+  _getTimeTicks(count) {
+    const [minTime, maxTime] = this.domain;
+    
+    // ✅ SIMPLE APPROACH: If nice numbers disabled, use simple even spacing
+    if (!this.options.nice) {
+      const ticks = [];
+      const timeRange = maxTime - minTime;
+      
+      for (let i = 0; i < count; i++) {
+        const ratio = i / (count - 1);
+        const timestamp = minTime + ratio * timeRange;
+        ticks.push({
+          value: timestamp,
+          position: this.scale(timestamp)
+        });
+      }
+      return ticks;
+    }
+    
+    // Original complex time interval logic for when nice: true
+    const timeRange = maxTime - minTime;
+    
+    // Determine appropriate time interval
+    const intervals = [
+      { label: 'year', ms: 365 * 24 * 60 * 60 * 1000 },
+      { label: 'month', ms: 30 * 24 * 60 * 60 * 1000 },
+      { label: 'week', ms: 7 * 24 * 60 * 60 * 1000 },
+      { label: 'day', ms: 24 * 60 * 60 * 1000 },
+      { label: 'hour', ms: 60 * 60 * 1000 },
+      { label: 'minute', ms: 60 * 1000 }
+    ];
+    
+    const targetInterval = timeRange / count;
+    const interval = intervals.find(int => int.ms <= targetInterval) || intervals[intervals.length - 1];
+    
+    // Generate time ticks
+    const ticks = [];
+    const start = new Date(minTime);
+    
+    // Round start to nice boundary
+    if (interval.label === 'year') {
+      start.setMonth(0, 1);
+      start.setHours(0, 0, 0, 0);
+    } else if (interval.label === 'month') {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+    } else if (interval.label === 'day') {
+      start.setHours(0, 0, 0, 0);
+    }
+    
+    let current = new Date(start);
+    while (current.getTime() <= maxTime) {
+      const timestamp = current.getTime();
+      ticks.push({
+        value: timestamp,
+        position: this.scale(timestamp)
+      });
+      
+      // Increment by interval
+      if (interval.label === 'year') {
+        current.setFullYear(current.getFullYear() + 1);
+      } else if (interval.label === 'month') {
+        current.setMonth(current.getMonth() + 1);
+      } else {
+        current = new Date(current.getTime() + interval.ms);
       }
     }
     
-    return tickValues;
+    return ticks;
   }
+  
+  /**
+   * Generate ordinal ticks
+   */
+  _getOrdinalTicks() {
+    return this.domain.map((category, index) => ({
+      value: category,
+      position: this.scale(category)
+    }));
+  }
+  
+  /**
+   * Make domain "nice" by rounding to clean numbers
+   */
+  _makeNice() {
+    // Prevent recursion
+    if (this._nicingInProgress) return;
+    this._nicingInProgress = true;
+    
+    const [min, max] = this.domain;
+    const range = max - min;
+    
+    if (range === 0) {
+      this._nicingInProgress = false;
+      return;
+    }
+    
+    const magnitude = Math.pow(10, Math.floor(Math.log10(range)));
+    const normalizedRange = range / magnitude;
+    
+    let niceRange;
+    if (normalizedRange <= 1) niceRange = 1;
+    else if (normalizedRange <= 2) niceRange = 2;
+    else if (normalizedRange <= 5) niceRange = 5;
+    else niceRange = 10;
+    
+    const step = niceRange * magnitude / 10; // Subdivide for nice bounds
+    
+    this.domain[0] = Math.floor(min / step) * step;
+    this.domain[1] = Math.ceil(max / step) * step;
+    
+    // Update internal state manually without triggering nice again
+    this._domainExtent = this.domain[1] - this.domain[0];
+    this._nicingInProgress = false;
+  }
+  
+  /**
+   * Get optimal tick count based on range size - REDUCED for cleaner axes
+   */
+  _getOptimalTickCount() {
+    const rangeSize = Math.abs(this._rangeExtent);
+    
+    // ✅ REDUCED TICK COUNTS for cleaner axes
+    if (rangeSize < 100) return 2;
+    if (rangeSize < 200) return 3;
+    if (rangeSize < 400) return 4;
+    if (rangeSize < 600) return 5;
+    return 6;  // Maximum 6 ticks instead of 12
+  }
+}
+
+/**
+ * Utility function to create renderer-agnostic scales
+ */
+export function createScale(type, domain, range, options = {}) {
+  return new Scale({
+    type,
+    domain,
+    range,
+    coordinateSystem: 'normalized', // Default to normalized coordinate system
+    ...options
+  });
+}
+
+/**
+ * Scale Manager - manages multiple scales for a chart
+ */
+export class ScaleManager {
+  constructor() {
+    this.scales = new Map();
+  }
+  
+  /**
+   * Add or update a scale
+   */
+  setScale(name, scale) {
+    this.scales.set(name, scale);
+    return this;
+  }
+  
+  /**
+   * Get a scale by name
+   */
+  getScale(name) {
+    return this.scales.get(name);
+  }
+  
+  /**
+   * Remove a scale
+   */
+  removeScale(name) {
+    return this.scales.delete(name);
+  }
+  
+  /**
+   * Get all scale names
+   */
+  getScaleNames() {
+    return Array.from(this.scales.keys());
+  }
+  
+  /**
+   * Clear all scales
+   */
+  clear() {
+    this.scales.clear();
+  }
+
+    /**
+   * Create a new scale instance
+   */
+  createScale(type, config = {}) {
+    const scale = new Scale({
+      type: type,
+      coordinateSystem: 'normalized', // Default to normalized
+      ...config
+    });
+    
+    return scale;
+  }
+}

@@ -1,559 +1,816 @@
-import Chart from '../core/Chart.js';
-import Axis from '../core/Axis.js';
-import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
-import SvgRenderer from '../renderers/SvgRenderer.js';
-import { formatLargeNumber } from '../utils/chartUtils.js';
-import PathGenerator from '../utils/PathGenerator.js';
-import StudiesRenderer from '../components/StudiesRenderer.js';
-import PanelDataRenderer from '../components/PanelDataRenderer.js';
-import Crosshair from '../components/Crosshair.js';
-import Tooltip from '../components/Tooltip.js';
-import RecessionLines from '../components/RecessionLines.js';
-import EndingLabels from '../components/EndingLabels.js';
-import ZeroLine from '../components/ZeroLine.js';
-import Grid from '../components/Grid.js';
-import Panel from '../components/Panel.js';
-
 /**
- * LineChart class for rendering line charts with optional per-dataset area fills
+ * LineChart.js - Enhanced Line Chart Implementation (Updated for Unified Coordinates)
+ * 
+ * Extends the base Chart class to render line charts using either Canvas 2D or WebGL
+ * based on dataset size. Automatically switches to WebGL for datasets over 50K points.
+ * 
+ * NOW USES UNIFIED COORDINATE SYSTEM - consistent rendering across all renderers!
  */
-export default class LineChart extends Chart {
-  constructor(config) {
-    console.log('LineChart constructor called');
 
-    const defaultLineChartOptions = {
-      chartType: 'line',
-      curve: 'linear',
+import { Chart } from '../core/Chart.js';
+
+export class LineChart extends Chart {
+  constructor(config = {}) {
+    super(config);
+
+    this.chartType = 'line';
+    
+    // Line-specific options
+    this.config.options = {
+      ...this.config.options,
+      curve: 'monotone', // 'linear', 'step', 'cardinal', 'monotone'
+      strokeWidth: 2,
       showPoints: false,
       pointRadius: 3,
-      xField: 'x',
-      yField: 'y',
-      xType: 'number',
-      yType: 'number',
-      areaOpacity: 0.2,
-      gradient: false,
-      tickLabelFontSize: '13px',
-      xFormatOptions: {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      },
-      yFormatOptions: {
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 0
-      },
-      grid: {
-        show: true,
-        color: '#e0e0e0',
-        strokeWidth: 1,
-        dashArray: '4,4'
-      },
-      showEndingLabels: false,
-      endingLabelsConfig: {
-        show: true,
-        fontSize: '11px',
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        backgroundColor: '#ffffff',
-        borderColor: '#cccccc',
-        borderWidth: 1,
-        borderRadius: 3,
-        padding: { top: 2, right: 2, bottom: 2, left: 2 },
-        offsetX: 8,
-        offsetY: 0,
-        textColor: null,
-        showBorder: true,
-        showBackground: true
-      }
-      // ... any other existing default options ...
+      
+      // NEW: Coordinate validation options
+      enableCoordinateValidation: true,
+      enableRenderingDebug: false,
+      
+      ...config.options
     };
-
-    // Merge options: user's config.options take precedence, with special handling for grid
-    const mergedOptions = {
-      ...defaultLineChartOptions,
-      ...(config.options || {}), // Spread user's top-level options
-      grid: { // Deep merge for the grid object
-        ...defaultLineChartOptions.grid, // Start with LineChart's grid defaults
-        ...((config.options && config.options.grid) || {}) // Override with user's grid options
-      },
-      endingLabelsConfig: { // Deep merge for ending labels config
-        ...defaultLineChartOptions.endingLabelsConfig,
-        ...((config.options && config.options.endingLabelsConfig) || {})
-      }
-    };
-
-    // Call parent constructor with the fully merged config
-    super({
-      ...config, // Pass through other parts of config like container, data
-      options: mergedOptions // Use the carefully merged options
-    });
     
-    console.log('LineChart constructor finished with merged options:', this.options);
+    // NEW: Coordinate validation state
+    this.coordinateValidationResults = [];
+    this.renderingDebugInfo = null;
+
+    this.supportsStudies = true;
+    
+    console.log('LineChart created with unified coordinate system support');
   }
   
+  /**
+   * UPDATED: Render line chart data - handles both single and panel modes
+   */
+  async _renderChartData() {
+    // If in panel mode, rendering is handled by individual panels
+    if (this.isPanelMode) {
+      console.log('LineChart: Panel mode rendering handled by Panel components');
+      return;
+    }
+    
+    // Original single mode rendering logic
+    if (!this.rendererInstance) {
+      console.error('No renderer instance available');
+      return;
+    }
+
+    // Use generated paths instead of raw data
+    if (!this.generatedPaths || !Array.isArray(this.generatedPaths) || this.generatedPaths.length === 0) {
+      console.log('No generated paths to render');
+      return;
+    }
+
+    try {
+      // NEW: Validate unified coordinates before rendering
+      if (this.config.options.enableCoordinateValidation) {
+        this._validateUnifiedCoordinates();
+      }
+
+      // Set viewport for clipping
+      this.rendererInstance.setViewport(this.chartArea);
+
+      // UPDATED: Render with fill support
+      await this.rendererInstance.renderLines(this.generatedPaths, this.scales, {
+        showPoints: this.config.options.showPoints,
+        pointRadius: this.config.options.pointRadius,
+        enableFill: true, // NEW: Enable fill rendering
+        chartArea: this.chartArea,
+        fillOpacity: 0.3  // NEW: 30% opacity for fills
+      });
+
+      const totalVertices = this.generatedPaths.reduce((sum, path) => sum + (path.vertexCount || 0), 0);
+      console.log(`LineChart: Rendered ${this.generatedPaths.length} datasets with fills using ${this.activeRenderer}`);
+
+      // NEW: Collect rendering debug info
+      if (this.config.options.enableRenderingDebug) {
+        this._collectRenderingDebugInfo();
+      }
+
+    } catch (error) {
+      console.error('Error rendering line chart data with fills:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * NEW: Validate unified coordinates across all datasets
+   * @private
+   */
+  _validateUnifiedCoordinates() {
+    this.coordinateValidationResults = [];
+
+    if (!this.generatedPaths || this.generatedPaths.length === 0) {
+      console.warn('LineChart: No generated paths to validate');
+      return;
+    }
+
+    for (const pathData of this.generatedPaths) {
+      const validationResult = this._validatePathCoordinates(pathData);
+      this.coordinateValidationResults.push(validationResult);
+    }
+
+    // Log validation summary
+    const totalPaths = this.coordinateValidationResults.length;
+    const validPaths = this.coordinateValidationResults.filter(r => r.isValid).length;
+    const totalVertices = this.coordinateValidationResults.reduce((sum, r) => sum + r.vertexCount, 0);
+    
+    console.log(`LineChart coordinate validation:`, {
+      totalPaths,
+      validPaths,
+      totalVertices,
+      coordinateSystem: 'unified',
+      renderer: this.activeRenderer
+    });
+
+    // Warn about invalid coordinates
+    const invalidPaths = this.coordinateValidationResults.filter(r => !r.isValid);
+    if (invalidPaths.length > 0) {
+      console.warn(`LineChart: ${invalidPaths.length} paths have coordinate issues:`, invalidPaths);
+    }
+  }
+
+  /**
+   * NEW: Validate coordinates for a single path
+   * @private
+   */
+  _validatePathCoordinates(pathData) {
+    const validation = {
+      pathId: pathData.id,
+      pathName: pathData.name,
+      vertexCount: pathData.vertices ? pathData.vertices.length : 0,
+      coordinateSystem: pathData.coordinateSystem,
+      isValid: true,
+      issues: []
+    };
+
+    if (!pathData.vertices || pathData.vertices.length === 0) {
+      validation.isValid = false;
+      validation.issues.push('No vertices found');
+      return validation;
+    }
+
+    // Check coordinate system consistency
+    if (pathData.coordinateSystem !== 'unified') {
+      validation.issues.push(`Unexpected coordinate system: ${pathData.coordinateSystem}`);
+    }
+
+    // Validate vertex coordinates
+    let validVertices = 0;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (let i = 0; i < pathData.vertices.length; i++) {
+      const vertex = pathData.vertices[i];
+      
+      if (vertex.x == null || vertex.y == null) {
+        validation.issues.push(`Vertex ${i} has null coordinates`);
+        continue;
+      }
+
+      if (!isFinite(vertex.x) || !isFinite(vertex.y)) {
+        validation.issues.push(`Vertex ${i} has invalid coordinates: (${vertex.x}, ${vertex.y})`);
+        continue;
+      }
+
+      validVertices++;
+      minX = Math.min(minX, vertex.x);
+      maxX = Math.max(maxX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxY = Math.max(maxY, vertex.y);
+    }
+
+    // Check if coordinates are within reasonable bounds
+    const chartArea = this.chartArea;
+    const tolerance = 100; // Allow some padding outside chart area
+
+    if (minX < chartArea.x - tolerance || maxX > chartArea.x + chartArea.width + tolerance) {
+      validation.issues.push(`X coordinates outside chart bounds: ${minX} to ${maxX}`);
+    }
+
+    if (minY < chartArea.y - tolerance || maxY > chartArea.y + chartArea.height + tolerance) {
+      validation.issues.push(`Y coordinates outside chart bounds: ${minY} to ${maxY}`);
+    }
+
+    validation.validVertices = validVertices;
+    validation.bounds = { minX, maxX, minY, maxY };
+
+    if (validation.issues.length > 0) {
+      validation.isValid = false;
+    }
+
+    return validation;
+  }
+
+  /**
+   * NEW: Collect rendering debug information
+   * @private
+   */
+  _collectRenderingDebugInfo() {
+    this.renderingDebugInfo = {
+      timestamp: Date.now(),
+      renderer: this.activeRenderer,
+      coordinateSystem: 'unified',
+      chartArea: this.chartArea,
+      scales: {
+        x: {
+          domain: this.scales.x.domain,
+          range: this.scales.x.range,
+          type: this.scales.x.type
+        },
+        y: {
+          domain: this.scales.y.domain,
+          range: this.scales.y.range,
+          type: this.scales.y.type
+        }
+      },
+      pathData: this.generatedPaths.map(path => ({
+        id: path.id,
+        name: path.name,
+        vertexCount: path.vertexCount,
+        coordinateSystem: path.coordinateSystem,
+        sampleVertices: path.vertices.slice(0, 3) // First 3 vertices for debugging
+      })),
+      validationResults: this.coordinateValidationResults
+    };
+
+    console.log('LineChart rendering debug info:', this.renderingDebugInfo);
+  }
+
    /**
-   * Create gradient definitions for area fills
-   * @private
+   * Set curve type for line interpolation - works in both single and panel modes
    */
-  createGradients() {
-  // Create defs element if it doesn't exist
-  let defs = this.state.svg.querySelector('defs');
-  if (!defs) {
-    defs = SvgRenderer.createDefs();
-    this.state.svg.insertBefore(defs, this.state.svg.firstChild);
-  }
-  
-  // Create gradient for each dataset that has area enabled
-  this.state.datasets.forEach(dataset => {
-    if (!dataset.area) return; // Skip if area is not enabled for this dataset
+  setCurveType(curveType) {
+    const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
     
-    const gradientId = `area-gradient-${dataset.id}`;
-    
-    // Check if gradient already exists
-    if (defs.querySelector(`#${gradientId}`)) return;
-    
-    // Create linear gradient with stops using SvgRenderer
-    const gradient = SvgRenderer.createLinearGradient(gradientId, [
-      { offset: '0%', color: dataset.color, opacity: 0.8 },
-      { offset: '100%', color: dataset.color, opacity: 0.1 }
-    ]);
-    
-    // Add gradient to defs
-    defs.appendChild(gradient);
-  });
-}
-  renderData() {
-  console.log('LineChart.renderData called');
-  
-  if (!this.state.chart) {
-    console.error('Cannot render data: chart element is null');
-    return;
-  }
-  
-  try {
-    const {
-      xField,
-      yField,
-      showPoints,
-      pointRadius,
-      areaOpacity,
-      gradient
-    } = this.options;
-    
-    // Create data group using SvgRenderer
-    const dataGroup = SvgRenderer.createGroup({ class: 'visioncharts-data' });
-    
-    // No data to render
-    if (!this.state.datasets.length) {
-      this.state.chart.appendChild(dataGroup);
-      console.log('No datasets to render');
-      return;
-    }
-    
-    console.log('Rendering', this.state.datasets.length, 'datasets');
-    
-    // Create gradient definitions if needed
-    if (gradient) {
-      this.createGradients();
-    }
-    
-    // Separate regular datasets from study datasets
-    const regularDatasets = this.state.datasets.filter(dataset => dataset.type !== 'study');
-    const studyDatasets = this.state.datasets.filter(dataset => dataset.type === 'study');
-    
-    console.log('Regular datasets:', regularDatasets.length, 'Study datasets:', studyDatasets.length);
-    
-    // Render regular datasets first
-    regularDatasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length) {
-        console.log('Dataset', index, 'has no data, skipping');
-        return;
-      }
-      
-      console.log('Rendering regular dataset', index, 'with', dataset.data.length, 'points', 
-                'area enabled:', Boolean(dataset.area));
-      
-      // Create dataset group using SvgRenderer
-      const datasetGroup = SvgRenderer.createGroup({ 
-        class: `visioncharts-dataset-${dataset.id}` 
-      });
-      
-      // Render area if enabled for this dataset
-      if (dataset.area) {
-        const areaPath = PathGenerator.generateAreaPath(dataset.data, this);
-        if (areaPath) {
-          // CREATE CLIP PATH FOR CHART BOUNDS
-          const clipPathId = `chart-clip-${dataset.id}-${Date.now()}`;
-          
-          // Get or create defs element
-          let defs = this.state.svg.querySelector('defs');
-          if (!defs) {
-            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            this.state.svg.insertBefore(defs, this.state.svg.firstChild);
-          }
-          
-          // Create clip path
-          const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
-          clipPath.setAttribute('id', clipPathId);
-          
-          // Create clipping rectangle that matches chart inner bounds
-          const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-          clipRect.setAttribute('x', '0');
-          clipRect.setAttribute('y', '0');
-          clipRect.setAttribute('width', this.state.dimensions.innerWidth);
-          clipRect.setAttribute('height', this.state.dimensions.innerHeight);
-          
-          clipPath.appendChild(clipRect);
-          defs.appendChild(clipPath);
-          
-          const areaAttributes = {
-            d: areaPath,
-            stroke: 'none',
-            class: 'visioncharts-area',
-            'clip-path': `url(#${clipPathId})`  // <-- ADD CLIPPING HERE
-          };
-          
-          // Apply fill (either gradient or color)
-          if (gradient) {
-            areaAttributes.fill = `url(#area-gradient-${dataset.id})`;
-          } else {
-            areaAttributes.fill = dataset.color;
-            areaAttributes['fill-opacity'] = dataset.areaOpacity || areaOpacity;
-          }
-          
-          const areaElement = SvgRenderer.createPath(areaPath, areaAttributes);
-          datasetGroup.appendChild(areaElement);
-        }
-      }
-      
-      // Render line using SvgRenderer
-      const linePath = PathGenerator.generateLinePath(dataset.data, this);
-      if (linePath) {
-        const lineElement = SvgRenderer.createPath(linePath, {
-          stroke: dataset.color,
-          'stroke-width': dataset.width,
-          fill: 'none',
-          class: 'visioncharts-line'
-        });
-        
-        datasetGroup.appendChild(lineElement);
-      }
-      
-      // Render points if enabled
-      if (showPoints) {
-        const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-points' });
-        
-        dataset.data.forEach(d => {
-          if (d[xField] === undefined || d[yField] === undefined) return;
-          
-          const x = this.state.scales.x.scale(d[xField]);
-          const y = this.state.scales.y.scale(d[yField]);
-          
-          const point = SvgRenderer.createCircle(x, y, pointRadius, {
-            fill: '#fff',
-            stroke: dataset.color,
-            'stroke-width': dataset.width / 2,
-            class: 'visioncharts-point'
-          });
-          
-          pointsGroup.appendChild(point);
-        });
-        
-        datasetGroup.appendChild(pointsGroup);
-      }
-      
-      // Add to data group
-      dataGroup.appendChild(datasetGroup);
-    });
-    
-    // Render all study datasets at once (overlaid on top)
-    if (studyDatasets.length > 0) {
-      StudiesRenderer.renderForLineChart(this, studyDatasets, dataGroup);
-    }
-    
-    // Add data group to chart
-    this.state.chart.appendChild(dataGroup);
-    
-    // Render ending labels if enabled (after all data is rendered)
-    if (this.options.showEndingLabels) {
-      console.log('LineChart: Rendering ending labels');
-      if (!this.endingLabels) {
-        this.endingLabels = new EndingLabels(this.options.endingLabelsConfig || {});
-      }
-      this.endingLabels.renderForSinglePanel(this, dataGroup);
-    }
-    
-    console.log('Data rendered successfully');
-  } catch (error) {
-    console.error('Error rendering data:', error);
-  }
-}
-
-  /**
-   * Create individual axes for single-panel mode (override parent method if needed)
-   */
-  createAxes() {
-    console.log('createAxes called for LineChart/BarChart');
-    
-    // Call parent method
-    super.createAxes();
-    
-    // Add any chart-type specific axis configuration
-    if (this.state.components.axes?.x) {
-      // LineChart/BarChart specific X-axis options
-      this.state.components.axes.x.setOptions({
-        tickCount: this.options.xTickCount || (this.options.xType === 'time' ? 6 : 5),
-        formatType: this.options.xType === 'time' ? 'time' : 'number'
-      });
-    }
-    
-    if (this.state.components.axes?.y) {
-      // LineChart/BarChart specific Y-axis options  
-      this.state.components.axes.y.setOptions({
-        tickCount: this.options.yTickCount || 5,
-        isLogarithmic: this.options.isLogarithmic || false
-      });
-    }
-  }
-  
-  /**
-   * Update axes
-   * @private
-   */
-  updateAxes() {
-    console.log('LineChart.updateAxes called');
-    
-    // Print chart state for debugging
-    console.log('Chart state:', {
-      rendered: this.state.rendered,
-      hasChart: Boolean(this.state.chart),
-      chartClassName: this.state.chart ? this.state.chart.className : 'N/A'
-    });
-    
-    // Safety check - don't try to update DOM elements that don't exist yet
-    if (!this.state.rendered) {
-      console.log('Chart not rendered yet, skipping updateAxes');
-      return;
-    }
-    
-    if (!this.state.chart) {
-      console.error('Cannot update axes: chart element is null');
-      return;
-    }
-    
-    try {
-      // Checking if chart is attached to DOM
-      if (!this.state.chart.ownerDocument || !this.state.chart.parentNode) {
-        console.error('Chart element is not attached to DOM');
-        return;
-      }
-      
-      console.log('Finding existing axes elements');
-      
-      // Look for existing axes with error handling
-      let xAxis = null;
-      let yAxis = null;
-      
-      try {
-        xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
-        console.log('Found X axis:', Boolean(xAxis));
-      } catch (error) {
-        console.error('Error finding X axis:', error);
-      }
-      
-      try {
-        yAxis = this.state.chart.querySelector('.visioncharts-y-axis');
-        console.log('Found Y axis:', Boolean(yAxis));
-      } catch (error) {
-        console.error('Error finding Y axis:', error);
-      }
-      
-      // Remove existing axes if found
-      if (xAxis) {
-        try {
-          xAxis.parentNode.removeChild(xAxis);
-          console.log('Removed X axis');
-        } catch (error) {
-          console.error('Error removing X axis:', error);
-        }
-      }
-      
-      if (yAxis) {
-        try {
-          yAxis.parentNode.removeChild(yAxis);
-          console.log('Removed Y axis');
-        } catch (error) {
-          console.error('Error removing Y axis:', error);
-        }
-      }
-      
-      // Re-render axes
-      console.log('Re-rendering axes');
-      this.renderAxes();
-      
-      console.log('Axes updated successfully');
-    } catch (error) {
-      console.error('Fatal error in updateAxes:', error);
-    }
-  }
-  
-  /**
-   * Update chart data
-   * @private
-   */
-  updateData() {
-    console.log('LineChart.updateData called');
-    
-    if (!this.state.chart) {
-      console.error('Cannot update data: chart element is null');
-      return;
-    }
-    
-    try {
-      // Remove existing data
-      const dataGroup = this.state.chart.querySelector('.visioncharts-data');
-      if (dataGroup) {
-        dataGroup.parentNode.removeChild(dataGroup);
-        console.log('Removed existing data');
-      } else {
-        console.log('No existing data to remove');
-      }
-      
-      // Re-render data
-      this.renderData();
-    } catch (error) {
-      console.error('Error updating data:', error);
-    }
-  }
-  
-  
-  
-  /**
-   * Toggle area fill for a specific dataset
-   * @public
-   * @param {string} datasetId - Dataset ID
-   * @param {boolean} showArea - Whether to show area fill
-   * @returns {LineChart} This chart instance
-   */
-  toggleDatasetArea(datasetId, showArea) {
-    console.log('LineChart.toggleDatasetArea called:', datasetId, showArea);
-    
-    // Find the dataset and update its area property
-    const dataset = this.state.datasets.find(d => d.id === datasetId);
-    if (dataset) {
-      dataset.area = Boolean(showArea);
-      
-      // Update the chart
-      return this.update();
-    } else {
-      console.warn('Dataset not found:', datasetId);
+    if (!validCurves.includes(curveType)) {
+      console.warn(`Invalid curve type: ${curveType}. Valid types: ${validCurves.join(', ')}`);
       return this;
     }
+    
+    // ✅ FIXED: Update config only, PathGenerator handles centrally
+    this.config.options.curve = curveType;
+    
+    // ✅ FIXED: Update panel renderers through PanelManager
+    if (this.isPanelMode && this.panelManager && this.panelManager.panels) {
+      for (const panel of this.panelManager.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.setCurveType(curveType);
+        }
+      }
+      
+      // ✅ FIXED: Just re-render panels without full refresh (no blinking)
+      this.panelManager._renderPanels();
+    } else {
+      // Single mode - just re-render normally
+      this.render();
+    }
+    
+    console.log(`LineChart curve type set to: ${curveType}`);
+    return this;
   }
   
   /**
-   * Set area opacity for a specific dataset
-   * @public
-   * @param {string} datasetId - Dataset ID
-   * @param {number} opacity - Opacity value (0-1)
-   * @returns {LineChart} This chart instance
+   * Update the fill state of a specific dataset - works in both single and panel modes
    */
-  setDatasetAreaOpacity(datasetId, opacity) {
-    console.log('LineChart.setDatasetAreaOpacity called:', datasetId, opacity);
-    
-    // Find the dataset and update its area opacity
-    const dataset = this.state.datasets.find(d => d.id === datasetId);
-    if (dataset) {
-      dataset.areaOpacity = Math.max(0, Math.min(1, opacity));
+  updateDatasetFill(datasetId, fillEnabled) {
+    try {
+      const dataset = this.config.data.find(d => d.id === datasetId);
       
-      // Update the chart if area is enabled for this dataset
-      if (dataset.area) {
+      if (!dataset) {
+        console.warn(`Dataset with ID ${datasetId} not found`);
+        return false;
+      }
+      
+      // Update dataset fill state
+      dataset.fill = fillEnabled;
+      
+      console.log(`Updated dataset ${datasetId} fill to ${fillEnabled}`);
+      
+      // Re-render (handles both single and panel modes)
+      this.render();
+      
+      return true;
+      
+    } catch (error) {
+      console.error('Error updating dataset fill:', error);
+      return false;
+    }
+  }
+
+  /**
+ * Add a new dataset to the chart (UPDATED with panel mode support)
+ */
+addDataset(dataset) {
+  if (!dataset || !dataset.data) {
+    console.warn('Invalid dataset provided to addDataset');
+    return this;
+  }
+  
+  // Ensure required properties
+  const processedDataset = {
+    id: dataset.id || `dataset-${this.config.data.length + 1}`,
+    name: dataset.name || `Dataset ${this.config.data.length + 1}`,
+    color: dataset.color || this._getDefaultColor(this.config.data.length),
+    width: dataset.width || this.config.options.strokeWidth,
+    fill: dataset.fill !== undefined ? dataset.fill : false,
+    ...dataset
+  };
+  
+  this.config.data.push(processedDataset);
+  
+  console.log(`LineChart: Added dataset with panel mode support: ${processedDataset.id} (fill: ${processedDataset.fill})`);
+  
+  // Update legend
+  if (this.legend) {
+    this.legend.updateDatasets(this.config.data);
+  }
+  
+  // ✅ FIX: Use PanelManager for panel mode refresh
+  if (this.isPanelMode) {
+    return this.panelManager.refreshPanelMode();
+  } else {
+    return this.update();
+  }
+}
+  
+  /**
+   * Remove a dataset by ID (UPDATED with legend support)
+   */
+  removeDataset(datasetId) {
+    const initialCount = this.config.data.length;
+    this.config.data = this.config.data.filter(dataset => dataset.id !== datasetId);
+    
+    if (this.config.data.length < initialCount) {
+      console.log(`LineChart: Removed dataset: ${datasetId}`);
+      
+      // Update legend
+      if (this.legend) {
+        this.legend.updateDatasets(this.config.data);
+      }
+      
+      // ✅ FIX: Use PanelManager for panel mode refresh
+      if (this.isPanelMode) {
+        return this.panelManager.refreshPanelMode();
+      } else {
         return this.update();
       }
     } else {
-      console.warn('Dataset not found:', datasetId);
+      console.warn(`LineChart: Dataset not found: ${datasetId}`);
     }
     
     return this;
   }
   
   /**
-   * Toggle gradient fill globally
-   * @public
-   * @param {boolean} gradient - Whether to use gradient fills
-   * @returns {LineChart} This chart instance
+   * Update a specific dataset (UPDATED with legend support)
    */
-  toggleGradient(gradient) {
-    console.log('LineChart.toggleGradient called:', gradient);
+  updateDataset(datasetId, newData) {
+    const dataset = this.config.data.find(ds => ds.id === datasetId);
     
-    this.options.gradient = gradient;
-    return this.update();
+    if (!dataset) {
+      console.warn(`LineChart: Dataset not found: ${datasetId}`);
+      return this;
+    }
+    
+    // Update dataset properties
+    Object.assign(dataset, newData);
+    
+    // Update legend if color changed
+    if (newData.color && this.legend) {
+      this.legend.updateDatasetColor(datasetId, newData.color);
+    }
+    
+    // Update legend if name changed
+    if (newData.name && this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
+    
+    console.log(`LineChart: Updated dataset with legend support: ${datasetId}`);
+    
+    // ✅ FIX: Use PanelManager for panel mode refresh
+    if (this.isPanelMode) {
+      return this.panelManager.refreshPanelMode();
+    } else {
+      return this.update();
+    }
+  }
+  
+  /**
+   * Toggle point display - works in both single and panel modes
+   */
+  togglePoints(show = null) {
+    this.config.options.showPoints = show !== null ? show : !this.config.options.showPoints;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ 
+            showPoints: this.config.options.showPoints,
+            pointRadius: this.config.options.pointRadius
+          });
+        }
+      }
+    }
+    
+    console.log(`LineChart: Points ${this.config.options.showPoints ? 'enabled' : 'disabled'}`);
+    
+    this.render();
+    return this.config.options.showPoints;
+  }
+  
+  /**
+   * Set stroke width for all lines - works in both single and panel modes
+   */
+  setStrokeWidth(width) {
+    if (typeof width !== 'number' || width <= 0) {
+      console.warn('Invalid stroke width provided');
+      return this;
+    }
+    
+    this.config.options.strokeWidth = width;
+    
+    // Update all datasets that don't have custom widths
+    this.config.data.forEach(dataset => {
+      if (!dataset.customWidth) {
+        dataset.width = width;
+      }
+    });
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ strokeWidth: width });
+        }
+      }
+    }
+    
+    console.log(`LineChart: Stroke width set to: ${width}`);
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Set point radius
+   */
+  setPointRadius(radius) {
+    if (typeof radius !== 'number' || radius <= 0) {
+      console.warn('Invalid point radius provided');
+      return this;
+    }
+    
+    this.config.options.pointRadius = radius;
+    console.log(`LineChart: Point radius set to: ${radius}`);
+    
+    this.render();
+    return this;
   }
 
   /**
-   * Toggle ending labels visibility
-   * @public
-   * @param {boolean} show - Whether to show ending labels (null to toggle)
-   * @returns {LineChart} This chart instance
+   * NEW: Enable/disable coordinate validation
    */
-  toggleEndingLabels(show = null) {
-    console.log('LineChart.toggleEndingLabels called:', show);
+  setCoordinateValidation(enabled) {
+    this.config.options.enableCoordinateValidation = enabled;
     
-    if (show === null) {
-      show = !this.options.showEndingLabels;
+    // Update PathGenerator validation as well
+    if (this.pathGenerator) {
+      this.pathGenerator.setCoordinateValidation(enabled);
     }
     
-    this.options.showEndingLabels = Boolean(show);
-    
-    if (this.state.rendered) {
-      return this.update();
-    }
-    
+    console.log(`LineChart: Coordinate validation ${enabled ? 'enabled' : 'disabled'}`);
     return this;
+  }
+
+  /**
+   * NEW: Enable/disable rendering debug info
+   */
+  setRenderingDebug(enabled) {
+    this.config.options.enableRenderingDebug = enabled;
+    console.log(`LineChart: Rendering debug ${enabled ? 'enabled' : 'disabled'}`);
+    return this;
+  }
+
+  /**
+   * NEW: Get coordinate validation results
+   */
+  getCoordinateValidationResults() {
+    return this.coordinateValidationResults;
+  }
+
+  /**
+   * NEW: Get rendering debug information
+   */
+  getRenderingDebugInfo() {
+    return this.renderingDebugInfo;
   }
   
   /**
-   * Configure ending labels appearance
-   * @public
-   * @param {Object} config - Configuration object
-   * @returns {LineChart} This chart instance
+   * Get line chart specific information - includes panel mode details
    */
-  configureEndingLabels(config) {
-    console.log('LineChart.configureEndingLabels called:', config);
+  getLineChartInfo() {
+    const baseInfo = this.getRendererInfo();
     
-    this.options.endingLabelsConfig = { 
-      ...this.options.endingLabelsConfig, 
-      ...config 
+    const info = {
+      ...baseInfo,
+      chartType: 'line',
+      curveType: this.config.options.curve,
+      strokeWidth: this.config.options.strokeWidth,
+      showPoints: this.config.options.showPoints,
+      pointRadius: this.config.options.pointRadius,
+      coordinateSystem: 'unified',
+      coordinateValidation: this.config.options.enableCoordinateValidation,
+      renderingDebug: this.config.options.enableRenderingDebug,
+      datasets: this.config.data.map(dataset => ({
+        id: dataset.id,
+        name: dataset.name,
+        color: dataset.color,
+        pointCount: dataset.data?.length || 0,
+        width: dataset.width,
+        fill: dataset.fill || false
+      }))
     };
     
-    if (this.endingLabels) {
-      this.endingLabels.updateConfig(config);
+    // Add panel mode information
+    if (this.isPanelMode) {
+      info.panelMode = this.getPanelModeInfo();
     }
     
-    if (this.options.showEndingLabels && this.state.rendered) {
-      return this.update();
-    }
+    return info;
+  }
+  
+  /**
+   * Optimize for large datasets by enabling WebGL if needed
+   */
+  optimizeForLargeDataset() {
+    const currentRenderer = this.activeRenderer;
     
-    return this;
+    if (this.dataPointCount > this.performanceThresholds.canvas && currentRenderer !== 'webgl') {
+      console.log('LineChart: Optimizing for large dataset - switching to WebGL with unified coordinates');
+      return this.switchRenderer('webgl');
+    } else {
+      console.log('LineChart: Dataset size acceptable for current renderer');
+      return Promise.resolve();
+    }
   }
 
   /**
-   * Generate line path for dataset - UPDATED VERSION using PathGenerator
-   * @private
-   * @param {Array} data - Data array
-   * @returns {string} SVG path definition
+   * NEW: Test coordinate system consistency between renderers
    */
-  generateLinePath(data) {
-    return PathGenerator.generateLinePath(data, this);
+  async testCoordinateConsistency() {
+    if (!this.config.data || this.config.data.length === 0) {
+      console.warn('LineChart: No data available for consistency test');
+      return null;
+    }
+
+    const originalRenderer = this.activeRenderer;
+    const testResults = {};
+
+    try {
+      // Test with Canvas renderer
+      await this.switchRenderer('canvas');
+      if (this.config.options.enableCoordinateValidation) {
+        this._validateUnifiedCoordinates();
+      }
+      testResults.canvas = {
+        renderer: 'canvas',
+        validationResults: [...this.coordinateValidationResults],
+        coordinateSystem: 'unified'
+      };
+
+      // Test with WebGL renderer (if supported)
+      if (this.getRendererInfo().webglSupported) {
+        await this.switchRenderer('webgl');
+        if (this.config.options.enableCoordinateValidation) {
+          this._validateUnifiedCoordinates();
+        }
+        testResults.webgl = {
+          renderer: 'webgl',
+          validationResults: [...this.coordinateValidationResults],
+          coordinateSystem: 'unified'
+        };
+      }
+
+      // Switch back to original renderer
+      await this.switchRenderer(originalRenderer);
+
+      console.log('LineChart: Coordinate consistency test completed:', testResults);
+      return testResults;
+
+    } catch (error) {
+      console.error('LineChart: Coordinate consistency test failed:', error);
+      // Ensure we switch back to original renderer
+      await this.switchRenderer(originalRenderer);
+      throw error;
+    }
   }
 
   /**
-   * Generate area path for dataset - UPDATED VERSION using PathGenerator
-   * @private
-   * @param {Array} data - Data array
-   * @returns {string} SVG path definition
+   * Find closest data points for given X coordinate
    */
-  generateAreaPath(data) {
-    return PathGenerator.generateAreaPath(data, this);
+  findClosestDataPoints(targetDataX, dataset = null) {
+    // Use provided dataset or find from config
+    const targetDataset = dataset || this.config.data[0];
+    
+    if (!targetDataset || !targetDataset.data || targetDataset.data.length === 0) {
+      return [];
+    }
+    
+    try {
+      const closestPoint = this._binarySearchClosest(targetDataset.data, targetDataX);
+      
+      if (closestPoint) {
+        return [{
+          ...closestPoint,
+          datasetId: targetDataset.id,
+          dataset: targetDataset,
+          dataX: this._extractXValue(closestPoint),
+          dataY: this._extractYValue(closestPoint),
+          color: targetDataset.color
+        }];
+      }
+      
+      return [];
+      
+    } catch (error) {
+      console.error('Error finding closest data points:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get data points at exact X coordinate
+   */
+  getDataPointsAtX(exactDataX, dataset = null) {
+    const targetDataset = dataset || this.config.data[0];
+    
+    if (!targetDataset || !targetDataset.data || targetDataset.data.length === 0) {
+      return [];
+    }
+    
+    try {
+      const matchingPoints = [];
+      
+      // FIXED: Use global tolerance method (inherited from Chart base class)
+      const tolerance = this._calculateMouseProximityTolerance();
+      
+      console.log(`Using global tolerance: ${tolerance}ms (${tolerance/60000} minutes) for dataset ${targetDataset.id}`);
+      
+      // Find all points within reasonable distance of mouse
+      for (const point of targetDataset.data) {
+        const pointX = this._extractXValue(point);
+        
+        if (Math.abs(pointX - exactDataX) <= tolerance) {
+          matchingPoints.push({
+            ...point,
+            datasetId: targetDataset.id,
+            dataset: targetDataset,
+            dataX: pointX,
+            dataY: this._extractYValue(point),
+            color: targetDataset.color,
+            unifiedX: point.unifiedX || point.screenX,
+            unifiedY: point.unifiedY || point.screenY
+          });
+        }
+      }
+
+      // FIXED: No fallback to distant points! If no points within tolerance, return empty
+      if (matchingPoints.length === 0) {
+        console.log(`No points found within ${tolerance}ms of mouse position for dataset ${targetDataset.id}`);
+        return [];
+      }
+      
+      return matchingPoints;
+      
+    } catch (error) {
+      console.error('Error getting data points at X:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Binary search for closest data point by X coordinate
+   * @private
+   */
+  _binarySearchClosest(data, targetX) {
+    if (!data || data.length === 0) return null;
+    
+    // Quick check if data appears to be sorted
+    const isSorted = this._isDataSorted(data);
+    
+    if (isSorted) {
+      return this._binarySearchSorted(data, targetX);
+    } else {
+      console.warn('Data not sorted, falling back to linear search');
+      return this._linearSearchClosest(data, targetX);
+    }
+  }
+
+  /**
+   * Binary search on sorted data
+   * @private
+   */
+  _binarySearchSorted(data, targetX) {
+    let left = 0;
+    let right = data.length - 1;
+    let closest = data[0];
+    let minDistance = Math.abs(this._extractXValue(data[0]) - targetX);
+    
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const midPoint = data[mid];
+      const midX = this._extractXValue(midPoint);
+      const distance = Math.abs(midX - targetX);
+      
+      // Update closest if this point is closer
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = midPoint;
+      }
+      
+      // Navigate search space
+      if (midX < targetX) {
+        left = mid + 1;
+      } else if (midX > targetX) {
+        right = mid - 1;
+      } else {
+        // Exact match found
+        return midPoint;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
+   * Linear search fallback for unsorted data
+   * @private
+   */
+  _linearSearchClosest(data, targetX) {
+    let closest = null;
+    let minDistance = Infinity;
+    
+    for (const point of data) {
+      const pointX = this._extractXValue(point);
+      const distance = Math.abs(pointX - targetX);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = point;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
+   * Check if data is sorted by X coordinate
+   * @private
+   */
+  _isDataSorted(data) {
+    if (data.length < 2) return true;
+    
+    // Check first few and last few points to determine if sorted
+    const checkCount = Math.min(10, Math.floor(data.length / 2));
+    
+    for (let i = 1; i < checkCount; i++) {
+      const prevX = this._extractXValue(data[i - 1]);
+      const currX = this._extractXValue(data[i]);
+      
+      if (prevX > currX) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Extract X value from data point
+   * @private
+   */
+  _extractXValue(point) {
+    const x = point.x || point.date || point.time || point.timestamp;
+    
+    // Convert Date objects to timestamps
+    if (x instanceof Date) {
+      return x.getTime();
+    }
+    
+    if (typeof x === 'string' && this.config.options.xType === 'time') {
+      return new Date(x).getTime();
+    }
+    
+    return typeof x === 'number' ? x : null;
+  }
+
+  /**
+   * Extract Y value from data point
+   * @private
+   */
+  _extractYValue(point) {
+    const y = point.y || point.value || point.price || point.close;
+    return typeof y === 'number' ? y : null;
   }
 }

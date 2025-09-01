@@ -4,391 +4,325 @@ import { calculateIndicator } from '../utils/math.js';
  * StudiesManager - Centralized management of studies/indicators
  * Handles study configuration, calculation, and lifecycle management
  */
-export default class StudiesManager {
-  
-  /**
-   * Process studies/indicators for a chart
-   * @param {Object} chart - Chart instance
-   */
-  static processStudies(chart) {
-    console.log('StudiesManager.processStudies called');
+export class StudiesManager {
+  constructor(chart) {
+    this.chart = chart;
+    this.studies = new Map(); // Map of study ID to study config
+    this.studyCounter = 0;
     
-    const { studies } = chart.options;
-    
-    // Skip if no studies
-    if (!studies || !studies.length) {
-      console.log('No studies to process');
-      return;
-    }
-    
-    // Process each study
-    studies.forEach(study => {
-      // Find dataset to apply the study to
-      const dataset = chart.state.datasets.find(d => d.id === study.datasetId);
-      if (!dataset || !dataset.data || !dataset.data.length) {
-        console.log('Dataset not found for study:', study.id);
-        return;
+    // Supported study types (Phase 1: overlay studies only)
+    this.supportedStudies = {
+      'sma': {
+        name: 'Simple Moving Average',
+        type: 'overlay',
+        defaultParams: { period: 20 },
+        defaultColor: '#FF6B35',
+        calculator: 'sma'
+      },
+      'ema': {
+        name: 'Exponential Moving Average', 
+        type: 'overlay',
+        defaultParams: { period: 20 },
+        defaultColor: '#4ECDC4',
+        calculator: 'ema'
+      },
+      'bollinger': {
+        name: 'Bollinger Bands',
+        type: 'overlay',
+        defaultParams: { period: 20, multiplier: 2 },
+        defaultColor: '#45B7D1',
+        calculator: 'bollinger'
       }
-      
-      console.log('Processing study:', study.type, 'for dataset:', dataset.id);
-      
-      try {
-        // Map chart data structure to what the math functions expect
-        const studyData = dataset.data.map(point => ({
-          x: point[chart.options.xField] || point.x || point.date,
-          y: point[chart.options.yField] || point.y || point.price || point.value,
-          // Preserve original point for reference
-          ...point
-        }));
-        
-        // Use the consolidated math function with proper field mapping
-        const calculatedStudy = calculateIndicator(study.type, studyData, {
-          ...study.params,
-          xField: 'x',
-          yField: 'y'
-        });
-        
-        // Check if we got a valid result
-        if (!calculatedStudy || !calculatedStudy.length) {
-          console.warn('Study calculation returned no data:', study.type);
-          return;
-        }
-        
-        // Convert back to chart's data format
-        const chartStudyData = this.convertStudyDataToChartFormat(
-          calculatedStudy, 
-          study, 
-          chart.options
-        );
-        
-        // Add or update study dataset
-        this.addStudyDataset(chart, study, chartStudyData);
-        
-        console.log('Study added as dataset:', study.id, 'with', chartStudyData.length, 'points');
-      } catch (error) {
-        console.error(`Error calculating study ${study.type}:`, error);
-      }
-    });
-  }
-  
-  /**
-   * Convert calculated study data back to chart format
-   * @private
-   * @param {Array} calculatedStudy - Raw calculated study data
-   * @param {Object} study - Study configuration
-   * @param {Object} options - Chart options
-   * @returns {Array} Chart-formatted study data
-   */
-  static convertStudyDataToChartFormat(calculatedStudy, study, options) {
-    return calculatedStudy.map(point => {
-      const result = {
-        [options.xField]: point.x || point[options.xField],
-      };
-      
-      // Handle different study types' output formats
-      if (study.type === 'bollinger') {
-        // Bollinger bands return multiple values
-        result[options.yField] = point.middle;
-        result.upper = point.upper;
-        result.lower = point.lower;
-      } else if (study.type === 'macd') {
-        // MACD returns multiple values
-        result[options.yField] = point.macd;
-        result.signal = point.signal;
-        result.histogram = point.histogram;
-      } else if (study.type === 'rsi') {
-        // RSI returns rsi value
-        result[options.yField] = point.rsi;
-      } else {
-        // SMA, EMA return single values
-        result[options.yField] = point[options.yField] || point.y;
-      }
-      
-      return result;
-    });
-  }
-  
-  /**
-   * Add or update study dataset in chart
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Object} study - Study configuration
-   * @param {Array} chartStudyData - Formatted study data
-   */
-  static addStudyDataset(chart, study, chartStudyData) {
-    // Check if study dataset already exists
-    const existingStudyIndex = chart.state.datasets.findIndex(d => d.id === study.id);
-    
-    const studyDataset = {
-      id: study.id,
-      name: study.name || `${study.type.toUpperCase()}(${study.params?.period || 14})`,
-      color: study.color || '#888',
-      width: study.width || 1,
-      area: study.area || false,
-      type: 'study',
-      studyType: study.type,
-      data: chartStudyData
     };
     
-    if (existingStudyIndex >= 0) {
-      // Update existing study
-      chart.state.datasets[existingStudyIndex] = studyDataset;
-    } else {
-      // Add new study
-      chart.state.datasets.push(studyDataset);
-    }
+    console.log('StudiesManager initialized for overlay studies (SMA, EMA, Bollinger)');
   }
-  
+
   /**
-   * Add a study/indicator to a chart
-   * @param {Object} chart - Chart instance
-   * @param {string} datasetId - Dataset ID to apply the study to
-   * @param {Object} study - Study configuration
-   * @returns {Object} Chart instance (for chaining)
+   * Add a new study to the chart
+   * @param {string} studyType - Type of study ('sma', 'ema', 'bollinger')
+   * @param {Object} config - Study configuration
+   * @returns {string} Study ID
    */
-  static addStudy(chart, datasetId, study) {
-    console.log('StudiesManager.addStudy called:', datasetId, study);
+  addStudy(studyType, config = {}) {
+    if (!this.supportedStudies[studyType]) {
+      throw new Error(`Unsupported study type: ${studyType}`);
+    }
+
+    const studyDef = this.supportedStudies[studyType];
+    const studyId = `study_${studyType}_${++this.studyCounter}`;
     
-    // Initialize studies array if it doesn't exist
-    chart.options.studies = chart.options.studies || [];
-    
-    // Create study configuration
-    const studyConfig = {
-      ...study,
-      datasetId: datasetId,
-      id: study.id || `study-${study.type}-${Date.now()}`
+    const study = {
+      id: studyId,
+      type: studyType,
+      name: config.name || `${studyDef.name} (${studyDef.defaultParams.period})`,
+      datasetId: config.datasetId || this._getFirstDatasetId(),
+      parameters: { ...studyDef.defaultParams, ...config.parameters },
+      color: config.color || studyDef.defaultColor,
+      strokeWidth: config.strokeWidth || 2,
+      strokeOpacity: config.strokeOpacity || 0.8,
+      visible: config.visible !== false,
+      
+      // Study metadata
+      calculator: studyDef.calculator,
+      renderType: studyDef.type,
+      
+      // Calculated data (will be populated by calculateStudy)
+      data: null,
+      lastCalculated: null
     };
+
+    this.studies.set(studyId, study);
     
-    // Remove existing study with same ID if it exists
-    chart.options.studies = chart.options.studies.filter(s => s.id !== studyConfig.id);
+    console.log(`Added ${studyType} study:`, study);
     
-    // Add the new study
-    chart.options.studies.push(studyConfig);
+    // Calculate initial data
+    this._calculateStudy(studyId);
     
-    console.log('Study added to options:', studyConfig);
-    
-    return chart;
+    return studyId;
   }
-  
+
   /**
-   * Remove a study/indicator from a chart
-   * @param {Object} chart - Chart instance
-   * @param {string} datasetId - Dataset ID (for compatibility)
+   * Remove a study
    * @param {string} studyId - Study ID to remove
-   * @returns {Object} Chart instance (for chaining)
    */
-  static removeStudy(chart, datasetId, studyId) {
-    console.log('StudiesManager.removeStudy called:', datasetId, studyId);
-    
-    // Remove study from options
-    if (chart.options.studies) {
-      const beforeCount = chart.options.studies.length;
-      chart.options.studies = chart.options.studies.filter(s => s.id !== studyId);
-      const afterCount = chart.options.studies.length;
-      
-      console.log(`Removed ${beforeCount - afterCount} studies with ID ${studyId}`);
+  removeStudy(studyId) {
+    if (this.studies.has(studyId)) {
+      const study = this.studies.get(studyId);
+      this.studies.delete(studyId);
+      console.log(`Removed study: ${study.name}`);
+      return true;
     }
-    
-    // Remove study dataset from state
-    if (chart.state.datasets) {
-      const beforeCount = chart.state.datasets.length;
-      chart.state.datasets = chart.state.datasets.filter(d => d.id !== studyId);
-      const afterCount = chart.state.datasets.length;
-      
-      console.log(`Removed ${beforeCount - afterCount} study datasets with ID ${studyId}`);
-    }
-    
-    return chart;
+    return false;
   }
-  
+
   /**
-   * Get all studies for a specific dataset
-   * @param {Object} chart - Chart instance
+   * Update study parameters
+   * @param {string} studyId - Study ID
+   * @param {Object} updates - Parameters to update
+   */
+  updateStudy(studyId, updates) {
+    const study = this.studies.get(studyId);
+    if (!study) {
+      throw new Error(`Study not found: ${studyId}`);
+    }
+
+    // Update parameters
+    if (updates.parameters) {
+      Object.assign(study.parameters, updates.parameters);
+    }
+    
+    // Update visual properties
+    ['color', 'strokeWidth', 'strokeOpacity', 'visible', 'name'].forEach(prop => {
+      if (updates[prop] !== undefined) {
+        study[prop] = updates[prop];
+      }
+    });
+
+    console.log(`Updated study ${studyId}:`, updates);
+    
+    // Recalculate if parameters changed
+    if (updates.parameters) {
+      this._calculateStudy(studyId);
+    }
+  }
+
+  /**
+   * Get all studies
+   * @returns {Array} Array of study configurations
+   */
+  getAllStudies() {
+    return Array.from(this.studies.values());
+  }
+
+  /**
+   * Get studies for a specific dataset
    * @param {string} datasetId - Dataset ID
    * @returns {Array} Array of studies for the dataset
    */
-  static getStudiesForDataset(chart, datasetId) {
-    if (!chart.options.studies) return [];
-    
-    return chart.options.studies.filter(study => study.datasetId === datasetId);
+  getStudiesForDataset(datasetId) {
+    return this.getAllStudies().filter(study => study.datasetId === datasetId);
   }
-  
+
   /**
-   * Get study configuration by ID
-   * @param {Object} chart - Chart instance
-   * @param {string} studyId - Study ID
-   * @returns {Object|null} Study configuration or null if not found
+   * Get visible studies only
+   * @returns {Array} Array of visible studies
    */
-  static getStudyById(chart, studyId) {
-    if (!chart.options.studies) return null;
-    
-    return chart.options.studies.find(study => study.id === studyId) || null;
+  getVisibleStudies() {
+    return this.getAllStudies().filter(study => study.visible);
   }
-  
+
   /**
-   * Update study configuration
-   * @param {Object} chart - Chart instance
-   * @param {string} studyId - Study ID
-   * @param {Object} updates - Configuration updates
-   * @returns {boolean} True if study was found and updated
+   * Calculate all studies
+   * Called when chart data changes
    */
-  static updateStudy(chart, studyId, updates) {
-    console.log('StudiesManager.updateStudy called:', studyId, updates);
+  calculateAllStudies() {
+    console.log(`Calculating ${this.studies.size} studies...`);
     
-    if (!chart.options.studies) return false;
-    
-    const studyIndex = chart.options.studies.findIndex(s => s.id === studyId);
-    if (studyIndex === -1) {
-      console.warn('Study not found for update:', studyId);
-      return false;
+    for (const studyId of this.studies.keys()) {
+      this._calculateStudy(studyId);
     }
     
-    // Update study configuration
-    chart.options.studies[studyIndex] = {
-      ...chart.options.studies[studyIndex],
-      ...updates
-    };
-    
-    console.log('Study updated:', chart.options.studies[studyIndex]);
-    return true;
+    console.log('All studies calculated');
   }
-  
+
   /**
-   * Clear all studies from a chart
-   * @param {Object} chart - Chart instance
-   * @returns {Object} Chart instance (for chaining)
+   * Calculate a specific study
+   * @param {string} studyId - Study ID
+   * @private
    */
-  static clearAllStudies(chart) {
-    console.log('StudiesManager.clearAllStudies called');
-    
-    // Clear studies from options
-    chart.options.studies = [];
-    
-    // Remove all study datasets from state
-    if (chart.state.datasets) {
-      const beforeCount = chart.state.datasets.length;
-      chart.state.datasets = chart.state.datasets.filter(d => d.type !== 'study');
-      const afterCount = chart.state.datasets.length;
+  _calculateStudy(studyId) {
+    const study = this.studies.get(studyId);
+    if (!study) return;
+
+    try {
+      // Get the source dataset
+      const dataset = this._getDataset(study.datasetId);
+      if (!dataset || !dataset.data || dataset.data.length === 0) {
+        console.warn(`No data available for study ${study.name}`);
+        study.data = null;
+        return;
+      }
+
+      // Calculate the study using existing math functions
+      const calculatedData = calculateIndicator(study.calculator, dataset.data, {
+        ...study.parameters,
+        xField: 'x',
+        yField: 'y'
+      });
+
+      // Store calculated data
+      study.data = calculatedData;
+      study.lastCalculated = Date.now();
       
-      console.log(`Removed ${beforeCount - afterCount} study datasets`);
+      console.log(`Calculated ${study.name}: ${calculatedData.length} points`);
+      
+    } catch (error) {
+      console.error(`Error calculating study ${study.name}:`, error);
+      study.data = null;
     }
-    
-    return chart;
   }
-  
+
   /**
-   * Get available study types
-   * @returns {Array} Array of available study type strings
+   * Get dataset by ID from chart config
+   * @param {string} datasetId - Dataset ID
+   * @returns {Object|null} Dataset
+   * @private
    */
-  static getAvailableStudyTypes() {
-    return [
-      'sma',        // Simple Moving Average
-      'ema',        // Exponential Moving Average
-      'rsi',        // Relative Strength Index
-      'bollinger',  // Bollinger Bands
-      'macd'        // MACD
-    ];
+  _getDataset(datasetId) {
+    if (!this.chart?.config?.data) return null;
+    
+    return this.chart.config.data.find(dataset => dataset.id === datasetId);
   }
-  
+
   /**
-   * Validate study configuration
-   * @param {Object} study - Study configuration
-   * @returns {Object} Validation result with isValid and errors
+   * Get the first available dataset ID
+   * @returns {string|null} First dataset ID
+   * @private
    */
-  static validateStudyConfig(study) {
-    const errors = [];
-    const availableTypes = this.getAvailableStudyTypes();
-    
-    // Check required fields
-    if (!study.type) {
-      errors.push('Study type is required');
-    } else if (!availableTypes.includes(study.type)) {
-      errors.push(`Invalid study type: ${study.type}. Available types: ${availableTypes.join(', ')}`);
+  _getFirstDatasetId() {
+    if (!this.chart?.config?.data || this.chart.config.data.length === 0) {
+      return null;
     }
     
-    if (!study.datasetId) {
-      errors.push('Dataset ID is required');
-    }
+    return this.chart.config.data[0].id;
+  }
+
+  /**
+   * Get study data formatted for rendering
+   * Returns studies as pseudo-datasets for the rendering pipeline
+   * @returns {Array} Array of study datasets ready for rendering
+   */
+  getStudyDatasets() {
+    const studyDatasets = [];
     
-    // Validate parameters based on study type
-    if (study.type && study.params) {
-      switch (study.type) {
-        case 'sma':
-        case 'ema':
-        case 'rsi':
-          if (!study.params.period || study.params.period < 1) {
-            errors.push(`${study.type.toUpperCase()} requires a valid period parameter (>= 1)`);
-          }
-          break;
-        case 'bollinger':
-          if (!study.params.period || study.params.period < 1) {
-            errors.push('Bollinger Bands requires a valid period parameter (>= 1)');
-          }
-          if (!study.params.standardDeviations || study.params.standardDeviations <= 0) {
-            errors.push('Bollinger Bands requires a valid standardDeviations parameter (> 0)');
-          }
-          break;
-        case 'macd':
-          if (!study.params.fastPeriod || study.params.fastPeriod < 1) {
-            errors.push('MACD requires a valid fastPeriod parameter (>= 1)');
-          }
-          if (!study.params.slowPeriod || study.params.slowPeriod < 1) {
-            errors.push('MACD requires a valid slowPeriod parameter (>= 1)');
-          }
-          if (!study.params.signalPeriod || study.params.signalPeriod < 1) {
-            errors.push('MACD requires a valid signalPeriod parameter (>= 1)');
-          }
-          if (study.params.fastPeriod >= study.params.slowPeriod) {
-            errors.push('MACD fastPeriod must be less than slowPeriod');
-          }
-          break;
+    for (const study of this.getVisibleStudies()) {
+      if (!study.data || study.data.length === 0) continue;
+      
+      if (study.type === 'bollinger') {
+        // Bollinger Bands: Create three lines (upper, middle, lower)
+        studyDatasets.push(
+          this._createBollingerDataset(study, 'upper'),
+          this._createBollingerDataset(study, 'middle'), 
+          this._createBollingerDataset(study, 'lower')
+        );
+      } else {
+        // Single line studies (SMA, EMA)
+        studyDatasets.push({
+          id: `${study.id}_line`,
+          name: study.name,
+          color: study.color,
+          strokeWidth: study.strokeWidth,
+          strokeOpacity: study.strokeOpacity,
+          fill: false,
+          isStudy: true,
+          studyId: study.id,
+          studyType: study.type,
+          data: study.data
+        });
       }
     }
     
-    return {
-      isValid: errors.length === 0,
-      errors: errors
-    };
+    console.log(`Generated ${studyDatasets.length} study datasets for rendering`);
+    return studyDatasets;
   }
-  
+
   /**
-   * Get default parameters for a study type
-   * @param {string} studyType - Study type
-   * @returns {Object} Default parameters for the study type
+   * Create a dataset for one Bollinger Band line
+   * @param {Object} study - Bollinger Bands study
+   * @param {string} line - Which line ('upper', 'middle', 'lower')
+   * @returns {Object} Dataset for rendering
+   * @private
    */
-  static getDefaultStudyParams(studyType) {
-    const defaults = {
-      sma: { period: 20 },
-      ema: { period: 20 },
-      rsi: { period: 14 },
-      bollinger: { period: 20, standardDeviations: 2 },
-      macd: { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 }
+  _createBollingerDataset(study, line) {
+    const colors = {
+      upper: study.color,
+      middle: study.color,
+      lower: study.color
     };
     
-    return defaults[studyType] || {};
-  }
-  
-  /**
-   * Create a study configuration with defaults
-   * @param {string} studyType - Study type
-   * @param {string} datasetId - Dataset ID to apply to
-   * @param {Object} customParams - Custom parameters (optional)
-   * @param {Object} customOptions - Custom options (optional)
-   * @returns {Object} Complete study configuration
-   */
-  static createStudyConfig(studyType, datasetId, customParams = {}, customOptions = {}) {
-    const defaultParams = this.getDefaultStudyParams(studyType);
+    const opacities = {
+      upper: 0.6,
+      middle: 0.8,
+      lower: 0.6
+    };
+    
+    // Map Bollinger data to y values for each line
+    const lineData = study.data.map(point => ({
+      x: point.x,
+      y: point[line], // 'upper', 'middle', or 'lower' field
+      original: point.original
+    }));
     
     return {
-      id: `study-${studyType}-${Date.now()}`,
-      type: studyType,
-      name: customOptions.name || `${studyType.toUpperCase()}(${customParams.period || defaultParams.period || 14})`,
-      datasetId: datasetId,
-      params: { ...defaultParams, ...customParams },
-      color: customOptions.color || '#888',
-      width: customOptions.width || 1,
-      area: customOptions.area || false,
-      ...customOptions
+      id: `${study.id}_${line}`,
+      name: `${study.name} (${line})`,
+      color: colors[line],
+      strokeWidth: line === 'middle' ? study.strokeWidth : Math.max(1, study.strokeWidth - 1),
+      strokeOpacity: opacities[line],
+      fill: false,
+      isStudy: true,
+      studyId: study.id,
+      studyType: study.type,
+      bollingerLine: line,
+      data: lineData
     };
+  }
+
+  /**
+   * Clear all studies
+   */
+  clearAllStudies() {
+    this.studies.clear();
+    this.studyCounter = 0;
+    console.log('All studies cleared');
+  }
+
+  /**
+   * Get supported study types
+   * @returns {Object} Supported studies configuration
+   */
+  getSupportedStudies() {
+    return { ...this.supportedStudies };
   }
 }

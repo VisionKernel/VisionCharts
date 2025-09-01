@@ -1,453 +1,277 @@
-import SvgRenderer from '../renderers/SvgRenderer.js';
-import EndingLabels from './EndingLabels.js';
+import { PathGenerator } from '../utils/PathGenerator.js';
 
 /**
  * StudiesRenderer - Centralized component for rendering all types of studies/indicators
  * Handles rendering for both LineChart and BarChart in single and panel modes
+ * 
+ * Phase 1: Overlay studies (SMA, EMA, Bollinger Bands)
  */
-export default class StudiesRenderer {
-  
-  /**
-   * Render studies for LineChart context (as overlaid lines/areas)
-   * @param {Object} chart - Chart instance
-   * @param {Array} studyDatasets - Array of study datasets to render
-   * @param {SVGElement} dataGroup - Parent SVG group to append to
-   */
-  static renderForLineChart(chart, studyDatasets, dataGroup) {
-    console.log('StudiesRenderer.renderForLineChart called with', studyDatasets.length, 'studies');
+export class StudiesRenderer {
+  constructor(chart) {
+    this.chart = chart;
+    this.isInitialized = false;
     
-    if (!studyDatasets || !studyDatasets.length) return;
+    // Rendering state
+    this.studyPaths = new Map(); // Map of study ID to generated paths
+    this.lastRenderTime = 0;
     
-    // Create studies group
-    const studiesGroup = SvgRenderer.createGroup({ class: 'visioncharts-studies' });
-    
-    studyDatasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length) {
-        console.log('Study dataset', dataset.id, 'has no data, skipping');
-        return;
-      }
-      
-      console.log('Rendering study', dataset.id, 'type:', dataset.studyType);
-      
-      // Create dataset group for this study
-      const studyGroup = SvgRenderer.createGroup({ 
-        class: `visioncharts-study-${dataset.id}` 
-      });
-      
-      // Render based on study type
-      this.renderStudyByType(chart, dataset, studyGroup);
-      
-      // Add to studies group
-      studiesGroup.appendChild(studyGroup);
-    });
-    
-    // Add studies group to data group
-    dataGroup.appendChild(studiesGroup);
+    console.log('StudiesRenderer initialized for overlay studies');
   }
-  
+
   /**
-   * Render studies for BarChart context (as overlaid lines)
-   * @param {Object} chart - Chart instance
-   * @param {Array} studyDatasets - Array of study datasets to render
-   * @param {SVGElement} dataGroup - Parent SVG group to append to
+   * Initialize the studies renderer
    */
-  static renderForBarChart(chart, studyDatasets, dataGroup) {
-    console.log('StudiesRenderer.renderForBarChart called with', studyDatasets.length, 'studies');
+  async initialize() {
+    if (this.isInitialized) return;
     
-    if (!studyDatasets || !studyDatasets.length) return;
-    
-    const { xField, yField, studyLineWidth, studyPointRadius } = chart.options;
-    
-    // Create studies group
-    const studiesGroup = SvgRenderer.createGroup({ class: 'visioncharts-studies' });
-    
-    studyDatasets.forEach((dataset, index) => {
-      if (!dataset.data || !dataset.data.length) {
-        console.log('Study dataset', dataset.id, 'has no data, skipping');
-        return;
-      }
-      
-      console.log('Rendering study', dataset.id, 'with', dataset.data.length, 'points');
-      
-      // Create dataset group for this study
-      const studyGroup = SvgRenderer.createGroup({ 
-        class: `visioncharts-study-${dataset.id}` 
-      });
-      
-      // Generate line path for the study
-      const linePath = this.generateStudyLinePath(chart, dataset.data);
-      if (linePath) {
-        const studyConfig = this.getStudyConfig(chart, dataset);
-        const lineWidth = studyConfig?.width || dataset.width || studyLineWidth;
-        
-        const lineElement = SvgRenderer.createPath(linePath, {
-          stroke: dataset.color,
-          'stroke-width': lineWidth,
-          fill: 'none',
-          class: 'visioncharts-study-line',
-          'data-study-id': dataset.id
-        });
-        
-        studyGroup.appendChild(lineElement);
-      }
-      
-      // Render points if enabled
-      if (studyPointRadius > 0) {
-        const pointsGroup = SvgRenderer.createGroup({ class: 'visioncharts-study-points' });
-        
-        dataset.data.forEach(d => {
-          if (d[xField] === undefined || d[yField] === undefined) return;
-          
-          const x = chart.state.scales.x.scale(d[xField]);
-          const y = chart.state.scales.y.scale(d[yField]);
-          
-          const point = SvgRenderer.createCircle(x, y, studyPointRadius, {
-            fill: '#fff',
-            stroke: dataset.color,
-            'stroke-width': 1,
-            class: 'visioncharts-study-point'
-          });
-          
-          pointsGroup.appendChild(point);
-        });
-        
-        studyGroup.appendChild(pointsGroup);
-      }
-      
-      // Add to studies group
-      studiesGroup.appendChild(studyGroup);
-    });
-    
-    // Add studies group to data group
-    dataGroup.appendChild(studiesGroup);
+    this.isInitialized = true;
+    console.log('StudiesRenderer initialization complete');
   }
-  
+
   /**
-   * Render study in panel mode (for both LineChart and BarChart)
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Study dataset
-   * @param {SVGElement} panel - Panel container
-   * @param {Object} xScale - X scale for this panel
-   * @param {Object} yScale - Y scale for this panel
-   * @param {number} panelHeight - Panel height
+   * Main render method - renders all visible studies
+   * Called from Chart's render pipeline after main data
    */
-  static renderForPanel(chart, dataset, panel, xScale, yScale, panelHeight) {
-    console.log('StudiesRenderer.renderForPanel called for study:', dataset.id);
-    
-    const { xField, yField, studyLineWidth, studyPointRadius } = chart.options;
-    
-    // Map data points to coordinates using panel-specific scales
-    const points = dataset.data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    if (points.length === 0) return;
-    
-    // Generate linear path for study
-    const pathD = SvgRenderer.linePathDefinition(points);
-    
-    // Render line
-    const lineElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    lineElement.setAttribute('d', pathD);
-    lineElement.setAttribute('stroke', dataset.color);
-    lineElement.setAttribute('stroke-width', dataset.width || studyLineWidth);
-    lineElement.setAttribute('fill', 'none');
-    lineElement.setAttribute('class', 'visioncharts-study-line');
-    lineElement.setAttribute('stroke-dasharray', '3,3'); // Dashed line for studies
-    lineElement.setAttribute('data-study-id', dataset.id);
-    panel.appendChild(lineElement);
-    
-    // Render points if enabled
-    if (studyPointRadius > 0) {
-      dataset.data.forEach(d => {
-        if (d[xField] === undefined || d[yField] === undefined) return;
-        
-        const x = xScale.scale(d[xField]);
-        const y = yScale.scale(d[yField]);
-        
-        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        point.setAttribute('cx', x);
-        point.setAttribute('cy', y);
-        point.setAttribute('r', studyPointRadius);
-        point.setAttribute('fill', '#fff');
-        point.setAttribute('stroke', dataset.color);
-        point.setAttribute('stroke-width', 1);
-        point.setAttribute('class', 'visioncharts-panel-study-point');
-        
-        panel.appendChild(point);
-      });
+  async render() {
+    if (!this.isInitialized || !this.chart.studiesManager) {
+      return;
     }
-    
-    // ENHANCED: Add ending labels for studies in panel mode
-    if (chart.options.showEndingLabels) {
-      console.log('StudiesRenderer: Adding ending label for study:', dataset.id);
+
+    try {
+      console.log('StudiesRenderer: Starting studies render...');
       
+      // Get study datasets from the StudiesManager
+      const studyDatasets = this.chart.studiesManager.getStudyDatasets();
+      
+      if (studyDatasets.length === 0) {
+        console.log('StudiesRenderer: No studies to render');
+        return;
+      }
+
+      // Process and render each study dataset
+      await this._renderStudyDatasets(studyDatasets);
+      
+      this.lastRenderTime = Date.now();
+      console.log(`StudiesRenderer: Rendered ${studyDatasets.length} study datasets`);
+      
+    } catch (error) {
+      console.error('StudiesRenderer: Error rendering studies:', error);
+    }
+  }
+
+  /**
+   * Render study datasets using the chart's existing rendering pipeline
+   * @param {Array} studyDatasets - Array of study datasets to render
+   * @private
+   */
+  async _renderStudyDatasets(studyDatasets) {
+    if (!this.chart.rendererInstance || !this.chart.coordinateSystem || !this.chart.scales) {
+      console.warn('StudiesRenderer: Chart rendering components not ready');
+      return;
+    }
+
+    // Transform study data through the coordinate system (same as main data)
+    const transformedStudies = await this._transformStudyData(studyDatasets);
+    
+    // Generate paths for the transformed studies
+    const studyPaths = await this._generateStudyPaths(transformedStudies);
+    
+    // Render using the chart's active renderer
+    await this._renderWithActiveRenderer(studyPaths);
+  }
+
+  /**
+   * Transform study data through the unified coordinate system
+   * @param {Array} studyDatasets - Raw study datasets
+   * @returns {Array} Transformed study datasets
+   * @private
+   */
+  async _transformStudyData(studyDatasets) {
+    try {
+      // Use the same coordinate transformation as main chart data
+      const transformedStudies = await this.chart.coordinateSystem.transformDatasets(studyDatasets, {
+        strictValidation: false, // Studies might have gaps
+        preserveOriginal: true
+      });
+      
+      console.log(`StudiesRenderer: Transformed ${transformedStudies.length} study datasets`);
+      return transformedStudies;
+      
+    } catch (error) {
+      console.error('StudiesRenderer: Error transforming study data:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Generate rendering paths for study datasets
+   * @param {Array} transformedStudies - Transformed study datasets
+   * @returns {Array} Generated paths for rendering
+   * @private
+   */
+  async _generateStudyPaths(transformedStudies) {
+    try {
+      const studyPaths = [];
+      
+      for (const dataset of transformedStudies) {
+        // Generate path using the same PathGenerator as main data
+        const paths = await PathGenerator.generatePaths([dataset], {
+          curve: 'linear', // Studies typically use linear curves
+          strokeWidth: dataset.strokeWidth || 2,
+          targetRenderer: this.chart.activeRenderer,
+          enableFill: false // Studies are typically lines only
+        });
+        
+        // Tag paths with study information for rendering
+        paths.forEach(path => {
+          path.isStudy = true;
+          path.studyId = dataset.studyId;
+          path.studyType = dataset.studyType;
+          path.studyName = dataset.name;
+        });
+        
+        studyPaths.push(...paths);
+      }
+      
+      console.log(`StudiesRenderer: Generated ${studyPaths.length} study paths`);
+      return studyPaths;
+      
+    } catch (error) {
+      console.error('StudiesRenderer: Error generating study paths:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Render study paths using the chart's active renderer
+   * @param {Array} studyPaths - Generated study paths
+   * @private
+   */
+  async _renderWithActiveRenderer(studyPaths) {
+    if (studyPaths.length === 0) return;
+    
+    try {
+      const renderer = this.chart.rendererInstance;
+      
+      // Render based on chart type
+      if (this.chart.constructor.name === 'LineChart') {
+        await this._renderStudyLines(renderer, studyPaths);
+      } else if (this.chart.constructor.name === 'BarChart') {
+        // For bar charts, still render studies as lines (overlays)
+        await this._renderStudyLines(renderer, studyPaths);
+      }
+      
+    } catch (error) {
+      console.error('StudiesRenderer: Error rendering with active renderer:', error);
+    }
+  }
+
+  /**
+   * Render study paths as lines
+   * @param {Object} renderer - Active renderer (Canvas or WebGL)
+   * @param {Array} studyPaths - Study paths to render
+   * @private
+   */
+  async _renderStudyLines(renderer, studyPaths) {
+    // Group paths by study for better rendering organization
+    const studyGroups = this._groupPathsByStudy(studyPaths);
+    
+    for (const [studyId, paths] of studyGroups) {
       try {
-        // Create ending labels instance - it will handle study styling automatically
-        const studyEndingLabels = new EndingLabels(chart.options.endingLabelsConfig || {});
+        // Render each study's paths
+        await renderer.renderLines(paths, this.chart.scales, {
+          showPoints: false, // Studies typically don't show points
+          enableFill: false, // Studies are typically lines only
+          chartArea: this.chart.chartArea,
+          isStudyLayer: true // Flag to indicate this is a study render
+        });
         
-        // Render ending label for this study (isStudy=true will be detected automatically)
-        studyEndingLabels.renderForPanel(chart, dataset, panel, xScale, yScale);
-        
-        console.log('StudiesRenderer: Ending label rendered for study:', dataset.id);
       } catch (error) {
-        console.error('StudiesRenderer: Error rendering ending label for study:', dataset.id, error);
+        console.error(`StudiesRenderer: Error rendering study ${studyId}:`, error);
       }
     }
-  }
-  
-  /**
-   * Render study based on its type (private method)
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Study dataset
-   * @param {SVGElement} studyGroup - Study group element
-   */
-  static renderStudyByType(chart, dataset, studyGroup) {
-    const { xField, yField, showPoints, pointRadius } = chart.options;
     
-    if (dataset.studyType === 'bollinger') {
-      // Render Bollinger Bands (upper, middle, lower lines)
-      ['upper', 'middle', 'lower'].forEach((line, index) => {
-        const lineData = dataset.data.map(d => ({
-          [xField]: d[xField],
-          [yField]: d[line]
-        })).filter(d => d[yField] !== undefined && d[yField] !== null);
-        
-        if (lineData.length === 0) return;
-        
-        const linePath = this.generateLinePathForData(chart, lineData);
-        if (linePath) {
-          const opacity = line === 'middle' ? 1 : 0.6;
-          const strokeWidth = line === 'middle' ? dataset.width : (dataset.width * 0.7);
-          
-          const lineElement = SvgRenderer.createPath(linePath, {
-            stroke: dataset.color,
-            'stroke-width': strokeWidth,
-            'stroke-opacity': opacity,
-            fill: 'none',
-            class: `visioncharts-study-line visioncharts-bollinger-${line}`
-          });
-          
-          studyGroup.appendChild(lineElement);
-        }
-      });
-      
-      // Optionally add fill between upper and lower bands
-      if (dataset.area) {
-        this.renderBollingerBandsFill(chart, dataset, studyGroup);
+    console.log(`StudiesRenderer: Rendered ${studyGroups.size} study groups`);
+  }
+
+  /**
+   * Group study paths by study ID for organized rendering
+   * @param {Array} studyPaths - All study paths
+   * @returns {Map} Map of study ID to paths
+   * @private
+   */
+  _groupPathsByStudy(studyPaths) {
+    const groups = new Map();
+    
+    for (const path of studyPaths) {
+      const studyId = path.studyId;
+      if (!groups.has(studyId)) {
+        groups.set(studyId, []);
       }
-      
-    } else if (dataset.studyType === 'macd') {
-      // Render MACD lines
-      ['macd', 'signal'].forEach((line, index) => {
-        const lineData = dataset.data.map(d => ({
-          [xField]: d[xField],
-          [yField]: d[line]
-        })).filter(d => d[yField] !== undefined && d[yField] !== null);
-        
-        if (lineData.length === 0) return;
-        
-        const linePath = this.generateLinePathForData(chart, lineData);
-        if (linePath) {
-          const color = line === 'macd' ? dataset.color : '#ff6b6b';
-          
-          const lineElement = SvgRenderer.createPath(linePath, {
-            stroke: color,
-            'stroke-width': dataset.width,
-            fill: 'none',
-            class: `visioncharts-study-line visioncharts-macd-${line}`
-          });
-          
-          studyGroup.appendChild(lineElement);
-        }
-      });
-      
-      // Render histogram bars
-      this.renderMACDHistogram(chart, dataset, studyGroup);
-      
-    } else {
-      // Standard single-line studies (SMA, EMA, RSI)
-      const linePath = this.generateLinePathForData(chart, dataset.data);
-      if (linePath) {
-        const lineElement = SvgRenderer.createPath(linePath, {
-          stroke: dataset.color,
-          'stroke-width': dataset.width,
-          fill: 'none',
-          class: 'visioncharts-study-line'
-        });
-        
-        studyGroup.appendChild(lineElement);
-      }
-      
-      // Render points if enabled
-      if (showPoints) {
-        dataset.data.forEach(d => {
-          if (d[xField] === undefined || d[yField] === undefined) return;
-          
-          const x = chart.state.scales.x.scale(d[xField]);
-          const y = chart.state.scales.y.scale(d[yField]);
-          
-          const point = SvgRenderer.createCircle(x, y, pointRadius, {
-            fill: '#fff',
-            stroke: dataset.color,
-            'stroke-width': dataset.width / 2,
-            class: 'visioncharts-study-point'
-          });
-          
-          studyGroup.appendChild(point);
-        });
-      }
+      groups.get(studyId).push(path);
     }
+    
+    return groups;
   }
-  
+
   /**
-   * Generate line path for study data (used by BarChart)
-   * @param {Object} chart - Chart instance
-   * @param {Array} data - Study data
-   * @returns {string} SVG path definition
+   * Update studies rendering after data change
+   * Called when chart data is updated
    */
-  static generateStudyLinePath(chart, data) {
-    const { xField, yField } = chart.options;
-    const xScale = chart.state.scales.x;
-    const yScale = chart.state.scales.y;
+  async update() {
+    if (!this.isInitialized) return;
     
-    // Map data points to coordinates
-    const points = data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
+    console.log('StudiesRenderer: Updating after data change...');
     
-    if (points.length === 0) return '';
+    // Clear cached paths
+    this.studyPaths.clear();
     
-    // Generate linear path for studies (studies are typically smooth lines)
-    return SvgRenderer.linePathDefinition(points);
+    // Re-render studies
+    await this.render();
   }
-  
+
   /**
-   * Generate line path for specific data (used internally)
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Array} data - Data array
-   * @returns {string} SVG path definition
+   * Clear all study rendering data
    */
-  static generateLinePathForData(chart, data) {
-    const { xField, yField } = chart.options;
-    const xScale = chart.state.scales.x;
-    const yScale = chart.state.scales.y;
-    
-    // Map data points to coordinates
-    const points = data
-      .filter(d => d[xField] !== undefined && d[yField] !== undefined)
-      .map(d => [
-        xScale.scale(d[xField]),
-        yScale.scale(d[yField])
-      ]);
-    
-    if (points.length === 0) return '';
-    
-    // Generate linear path for studies
-    return SvgRenderer.linePathDefinition(points);
+  clear() {
+    this.studyPaths.clear();
+    console.log('StudiesRenderer: Cleared all study paths');
   }
-  
+
   /**
-   * Render Bollinger Bands fill area
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Bollinger bands dataset
-   * @param {SVGElement} studyGroup - Study group element
+   * Check if studies renderer is ready for rendering
+   * @returns {boolean} True if ready to render
    */
-  static renderBollingerBandsFill(chart, dataset, studyGroup) {
-    const { xField } = chart.options;
-    
-    // Create path for the area between upper and lower bands
-    const upperPoints = [];
-    const lowerPoints = [];
-    
-    dataset.data.forEach(d => {
-      if (d.upper !== undefined && d.lower !== undefined && d[xField] !== undefined) {
-        const x = chart.state.scales.x.scale(d[xField]);
-        const upperY = chart.state.scales.y.scale(d.upper);
-        const lowerY = chart.state.scales.y.scale(d.lower);
-        
-        upperPoints.push([x, upperY]);
-        lowerPoints.push([x, lowerY]);
-      }
-    });
-    
-    if (upperPoints.length === 0) return;
-    
-    // Create area path
-    const upperPath = SvgRenderer.linePathDefinition(upperPoints);
-    const lowerPath = SvgRenderer.linePathDefinition(lowerPoints.reverse());
-    const areaPath = `${upperPath} L ${lowerPath.substring(1)} Z`;
-    
-    const areaElement = SvgRenderer.createPath(areaPath, {
-      fill: dataset.color,
-      'fill-opacity': dataset.areaOpacity || 0.1,
-      stroke: 'none',
-      class: 'visioncharts-bollinger-fill'
-    });
-    
-    studyGroup.appendChild(areaElement);
+  isReady() {
+    return this.isInitialized && 
+           this.chart?.rendererInstance?.isInitialized &&
+           this.chart?.coordinateSystem &&
+           this.chart?.scales;
   }
-  
+
   /**
-   * Render MACD histogram
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - MACD dataset
-   * @param {SVGElement} studyGroup - Study group element
+   * Get rendering statistics
+   * @returns {Object} Rendering stats
    */
-  static renderMACDHistogram(chart, dataset, studyGroup) {
-    const { xField } = chart.options;
-    const zeroY = chart.state.scales.y.scale(0);
+  getStats() {
+    const studyCount = this.chart.studiesManager?.getAllStudies().length || 0;
+    const visibleStudyCount = this.chart.studiesManager?.getVisibleStudies().length || 0;
     
-    dataset.data.forEach(d => {
-      if (d.histogram === undefined || d[xField] === undefined) return;
-      
-      const x = chart.state.scales.x.scale(d[xField]);
-      const histogramY = chart.state.scales.y.scale(d.histogram);
-      const barHeight = Math.abs(zeroY - histogramY);
-      const barY = Math.min(zeroY, histogramY);
-      
-      // Bar color based on positive/negative
-      const barColor = d.histogram >= 0 ? '#26a69a' : '#ef5350';
-      
-      const bar = SvgRenderer.createRect(x - 1, barY, 2, barHeight, {
-        fill: barColor,
-        class: 'visioncharts-macd-histogram'
-      });
-      
-      studyGroup.appendChild(bar);
-    });
+    return {
+      totalStudies: studyCount,
+      visibleStudies: visibleStudyCount,
+      renderedPaths: this.studyPaths.size,
+      lastRenderTime: this.lastRenderTime,
+      isReady: this.isReady()
+    };
   }
-  
+
   /**
-   * Get study configuration for a dataset
-   * @private
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Dataset to get study config for
-   * @returns {Object|null} Study configuration or null
+   * Destroy the studies renderer
    */
-  static getStudyConfig(chart, dataset) {
-    if (!chart.options.studies) return null;
-    return chart.options.studies.find(study => study.id === dataset.id) || null;
-  }
-  
-  /**
-   * Check if a dataset is a study/indicator
-   * @param {Object} chart - Chart instance
-   * @param {Object} dataset - Dataset to check
-   * @returns {boolean} True if dataset is a study
-   */
-  static isStudyDataset(chart, dataset) {
-    // Check if this dataset was created from a study
-    return chart.options.studies && chart.options.studies.some(study => study.id === dataset.id);
+  destroy() {
+    this.clear();
+    this.isInitialized = false;
+    console.log('StudiesRenderer destroyed');
   }
 }

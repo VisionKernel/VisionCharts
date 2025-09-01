@@ -1,779 +1,896 @@
-import Chart from '../core/Chart.js';
-import Axis from '../core/Axis.js';
-import { LinearScale, TimeScale, LogScale } from '../core/Scale.js';
-import SvgRenderer from '../renderers/SvgRenderer.js';
-import { formatLargeNumber } from '../utils/chartUtils.js';
-import StudiesRenderer from '../components/StudiesRenderer.js';
-import PanelDataRenderer from '../components/PanelDataRenderer.js';
-import Crosshair from '../components/Crosshair.js';
-import Tooltip from '../components/Tooltip.js';
-import RecessionLines from '../components/RecessionLines.js';
-import EndingLabels from '../components/EndingLabels.js';
-import ZeroLine from '../components/ZeroLine.js';
-import Grid from '../components/Grid.js';
-import Panel from '../components/Panel.js';
-
-
 /**
- * BarChart class for rendering bar charts with time series data and studies support
- * Styled to match the Line and Area charts
+ * BarChart.js - Enhanced Bar Chart Implementation (Updated for Unified Coordinates)
+ * 
+ * Extends the base Chart class to render bar charts using either Canvas 2D or WebGL
+ * based on dataset size. Automatically switches to WebGL for datasets over 50K points.
+ * 
+ * NOW USES UNIFIED COORDINATE SYSTEM - consistent rendering across all renderers!
  */
-export default class BarChart extends Chart {
-  /**
-   * Create a new bar chart
-   * @param {Object} config - Chart configuration
-   */
-  constructor(config) {
-    console.log('BarChart constructor called');
 
-    const defaultBarChartOptions = {
-      chartType: 'bar',
-      xField: 'category', 
-      yField: 'y',
-      xType: 'time', 
-      yType: 'number',
-      barWidth: 0.7, 
-      barSpacing: 0.2, 
-      showValues: false, 
-      valuePosition: 'top', 
-      colors: ['#1468a8', '#34A853', '#FBBC05', '#EA4335'],
-      stacked: false, 
-      dateFormat: { year: 'numeric', month: 'short' },
-      xFormatOptions: {
-        year: 'numeric',
-        month: 'short'
-      },
-      yFormatOptions: {
-        maximumFractionDigits: 1,
-        minimumFractionDigits: 0
-      },
-      skipLabels: 3, 
-      grid: { 
-        show: true,
-        color: '#e0e0e0', 
-        strokeWidth: 1,   
-        dashArray: '4,4'  
-      },
-      isPanelView: false,
-      timeBarPixelWidth: 10,
-      showZeroValueBars: true,
-      showEndingLabels: false,
-      endingLabelsConfig: {
-        show: true,
-        fontSize: '11px',
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        backgroundColor: '#ffffff',
-        borderColor: '#cccccc',
-        borderWidth: 1,
-        borderRadius: 3,
-        padding: { top: 2, right: 2, bottom: 2, left: 2 },
-        offsetX: 8,
-        offsetY: 0,
-        textColor: null,
-        showBorder: true,
-        showBackground: true
-      },
-      
-      // Studies rendering options for BarChart
-      studiesAsLines: true,
-      studyLineWidth: 2,
-      studyPointRadius: 0,
-    };
+import { Chart } from '../core/Chart.js';
+export class BarChart extends Chart {
+  constructor(config = {}) {
+    super(config);
 
-    // Merge options: user's config.options take precedence, with special handling for grid
-    const mergedOptions = {
-      ...defaultBarChartOptions,
-      ...(config.options || {}), // Spread user's top-level options
-      grid: { // Deep merge for the grid object
-        ...defaultBarChartOptions.grid, // Start with BarChart's grid defaults
-        ...((config.options && config.options.grid) || {}) // Override with user's grid options
-      }
-    };
-
-    // Call parent constructor with the fully merged config
-    super({
-      ...config, // Pass through other parts of config like container, data
-      options: mergedOptions // Use the carefully merged options
-    });
+    this.chartType = 'bar';
     
-    console.log('BarChart constructor finished with merged options:', this.options);
+    // Bar-specific options
+    this.config.options = {
+      ...this.config.options,
+      barWidth: 0.7, // Percentage of available space per bar
+      barSpacing: 0.1, // Spacing between bars as percentage
+      showBorder: false, // Whether to show bar borders
+      borderWidth: 1, // Border width when enabled
+      
+      // NEW: Coordinate validation options
+      enableCoordinateValidation: true,
+      enableRenderingDebug: false,
+      
+      ...config.options
+    };
+    
+    // NEW: Bar-specific coordinate validation state
+    this.coordinateValidationResults = [];
+    this.renderingDebugInfo = null;
+    this.barPositioningInfo = null;
+
+    this.supportsStudies = true;
+    
+    console.log('BarChart created with FORCED canvas rendering and unified coordinate system support');
   }
   
   /**
-   * Check if a dataset is a study/indicator
-   * @private
-   * @param {Object} dataset - Dataset to check
-   * @returns {boolean} True if dataset is a study
-   */
-  isStudyDataset(dataset) {
-    return StudiesRenderer.isStudyDataset(this, dataset);
+ * UPDATED: Render bar chart data - handles both single and panel modes
+ */
+async _renderChartData() {
+  // If in panel mode, rendering is handled by individual panels
+  if (this.isPanelMode) {
+    console.log('BarChart: Panel mode rendering handled by Panel components');
+    return;
+  }
+  
+  // Original single mode rendering logic
+  if (!this.rendererInstance) {
+    console.error('No renderer instance available');
+    return;
   }
 
-  /**
-   * Get the study configuration for a dataset
-   * @private
-   * @param {Object} dataset - Dataset to get study config for
-   * @returns {Object|null} Study configuration or null
-   */
-  getStudyConfig(dataset) {
-    return StudiesRenderer.getStudyConfig(this, dataset);
+  // For bar charts, we pass the transformed datasets directly to renderers
+  // since bar rendering doesn't use the PathGenerator yet (bars need different geometry)
+  if (!Array.isArray(this.config.data) || this.config.data.length === 0) {
+    console.log('No data to render');
+    return;
   }
-  
+
+  try {
+    // ✅ FIX: Set transformedData to reference the transformed config.data
+    this.transformedData = this.config.data;
+
+    // NEW: Validate unified coordinates before rendering
+    if (this.config.options.enableCoordinateValidation) {
+      this._validateUnifiedCoordinates();
+    }
+
+    // Set viewport for clipping
+    this.rendererInstance.setViewport(this.chartArea);
+
+    // UPDATED: Render bars with unified coordinates
+    await this.rendererInstance.renderBars(this.transformedData, this.scales, {
+      barWidth: this.config.options.barWidth,
+      showBorder: this.config.options.showBorder,
+      borderWidth: this.config.options.borderWidth,
+      chartArea: this.chartArea
+    });
+
+    const totalBars = this.transformedData.reduce((sum, dataset) => sum + (dataset.data?.length || 0), 0);
+    console.log(`BarChart: Rendered ${totalBars} bars across ${this.transformedData.length} datasets using ${this.activeRenderer}`);
+
+    // NEW: Collect rendering debug info
+    if (this.config.options.enableRenderingDebug) {
+      this._collectRenderingDebugInfo();
+    }
+
+  } catch (error) {
+    console.error('Error rendering bar chart data:', error);
+    throw error;
+  }
+}
+
   /**
-   * Render chart data - ENHANCED VERSION with studies support
+   * Validate unified coordinates across all datasets - panel mode aware
    * @private
    */
-  renderData() {
-    if (this.options.isPanelView) {
-      console.log('Panel view enabled, skipping main data rendering.');
-      // Ensure a data group exists, even if empty, for consistency if other parts expect it
-      const dataGroup = SvgRenderer.createGroup({ class: 'visioncharts-data' });
-      if (this.state.chart && !this.state.chart.querySelector('.visioncharts-data')) {
-        this.state.chart.appendChild(dataGroup);
-      }
+  _validateUnifiedCoordinates() {
+    if (this.isPanelMode) {
+      console.log('BarChart: Coordinate validation handled by individual panels');
       return;
     }
     
-    console.log('BarChart.renderData called');
-    
-    if (!this.state.chart) {
-      console.error('Cannot render data: chart element is null');
+    // Original single mode validation logic
+    this.coordinateValidationResults = [];
+
+    if (!this.transformedData || this.transformedData.length === 0) {
       return;
     }
-    
-    try {
-      const {
-        xField,
-        yField,
-        barWidth,
-        barSpacing,
-        showValues,
-        valuePosition,
-        stacked,
-        studiesAsLines,
-        studyLineWidth,
-        studyPointRadius
-      } = this.options;
-      
-      // Create data group using SvgRenderer
-      const dataGroup = SvgRenderer.createGroup({ class: 'visioncharts-data' });
-      
-      // No data to render
-      if (!this.state.datasets.length) {
-        this.state.chart.appendChild(dataGroup);
-        console.log('No datasets to render');
-        return;
-      }
-      
-      console.log('Rendering', this.state.datasets.length, 'datasets');
-      
-      // Separate bar datasets from study datasets
-      const barDatasets = this.state.datasets.filter(dataset => !this.isStudyDataset(dataset));
-      const studyDatasets = this.state.datasets.filter(dataset => this.isStudyDataset(dataset));
-      
-      console.log('Bar datasets:', barDatasets.length, 'Study datasets:', studyDatasets.length);
-      
-      // Render bars first (background)
-      if (barDatasets.length > 0) {
-        this.renderBarData(dataGroup, barDatasets);
-      }
-      
-      // Render studies as lines (foreground)
-      if (studyDatasets.length > 0 && studiesAsLines) {
-        StudiesRenderer.renderForBarChart(this, studyDatasets, dataGroup);
-      }
-      
-      // Add data group to chart
-      this.state.chart.appendChild(dataGroup);
 
-      if (this.options.showEndingLabels) {
-        console.log('BarChart: Rendering ending labels');
-        if (!this.endingLabels) {
-          this.endingLabels = new EndingLabels(this.options.endingLabelsConfig || {});
-        }
-        this.endingLabels.renderForSinglePanel(this, dataGroup);
-      }
-
-      console.log('Data rendered successfully');
-    } catch (error) {
-      console.error('Error rendering data:', error);
+    for (let datasetIndex = 0; datasetIndex < this.transformedData.length; datasetIndex++) {
+      const dataset = this.transformedData[datasetIndex];
+      const validation = this._validateDatasetCoordinates(dataset, datasetIndex);
+      this.coordinateValidationResults.push(validation);
     }
-  }
-  
-  /**
-   * Render bar data (original bar rendering logic)
-   * @private
-   * @param {SVGElement} dataGroup - Data group to append to
-   * @param {Array} barDatasets - Array of bar datasets
-   */
-  renderBarData(dataGroup, barDatasets) {
-    const {
-      xField,
-      yField,
-      barWidth,
-      barSpacing,
-      showValues,
-      valuePosition,
-      stacked
-    } = this.options;
-    
-    // Get unique X values
-    const allXValues = new Set();
-    barDatasets.forEach(dataset => {
-      dataset.data.forEach(d => {
-        if (d[xField] !== undefined) {
-          allXValues.add(d[xField]);
-        }
-      });
-    });
-    
-    const uniqueXValues = Array.from(allXValues);
-    
-    // Sort X values based on type
-    if (this.options.xType === 'time') {
-      uniqueXValues.sort((a, b) => {
-        const dateA = a instanceof Date ? a : new Date(a);
-        const dateB = b instanceof Date ? b : new Date(b);
-        return dateA - dateB;
-      });
-    } else if (this.options.xType === 'number') {
-      uniqueXValues.sort((a, b) => a - b);
+
+    // Log validation results
+    const totalIssues = this.coordinateValidationResults.reduce((sum, result) => sum + result.issues.length, 0);
+    if (totalIssues > 0) {
+      console.warn(`BarChart coordinate validation found ${totalIssues} issues:`, this.coordinateValidationResults);
     } else {
-      // For category, try to sort based on timestamp if available
-      const firstDataset = barDatasets[0];
-      if (firstDataset && firstDataset.data.length > 0 && firstDataset.data[0].x) {
-        // Create a map of category to timestamp
-        const categoryMap = new Map();
-        firstDataset.data.forEach(d => {
-          if (d.x && d[xField]) {
-            categoryMap.set(d[xField], d.x);
-          }
-        });
-        
-        // Sort by timestamp if available
-        if (categoryMap.size > 0) {
-          uniqueXValues.sort((a, b) => {
-            const timeA = categoryMap.get(a) || 0;
-            const timeB = categoryMap.get(b) || 0;
-            return timeA - timeB;
+      console.log('BarChart coordinate validation passed for all datasets');
+    }
+  }
+
+  /**
+   * NEW: Validate coordinates for a single dataset
+   * @private
+   */
+  _validateDatasetCoordinates(dataset) {
+    const validation = {
+      datasetId: dataset.id,
+      datasetName: dataset.name,
+      pointCount: dataset.data ? dataset.data.length : 0,
+      coordinateSystem: dataset.coordinateSystem || 'unified',
+      isValid: true,
+      issues: []
+    };
+
+    if (!dataset.data || dataset.data.length === 0) {
+      validation.isValid = false;
+      validation.issues.push('No data points found');
+      return validation;
+    }
+
+    // Validate point coordinates
+    let validPoints = 0;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (let i = 0; i < dataset.data.length; i++) {
+      const point = dataset.data[i];
+      
+      // Check for unified coordinates
+      const x = point.unifiedX || point.screenX;
+      const y = point.unifiedY || point.screenY;
+      
+      if (x == null || y == null) {
+        validation.issues.push(`Point ${i} has null unified coordinates`);
+        continue;
+      }
+
+      if (!isFinite(x) || !isFinite(y)) {
+        validation.issues.push(`Point ${i} has invalid unified coordinates: (${x}, ${y})`);
+        continue;
+      }
+
+      validPoints++;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+
+    // Check if coordinates are within reasonable bounds
+    const chartArea = this.chartArea;
+    const tolerance = 100; // Allow some padding outside chart area
+
+    if (minX < chartArea.x - tolerance || maxX > chartArea.x + chartArea.width + tolerance) {
+      validation.issues.push(`X coordinates outside chart bounds: ${minX} to ${maxX}`);
+    }
+
+    if (minY < chartArea.y - tolerance || maxY > chartArea.y + chartArea.height + tolerance) {
+      validation.issues.push(`Y coordinates outside chart bounds: ${minY} to ${maxY}`);
+    }
+
+    validation.validPoints = validPoints;
+    validation.bounds = { minX, maxX, minY, maxY };
+
+    if (validation.issues.length > 0) {
+      validation.isValid = false;
+    }
+
+    return validation;
+  }
+
+  /**
+   * NEW: Calculate bar positioning information for debugging
+   * @private
+   */
+  _calculateBarPositioningInfo() {
+    if (!this.config.data || this.config.data.length === 0) {
+      return;
+    }
+
+    const firstDataset = this.config.data[0];
+    if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
+      return;
+    }
+
+    const data = firstDataset.data;
+    const barWidth = this.config.options.barWidth;
+    const barSpacing = this.config.options.barSpacing;
+
+    // Calculate unified coordinate spacing
+    const unifiedXValues = data
+      .map(point => point.unifiedX || point.screenX)
+      .filter(x => x != null && isFinite(x))
+      .sort((a, b) => a - b);
+
+    let avgPixelDistance = 0;
+    let calculatedBarWidth = 0;
+
+    if (unifiedXValues.length > 1) {
+      // Calculate average pixel distance between consecutive points
+      let totalDiff = 0;
+      for (let i = 1; i < unifiedXValues.length; i++) {
+        totalDiff += unifiedXValues[i] - unifiedXValues[i - 1];
+      }
+      avgPixelDistance = totalDiff / (unifiedXValues.length - 1);
+      calculatedBarWidth = Math.max(avgPixelDistance * barWidth, 1);
+    }
+
+    this.barPositioningInfo = {
+      pointCount: data.length,
+      datasetCount: this.config.data.length,
+      barWidth: barWidth,
+      barSpacing: barSpacing,
+      avgPixelDistance: avgPixelDistance,
+      calculatedBarWidth: calculatedBarWidth,
+      unifiedXRange: unifiedXValues.length > 0 ? {
+        min: unifiedXValues[0],
+        max: unifiedXValues[unifiedXValues.length - 1]
+      } : null,
+      chartArea: this.chartArea,
+      scaleRange: {
+        x: this.scales.x.range,
+        y: this.scales.y.range
+      }
+    };
+  }
+
+  /**
+   * Collect rendering debug information - panel mode aware
+   * @private
+   */
+  _collectRenderingDebugInfo() {
+    if (this.isPanelMode) {
+      console.log('BarChart: Rendering debug info handled by individual panels');
+      return;
+    }
+    
+    // Original single mode debug info collection
+    this.renderingDebugInfo = {
+      timestamp: Date.now(),
+      renderer: this.activeRenderer,
+      coordinateSystem: 'unified',
+      chartArea: this.chartArea,
+      scales: {
+        x: {
+          domain: this.scales.x.domain,
+          range: this.scales.x.range,
+          type: this.scales.x.type
+        },
+        y: {
+          domain: this.scales.y.domain,
+          range: this.scales.y.range,
+          type: this.scales.y.type
+        }
+      },
+      datasets: this.transformedData.map(dataset => ({
+        id: dataset.id,
+        name: dataset.name,
+        barCount: dataset.data?.length || 0,
+        sampleBars: dataset.data ? dataset.data.slice(0, 3).map(point => ({
+          unifiedX: point.unifiedX || point.screenX,
+          unifiedY: point.unifiedY || point.screenY
+        })) : []
+      })),
+      barPositioningInfo: this.barPositioningInfo,
+      validationResults: this.coordinateValidationResults
+    };
+
+    console.log('BarChart rendering debug info:', this.renderingDebugInfo);
+  }
+  
+  /**
+   * Add a new dataset to the chart (UPDATED with legend support)
+   */
+  addDataset(dataset) {
+    if (!dataset || !dataset.data) {
+      console.warn('Invalid dataset provided to addDataset');
+      return this;
+    }
+    
+    // Ensure required properties
+    const processedDataset = {
+      id: dataset.id || `dataset-${this.config.data.length + 1}`,
+      name: dataset.name || `Dataset ${this.config.data.length + 1}`,
+      color: dataset.color || this._getDefaultColor(this.config.data.length),
+      fill: dataset.fill !== undefined ? dataset.fill : false,
+      ...dataset
+    };
+    
+    this.config.data.push(processedDataset);
+    
+    console.log(`BarChart: Added dataset with legend support: ${processedDataset.id} with ${processedDataset.data.length} bars`);
+    
+    // Update legend
+    if (this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
+    
+    // ✅ FIX: Add panel mode support
+    if (this.isPanelMode) {
+      return this.panelManager.refreshPanelMode();
+    } else {
+      return this.update();
+    }
+  }
+  
+  /**
+   * Remove a dataset by ID (UPDATED with legend support)
+   */
+  removeDataset(datasetId) {
+    const initialCount = this.config.data.length;
+    this.config.data = this.config.data.filter(dataset => dataset.id !== datasetId);
+    
+    if (this.config.data.length < initialCount) {
+      console.log(`BarChart: Removed dataset: ${datasetId}`);
+      
+      // Update legend
+      if (this.legend) {
+        this.legend.updateDatasets(this.config.data);
+      }
+      
+      // ✅ FIX: Add panel mode support  
+      if (this.isPanelMode) {
+        return this.panelManager.refreshPanelMode();
+      } else {
+        return this.update();
+      }
+    } else {
+      console.warn(`BarChart: Dataset not found: ${datasetId}`);
+    }
+    
+    return this;
+  }
+  
+  /**
+   * Update a specific dataset (UPDATED with legend support)
+   */
+  updateDataset(datasetId, newData) {
+    const dataset = this.config.data.find(ds => ds.id === datasetId);
+    
+    if (!dataset) {
+      console.warn(`BarChart: Dataset not found: ${datasetId}`);
+      return this;
+    }
+    
+    // Update dataset properties
+    Object.assign(dataset, newData);
+    
+    // Update legend if color changed
+    if (newData.color && this.legend) {
+      this.legend.updateDatasetColor(datasetId, newData.color);
+    }
+    
+    // Update legend if name changed
+    if (newData.name && this.legend) {
+      this.legend.updateDatasets(this.config.data);
+    }
+    
+    console.log(`BarChart: Updated dataset with legend support: ${datasetId}`);
+    
+    // ✅ FIX: Add panel mode support
+    if (this.isPanelMode) {
+      return this.panelManager.refreshPanelMode();
+    } else {
+      return this.update();
+    }
+  }
+  
+  /**
+   * Set bar width as percentage of available space
+   */
+  setBarWidth(width) {
+    if (typeof width !== 'number' || width <= 0 || width > 1) {
+      console.warn('Bar width must be a number between 0 and 1');
+      return this;
+    }
+    
+    this.config.options.barWidth = width;
+    console.log(`BarChart: Bar width set to: ${width}`);
+    
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Set bar spacing - works in both single and panel modes
+   */
+  setBarSpacing(spacing) {
+    if (typeof spacing !== 'number' || spacing < 0 || spacing > 1) {
+      console.warn('Invalid bar spacing provided (should be between 0 and 1)');
+      return this;
+    }
+    
+    this.config.options.barSpacing = spacing;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ barSpacing: spacing });
+        }
+      }
+    }
+    
+    console.log(`BarChart: Bar spacing set to: ${spacing}`);
+    this.render();
+    return this;
+  }
+  
+  /**
+   * Toggle bar borders - works in both single and panel modes
+   */
+  toggleBorders(show = null) {
+    this.config.options.showBorder = show !== null ? show : !this.config.options.showBorder;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ 
+            showBorder: this.config.options.showBorder,
+            borderWidth: this.config.options.borderWidth
           });
-        } else {
-          // Default string sorting
-          uniqueXValues.sort();
         }
-      } else {
-        // Default string sorting
-        uniqueXValues.sort();
       }
     }
     
-    // Calculate bar dimensions
-    const totalBarWidth = this.state.dimensions.innerWidth / uniqueXValues.length;
-    const usableBarWidth = totalBarWidth * (1 - barSpacing);
-    const actualBarWidth = usableBarWidth * barWidth;
+    console.log(`BarChart: Bar borders ${this.config.options.showBorder ? 'enabled' : 'disabled'}`);
     
-    // Get zero line position
-    const zeroY = this.state.scales.y.scale(0);
-    
-    // For each unique X value, create bars (stacked or grouped)
-    uniqueXValues.forEach((xValue, xIndex) => {
-      // Calculate bar x position
-      const barX = xIndex * totalBarWidth + (totalBarWidth - actualBarWidth) / 2;
-      
-      if (stacked) {
-        // FIXED: Proper stacking with separate positive/negative stacks
-        let positiveStackTop = zeroY; // Start positive stack at zero line
-        let negativeStackTop = zeroY; // Start negative stack at zero line
-        
-        // Process each dataset
-        barDatasets.forEach((dataset, datasetIndex) => {
-          // Find data point for this X value in this dataset
-          const dataPoint = dataset.data.find(d => d[xField] === xValue);
-          
-          // Skip if no data point found
-          if (!dataPoint) return;
-          
-          const value = dataPoint[yField] || 0;
-          
-          // Skip if value is 0
-          if (value === 0) return;
-          
-          // Calculate bar dimensions based on positive/negative
-          let barY, barHeight;
-          
-          if (value > 0) {
-            // Positive value - stack upward from current positive stack top
-            const valueY = this.state.scales.y.scale(value);
-            barHeight = Math.abs(positiveStackTop - valueY);
-            barY = valueY;
-            
-            // Update positive stack top for next positive bar
-            positiveStackTop = valueY;
-          } else {
-            // Negative value - stack downward from current negative stack top
-            const valueY = this.state.scales.y.scale(value);
-            barHeight = Math.abs(negativeStackTop - valueY);
-            barY = negativeStackTop;
-            
-            // Update negative stack top for next negative bar
-            negativeStackTop = valueY;
-          }
-          
-          // Create bar element using SvgRenderer
-          const bar = SvgRenderer.createRect(
-            barX,
-            barY,
-            actualBarWidth,
-            Math.max(1, barHeight),
-            {
-              fill: dataset.color,
-              class: 'visioncharts-bar',
-              'data-x': xValue,
-              'data-y': value,
-              'data-dataset': dataset.id
-            }
-          );
-          
-          dataGroup.appendChild(bar);
-          
-          // Show values if enabled
-          if (showValues) {
-            // Position value based on option and whether value is positive/negative
-            let valueX = barX + actualBarWidth / 2;
-            let valueY;
-            
-            if (valuePosition === 'top') {
-              valueY = value > 0 ? barY - 5 : barY + barHeight + 15;
-            } else if (valuePosition === 'middle') {
-              valueY = barY + barHeight / 2;
-            } else { // bottom
-              valueY = value > 0 ? barY + barHeight - 5 : barY - 5;
-            }
-            
-            // Create value text using SvgRenderer
-            const valueText = SvgRenderer.createText(
-              formatLargeNumber(value),
-              valueX,
-              valueY,
-              {
-                'text-anchor': 'middle',
-                'font-size': '10px',
-                'font-family': this.options.fontFamily,
-                fill: valuePosition === 'middle' ? '#fff' : this.options.textColor,
-                class: 'visioncharts-bar-value'
-              }
-            );
-            
-            dataGroup.appendChild(valueText);
-          }
-        });
-      } else {
-        // FIXED: Non-stacked (grouped) bars with proper negative handling
-        const barWidthPerDataset = actualBarWidth / barDatasets.length;
-        
-        barDatasets.forEach((dataset, datasetIndex) => {
-          // Find data point for this X value in this dataset
-          const dataPoint = dataset.data.find(d => d[xField] === xValue);
-          
-          // Skip if no data point found
-          if (!dataPoint) return;
-          
-          const value = dataPoint[yField] || 0;
-          
-          // Skip if value is 0
-          if (value === 0) return;
-          
-          // Calculate grouped bar position
-          const groupedBarX = barX + (datasetIndex * barWidthPerDataset);
-          
-          // Calculate Y positions for positive/negative values
-          const valueY = this.state.scales.y.scale(value);
-          let barY, barHeight;
-          
-          if (value >= 0) {
-            // Positive value - bar goes from zero line up to value
-            barY = valueY;
-            barHeight = Math.abs(zeroY - valueY);
-          } else {
-            // Negative value - bar goes from zero line down to value
-            barY = zeroY;
-            barHeight = Math.abs(zeroY - valueY);
-          }
-          
-          // Create bar element using SvgRenderer
-          const bar = SvgRenderer.createRect(
-            groupedBarX,
-            barY,
-            barWidthPerDataset * 0.9, // Small gap between grouped bars
-            Math.max(1, barHeight),
-            {
-              fill: dataset.color,
-              class: 'visioncharts-bar',
-              'data-x': xValue,
-              'data-y': value,
-              'data-dataset': dataset.id
-            }
-          );
-          
-          dataGroup.appendChild(bar);
-          
-          // Show values if enabled
-          if (showValues) {
-            // Position value based on option and whether value is positive/negative
-            let valueX = groupedBarX + (barWidthPerDataset * 0.9) / 2;
-            let valueY;
-            
-            if (valuePosition === 'top') {
-              valueY = value >= 0 ? barY - 5 : barY + barHeight + 15;
-            } else if (valuePosition === 'middle') {
-              valueY = barY + barHeight / 2;
-            } else { // bottom
-              valueY = value >= 0 ? barY + barHeight - 5 : barY - 5;
-            }
-            
-            // Create value text using SvgRenderer
-            const valueText = SvgRenderer.createText(
-              formatLargeNumber(value),
-              valueX,
-              valueY,
-              {
-                'text-anchor': 'middle',
-                'font-size': '10px',
-                'font-family': this.options.fontFamily,
-                fill: valuePosition === 'middle' ? '#fff' : this.options.textColor,
-                class: 'visioncharts-bar-value'
-              }
-            );
-            
-            dataGroup.appendChild(valueText);
-          }
-        });
-      }
-    });
-  }
-
-  /**
-   * Render chart title - consistent with other charts
-   * @private
-   */
-  renderTitle() {
-    console.log('BarChart.renderTitle called');
-    
-    // Use the parent Chart class's renderTitle method
-    super.renderTitle();
+    this.render();
+    return this.config.options.showBorder;
   }
   
   /**
-   * Render chart legend - consistent with other charts
-   * @private
+   * Set border width for bars - works in both single and panel modes
    */
-  renderLegend() {
-    console.log('BarChart.renderLegend called');
-    
-    // Use the parent Chart class's renderLegend method
-    super.renderLegend();
-  }
-  
-  /**
-   * Render axis names - consistent with other charts
-   * @private
-   */
-  renderAxisNames() {
-    console.log('BarChart.renderAxisNames called');
-    
-    // Use the parent Chart class's renderAxisNames method
-    super.renderAxisNames();
-  }
-  
-  /**
-   * Render the chart
-   * @public
-   */
-  render() {
-    // Call parent render method. This will set up the SVG, dimensions,
-    // and call methods like createScales, renderTitle, renderLegend,
-    // and (conditionally, due to our changes) renderAxes and renderData.
-    super.render(); 
-
-    if (this.options.isPanelView) {
-      // FIXED: Ensure panel scales are properly stored for BarChart
-      console.log('BarChart: Rendering panels and storing panel scales');
-      this.renderPanels();
+  setBorderWidth(width) {
+    if (typeof width !== 'number' || width <= 0) {
+      console.warn('Invalid border width provided');
+      return this;
     }
     
-    // Ensure hover elements (crosshair, tooltip) are rendered on top,
-    // regardless of whether it's panel view or regular view.
-    if (this.state.chart) {
-      const crosshair = this.state.chart.querySelector('.visioncharts-crosshair');
-      if (crosshair && crosshair.parentNode) {
-        crosshair.parentNode.appendChild(crosshair);
+    this.config.options.borderWidth = width;
+    
+    // If in panel mode, update all panel renderers
+    if (this.isPanelMode) {
+      for (const panel of this.panels) {
+        if (panel.panelDataRenderer) {
+          panel.panelDataRenderer.updateConfig({ borderWidth: width });
+        }
       }
-      
-      const tooltip = this.state.chart.querySelector('.visioncharts-tooltip');
-      if (tooltip && tooltip.parentNode) {
-        tooltip.parentNode.appendChild(tooltip);
-      }
-      
-      const hoverPoints = this.state.chart.querySelector('.visioncharts-hover-points');
-      if (hoverPoints && hoverPoints.parentNode) {
-        hoverPoints.parentNode.appendChild(hoverPoints);
-      }
+    }
+    
+    console.log(`BarChart: Border width set to: ${width}`);
+    
+    if (this.config.options.showBorder) {
+      this.render();
     }
     
     return this;
   }
 
   /**
-   * Create individual axes for single-panel mode (override parent method if needed)
+   * NEW: Enable/disable coordinate validation
    */
-  createAxes() {
-    console.log('createAxes called for LineChart/BarChart');
-    
-    // Call parent method
-    super.createAxes();
-    
-    // Add any chart-type specific axis configuration
-    if (this.state.components.axes?.x) {
-      // LineChart/BarChart specific X-axis options
-      this.state.components.axes.x.setOptions({
-        tickCount: this.options.xTickCount || (this.options.xType === 'time' ? 6 : 5),
-        formatType: this.options.xType === 'time' ? 'time' : 'number'
-      });
-    }
-    
-    if (this.state.components.axes?.y) {
-      // LineChart/BarChart specific Y-axis options  
-      this.state.components.axes.y.setOptions({
-        tickCount: this.options.yTickCount || 5,
-        isLogarithmic: this.options.isLogarithmic || false
-      });
-    }
-  }
-  
-  /**
-   * Update axes
-   * @private
-   */
-  updateAxes() {
-    console.log('BarChart.updateAxes called');
-    
-    // Print chart state for debugging
-    console.log('Chart state:', {
-      rendered: this.state.rendered,
-      hasChart: Boolean(this.state.chart),
-      chartClassName: this.state.chart ? this.state.chart.className : 'N/A'
-    });
-    
-    // Safety check - don't try to update DOM elements that don't exist yet
-    if (!this.state.rendered) {
-      console.log('Chart not rendered yet, skipping updateAxes');
-      return;
-    }
-    
-    if (!this.state.chart) {
-      console.error('Cannot update axes: chart element is null');
-      return;
-    }
-    
-    try {
-      // Checking if chart is attached to DOM
-      if (!this.state.chart.ownerDocument || !this.state.chart.parentNode) {
-        console.error('Chart element is not attached to DOM');
-        return;
-      }
-      
-      console.log('Finding existing axes elements');
-      
-      // Look for existing axes with error handling
-      let xAxis = null;
-      let yAxis = null;
-      
-      try {
-        xAxis = this.state.chart.querySelector('.visioncharts-x-axis');
-        console.log('Found X axis:', Boolean(xAxis));
-      } catch (error) {
-        console.error('Error finding X axis:', error);
-      }
-      
-      try {
-        yAxis = this.state.chart.querySelector('.visioncharts-y-axis');
-        console.log('Found Y axis:', Boolean(yAxis));
-      } catch (error) {
-        console.error('Error finding Y axis:', error);
-      }
-      
-      // Remove existing axes if found
-      if (xAxis) {
-        try {
-          xAxis.parentNode.removeChild(xAxis);
-          console.log('Removed X axis');
-        } catch (error) {
-          console.error('Error removing X axis:', error);
-        }
-      }
-      
-      if (yAxis) {
-        try {
-          yAxis.parentNode.removeChild(yAxis);
-          console.log('Removed Y axis');
-        } catch (error) {
-          console.error('Error removing Y axis:', error);
-        }
-      }
-      
-      // Re-render axes
-      console.log('Re-rendering axes');
-      this.renderAxes();
-      
-      console.log('Axes updated successfully');
-    } catch (error) {
-      console.error('Fatal error in updateAxes:', error);
-    }
-  }
-  
-  /**
-   * Update chart data
-   * @private
-   */
-  updateData() {
-    console.log('BarChart.updateData called');
-    
-    if (!this.state.chart) {
-      console.error('Cannot update data: chart element is null');
-      return;
-    }
-    
-    try {
-      // Remove existing data
-      const dataGroup = this.state.chart.querySelector('.visioncharts-data');
-      if (dataGroup) {
-        dataGroup.parentNode.removeChild(dataGroup);
-        console.log('Removed existing data');
-      } else {
-        console.log('No existing data to remove');
-      }
-      
-      // Re-render data
-      this.renderData();
-    } catch (error) {
-      console.error('Error updating data:', error);
-    }
-  }
-  
-  /**
-   * Update the chart
-   * @public
-   */
-  update() {
-    console.log('BarChart.update called');
-    
-    // Use the parent Chart class's update method
-    return super.update();
-  }
-  
-  /**
-   * FIXED: Override renderPanels to ensure proper panel scales storage
-   * @private
-   */
-  renderPanels() {
-    console.log('BarChart.renderPanels called - ensuring panel scales are stored');
-    
-    // Call Panel.renderForChart which should return panel scales
-    const panelScales = Panel.renderForChart(this);
-    
-    // FIXED: Ensure panel scales are stored properly for BarChart
-    if (panelScales && panelScales.length > 0) {
-      this.state.panelScales = panelScales;
-      console.log('BarChart: Panel scales stored successfully:', panelScales.length, 'panels');
-    } else {
-      console.warn('BarChart: No panel scales returned from Panel.renderForChart');
-    }
-  }
-  
-  /**
-   * Toggle studies rendering mode
-   * @public
-   * @param {boolean} studiesAsLines - Whether to render studies as lines
-   * @returns {BarChart} This chart instance
-   */
-  toggleStudiesAsLines(studiesAsLines) {
-    console.log('BarChart.toggleStudiesAsLines called:', studiesAsLines);
-    
-    this.options.studiesAsLines = Boolean(studiesAsLines);
-    return this.update();
-  }
-
-  /**
-   * Toggle ending labels visibility
-   * @public
-   * @param {boolean} show - Whether to show ending labels (null to toggle)
-   * @returns {BarChart} This chart instance
-   */
-  toggleEndingLabels(show = null) {
-    console.log('BarChart.toggleEndingLabels called:', show);
-    
-    if (show === null) {
-      show = !this.options.showEndingLabels;
-    }
-    
-    this.options.showEndingLabels = Boolean(show);
-    
-    if (this.state.rendered) {
-      return this.update();
-    }
-    
+  setCoordinateValidation(enabled) {
+    this.config.options.enableCoordinateValidation = enabled;
+    console.log(`BarChart: Coordinate validation ${enabled ? 'enabled' : 'disabled'}`);
     return this;
   }
 
   /**
-   * Configure ending labels appearance
-   * @public
-   * @param {Object} config - Configuration object
-   * @returns {BarChart} This chart instance
+   * NEW: Enable/disable rendering debug info
    */
-  configureEndingLabels(config) {
-    console.log('BarChart.configureEndingLabels called:', config);
+  setRenderingDebug(enabled) {
+    this.config.options.enableRenderingDebug = enabled;
+    console.log(`BarChart: Rendering debug ${enabled ? 'enabled' : 'disabled'}`);
+    return this;
+  }
+
+  /**
+   * NEW: Get coordinate validation results
+   */
+  getCoordinateValidationResults() {
+    return this.coordinateValidationResults;
+  }
+
+  /**
+   * NEW: Get rendering debug information
+   */
+  getRenderingDebugInfo() {
+    return this.renderingDebugInfo;
+  }
+
+  /**
+   * NEW: Get bar positioning information
+   */
+  getBarPositioningInfo() {
+    return this.barPositioningInfo;
+  }
+  
+  /**
+   * Get bar chart specific information - includes panel mode details
+   */
+  getBarChartInfo() {
+    const baseInfo = this.getRendererInfo();
     
-    this.options.endingLabelsConfig = { 
-      ...this.options.endingLabelsConfig, 
-      ...config 
+    const info = {
+      ...baseInfo,
+      chartType: 'bar',
+      barWidth: this.config.options.barWidth,
+      barSpacing: this.config.options.barSpacing,
+      showBorder: this.config.options.showBorder,
+      borderWidth: this.config.options.borderWidth,
+      coordinateSystem: 'unified',
+      coordinateValidation: this.config.options.enableCoordinateValidation,
+      renderingDebug: this.config.options.enableRenderingDebug,
+      datasets: this.config.data.map(dataset => ({
+        id: dataset.id,
+        name: dataset.name,
+        color: dataset.color,
+        barCount: dataset.data?.length || 0
+      }))
     };
     
-    if (this.endingLabels) {
-      this.endingLabels.updateConfig(config);
+    // Add panel mode information
+    if (this.isPanelMode) {
+      info.panelMode = this.getPanelModeInfo();
     }
     
-    if (this.options.showEndingLabels && this.state.rendered) {
-      return this.update();
+    return info;
+  }
+  
+  /**
+   * Optimize for large datasets by enabling WebGL if needed
+   */
+  optimizeForLargeDataset() {
+    const currentRenderer = this.activeRenderer;
+    
+    if (this.dataPointCount > this.performanceThresholds.canvas && currentRenderer !== 'webgl') {
+      console.log('BarChart: Optimizing for large dataset - switching to WebGL with unified coordinates');
+      return this.switchRenderer('webgl');
+    } else {
+      console.log('BarChart: Dataset size acceptable for current renderer');
+      return Promise.resolve();
     }
+  }
+  
+  /**
+   * Apply histogram styling automatically for time series data
+   */
+  applyHistogramStyling() {
+    // Automatically adjust bar width and spacing for histogram appearance
+    this.config.options.barWidth = 0.95; // Wider bars for histogram
+    this.config.options.barSpacing = 0.02; // Minimal spacing
+    this.config.options.showBorder = true; // Show borders to define bins
+    this.config.options.borderWidth = 1;
+    
+    console.log('BarChart: Applied histogram styling for time series data with unified coordinates');
+    this.render();
     
     return this;
   }
-  
+
   /**
-   * Set study line width
-   * @public
-   * @param {number} width - Line width for studies
-   * @returns {BarChart} This chart instance
+   * NEW: Test coordinate system consistency between renderers
    */
-  setStudyLineWidth(width) {
-    console.log('BarChart.setStudyLineWidth called:', width);
-    
-    this.options.studyLineWidth = Math.max(0.5, width);
-    return this.update();
+  async testCoordinateConsistency() {
+    if (!this.config.data || this.config.data.length === 0) {
+      console.warn('BarChart: No data available for consistency test');
+      return null;
+    }
+
+    const originalRenderer = this.activeRenderer;
+    const testResults = {};
+
+    try {
+      // Test with Canvas renderer
+      await this.switchRenderer('canvas');
+      if (this.config.options.enableCoordinateValidation) {
+        this._validateUnifiedCoordinates();
+      }
+      if (this.config.options.enableRenderingDebug) {
+        this._calculateBarPositioningInfo();
+      }
+      testResults.canvas = {
+        renderer: 'canvas',
+        validationResults: [...this.coordinateValidationResults],
+        barPositioningInfo: this.barPositioningInfo ? { ...this.barPositioningInfo } : null,
+        coordinateSystem: 'unified'
+      };
+
+      // Test with WebGL renderer (if supported)
+      if (this.getRendererInfo().webglSupported) {
+        await this.switchRenderer('webgl');
+        if (this.config.options.enableCoordinateValidation) {
+          this._validateUnifiedCoordinates();
+        }
+        if (this.config.options.enableRenderingDebug) {
+          this._calculateBarPositioningInfo();
+        }
+        testResults.webgl = {
+          renderer: 'webgl',
+          validationResults: [...this.coordinateValidationResults],
+          barPositioningInfo: this.barPositioningInfo ? { ...this.barPositioningInfo } : null,
+          coordinateSystem: 'unified'
+        };
+      }
+
+      // Switch back to original renderer
+      await this.switchRenderer(originalRenderer);
+
+      console.log('BarChart: Coordinate consistency test completed:', testResults);
+      return testResults;
+
+    } catch (error) {
+      console.error('BarChart: Coordinate consistency test failed:', error);
+      // Ensure we switch back to original renderer
+      await this.switchRenderer(originalRenderer);
+      throw error;
+    }
   }
-  
+
   /**
-   * Toggle study points
-   * @public
-   * @param {number} radius - Point radius (0 to disable)
-   * @returns {BarChart} This chart instance
+   * Find closest data points for given X coordinate
    */
-  setStudyPointRadius(radius) {
-    console.log('BarChart.setStudyPointRadius called:', radius);
+  findClosestDataPoints(targetDataX, dataset = null) {
+    // Use provided dataset or find from config
+    const targetDataset = dataset || this.config.data[0];
     
-    this.options.studyPointRadius = Math.max(0, radius);
-    return this.update();
+    if (!targetDataset || !targetDataset.data || targetDataset.data.length === 0) {
+      return [];
+    }
+    
+    try {
+      const closestPoint = this._binarySearchClosest(targetDataset.data, targetDataX);
+      
+      if (closestPoint) {
+        return [{
+          ...closestPoint,
+          datasetId: targetDataset.id,
+          dataset: targetDataset,
+          dataX: this._extractXValue(closestPoint),
+          dataY: this._extractYValue(closestPoint),
+          color: targetDataset.color
+        }];
+      }
+      
+      return [];
+      
+    } catch (error) {
+      console.error('Error finding closest data points:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get data points at exact X coordinate
+   */
+  getDataPointsAtX(exactDataX, dataset = null) {
+    const targetDataset = dataset || this.config.data[0];
+    
+    if (!targetDataset || !targetDataset.data || targetDataset.data.length === 0) {
+      return [];
+    }
+    
+    try {
+      const matchingPoints = [];
+      
+      // FIXED: Use global tolerance method (inherited from Chart base class)
+      const tolerance = this._calculateMouseProximityTolerance();
+      
+      console.log(`Using global tolerance: ${tolerance}ms (${tolerance/60000} minutes) for dataset ${targetDataset.id}`);
+      
+      // Find all points within reasonable distance of mouse
+      for (const point of targetDataset.data) {
+        const pointX = this._extractXValue(point);
+        
+        if (Math.abs(pointX - exactDataX) <= tolerance) {
+          matchingPoints.push({
+            ...point,
+            datasetId: targetDataset.id,
+            dataset: targetDataset,
+            dataX: pointX,
+            dataY: this._extractYValue(point),
+            color: targetDataset.color,
+            unifiedX: point.unifiedX || point.screenX,
+            unifiedY: point.unifiedY || point.screenY
+          });
+        }
+      }
+
+      // FIXED: No fallback to distant points! If no points within tolerance, return empty
+      if (matchingPoints.length === 0) {
+        console.log(`No points found within ${tolerance}ms of mouse position for dataset ${targetDataset.id}`);
+        return [];
+      }
+      
+      return matchingPoints;
+      
+    } catch (error) {
+      console.error('Error getting data points at X:', error);
+      return [];
+    }
+  }
+
+  
+
+  /**
+   * Binary search for closest data point by X coordinate
+   * @private
+   */
+  _binarySearchClosest(data, targetX) {
+    if (!data || data.length === 0) return null;
+    
+    // Quick check if data appears to be sorted
+    const isSorted = this._isDataSorted(data);
+    
+    if (isSorted) {
+      return this._binarySearchSorted(data, targetX);
+    } else {
+      console.warn('Data not sorted, falling back to linear search');
+      return this._linearSearchClosest(data, targetX);
+    }
+  }
+
+  /**
+   * Binary search on sorted data
+   * @private
+   */
+  _binarySearchSorted(data, targetX) {
+    let left = 0;
+    let right = data.length - 1;
+    let closest = data[0];
+    let minDistance = Math.abs(this._extractXValue(data[0]) - targetX);
+    
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const midPoint = data[mid];
+      const midX = this._extractXValue(midPoint);
+      const distance = Math.abs(midX - targetX);
+      
+      // Update closest if this point is closer
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = midPoint;
+      }
+      
+      // Navigate search space
+      if (midX < targetX) {
+        left = mid + 1;
+      } else if (midX > targetX) {
+        right = mid - 1;
+      } else {
+        // Exact match found
+        return midPoint;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
+   * Linear search fallback for unsorted data
+   * @private
+   */
+  _linearSearchClosest(data, targetX) {
+    let closest = null;
+    let minDistance = Infinity;
+    
+    for (const point of data) {
+      const pointX = this._extractXValue(point);
+      const distance = Math.abs(pointX - targetX);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = point;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
+   * Check if data is sorted by X coordinate
+   * @private
+   */
+  _isDataSorted(data) {
+    if (data.length < 2) return true;
+    
+    // Check first few and last few points to determine if sorted
+    const checkCount = Math.min(10, Math.floor(data.length / 2));
+    
+    for (let i = 1; i < checkCount; i++) {
+      const prevX = this._extractXValue(data[i - 1]);
+      const currX = this._extractXValue(data[i]);
+      
+      if (prevX > currX) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Extract X value from data point
+   * @private
+   */
+  _extractXValue(point) {
+    const x = point.x || point.date || point.time || point.timestamp;
+    
+    // Convert Date objects to timestamps
+    if (x instanceof Date) {
+      return x.getTime();
+    }
+    
+    if (typeof x === 'string' && this.config.options.xType === 'time') {
+      return new Date(x).getTime();
+    }
+    
+    return typeof x === 'number' ? x : null;
+  }
+
+  /**
+   * Extract Y value from data point
+   * @private
+   */
+  _extractYValue(point) {
+    const y = point.y || point.value || point.price || point.close;
+    return typeof y === 'number' ? y : null;
+  }
+
+  /**
+   * Calculate bar tolerance for point selection
+   * @private
+   */
+  _calculateBarTolerance(dataset) {
+    if (!dataset.data || dataset.data.length < 2) {
+      return 1000; // Default tolerance in milliseconds for time data
+    }
+    
+    // Calculate average distance between consecutive points
+    let totalDistance = 0;
+    let validDistances = 0;
+    
+    for (let i = 1; i < Math.min(dataset.data.length, 10); i++) {
+      const prevX = this._extractXValue(dataset.data[i - 1]);
+      const currX = this._extractXValue(dataset.data[i]);
+      
+      if (prevX != null && currX != null) {
+        totalDistance += Math.abs(currX - prevX);
+        validDistances++;
+      }
+    }
+    
+    if (validDistances === 0) {
+      return 1000; // Default fallback
+    }
+    
+    const avgDistance = totalDistance / validDistances;
+    
+    // Use half the average distance as tolerance (bar width consideration)
+    return avgDistance * 0.5;
   }
 }

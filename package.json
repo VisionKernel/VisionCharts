@@ -1,6 +1,6 @@
 {
   "name": "visioncharts",
-  "version": "1.2.1",
+  "version": "2.0.0",
   "description": "A modern, high-performance JavaScript charting library optimized for financial and economic data visualization",
   "type": "module",
   "main": "dist/visioncharts.js",
@@ -24,7 +24,9 @@
     "financial",
     "svg",
     "data-visualization",
-    "visionkernel"
+    "visionkernel",
+    "webgl",
+    "canvas"
   ],
   "author": "VisionKernel Team",
   "license": "MIT",
