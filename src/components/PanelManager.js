@@ -555,6 +555,7 @@ _createSharedXScale() {
   
   const panel = new Panel({
     dataset: dataset,
+    chart: this.chart,
     panelIndex: i,
     totalPanels: totalPanels,
     height: panelHeight,
