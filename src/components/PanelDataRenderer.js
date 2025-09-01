@@ -49,7 +49,7 @@ export default class PanelDataRenderer {
       renderer.setViewport(chartArea);
       
       // Render based on chart type
-      if (this.config.chartType === 'line') {
+      if (dataset.isStudy || this.config.chartType === 'line') {
         await this._renderLineDataset(transformedDataset, renderer, chartArea);
       } else if (this.config.chartType === 'bar') {
         await this._renderBarDataset(transformedDataset, renderer, chartArea, { 
