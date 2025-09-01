@@ -1,217 +1,488 @@
 # VisionCharts
 
-A modern, high-performance JavaScript charting library optimized for economic and financial time-series data visualization with 0 dependencies. Built specifically to be the core charting library of VisionKernel, VisionCharts offers customizable features that give the ability to create professional grade graphics for reports & analysis.
+> A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.
 
-![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/visionkernel/visioncharts)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Overview
 
-VisionCharts is a specialized charting library that uses a hybrid approach of SVG, Canvas and WebGL to generate charts. Unlike general-purpose charting libraries, VisionCharts focuses on delivering professional-grade financial charts with optimal performance and a modern aesthetic.
+## ✨ Features
 
-## Key Features
+### 🚀 **Multi-Renderer Architecture**
+- **Canvas 2D** for standard datasets (< 50K points)
+- **WebGL** for large datasets (50K+ points) with GPU acceleration
+- **SVG** fallback for maximum compatibility
+- Automatic renderer selection based on data size and browser capabilities
 
-- **Financial-First Design**: Optimized for financial data patterns and visualization needs
-- **Hybrid Rendering**: Hybrid rendering approach to handle large datasets efficiently
-- **Responsive by Default**: Charts automatically adapt to container dimensions
-- **Performance Focused**: Optimized for handling large financial datasets
-- **Zero Dependencies**: Standalone library with no external dependencies
+### 📊 **Chart Types**
+- **Line Charts** with customizable curves (linear, step, cardinal, monotone) and area fill capability
+- **Bar Charts** with grouped and stacked options
+- **Panel Views** for multi-dataset comparative analysis
 
-## Core Capabilities
+### 📈 **Technical Analysis**
+- **Moving Averages**: Simple (SMA) and Exponential (EMA)
+- **Bollinger Bands** with configurable periods and standard deviations
+- **Statistical Lines**: Zero line, average line, median line
+- **Recession Indicators** with customizable periods and styling
 
-All chart types in VisionCharts support these essential capabilities:
+### 🎨 **Visual Components**
+- **Interactive Crosshairs** with data point tooltips
+- **Dynamic Legends** with dataset management
+- **Ending Labels** for latest values
+- **Grid System** with major/minor lines
+- **Custom Color Palettes** with color picker integration
 
-- **Multiple Datasets**: Plot several data series on a single chart
-- **X and Y Axis Naming**: Custom axis titles for clear data identification
-- **Logarithmic/Linear Scaling**: Toggle between scale types for different data visualization needs
-- **Single and Multi-Panel Views**: View datasets individually or combined
-- **Recession Line Indicators**: Show economic recession periods with shaded areas
-- **Zero Line Display**: Emphasize the zero threshold with a reference line
-- **Average Line Display**: Shows a horizontal line that is the cumulative average of all datasets
-- **Median Line Display**: Shows a horizontal line that is the cumulative median of all datasets
-- **Customizable Line Properties**: Adjust width, color, curve type & styles for each dataset
-- **Technical Studies/Indicators**: Add and customize common technical analysis tools (SMA, EMA, etc.)
-- **Area fill for line charts**: Add a shaded gradient under the dataset lines for line charts
+### ⚡ **Performance & Compatibility**
+- **Browser Support Detection** with capability reporting
+- **Coordinate System Normalization** across all renderers
+- **Data Processing Pipeline** with caching and optimization
+- **Path Generation** with curve smoothing and interpolation
+- **Memory Management** with efficient resource cleanup
 
-## Chart Types
+## 🚀 Quick Start
 
-- **Line Charts**: Visualize trends over time with optional points and area fill
-- **Bar Charts**: Compare discrete values with grouped or individual bars
-
-## Technical Indicators
-
-- **Simple Moving Average (SMA)**: Average price over a specified period
-- **Exponential Moving Average (EMA)**: Weighted average emphasizing recent prices
-- **Bollinger Bands**: Volatility channels with standard deviation bands
-- **Relative Strength Index (RSI)**: Momentum oscillator measuring speed and change of price movements
-- **Moving Average Convergence Divergence (MACD)**: Trend-following momentum indicator
-
-## Installation
+### Installation
 
 ```bash
+# Via npm
 npm install visioncharts
+
+# Via CDN
+<script type="module" src="https://unpkg.com/visioncharts@latest/dist/visioncharts.esm.js"></script>
 ```
 
-## Basic Usage
+### Basic Usage
 
 ```javascript
 import { LineChart } from 'visioncharts';
 
-// Create a new chart
+// Create a line chart
 const chart = new LineChart({
-  container: '#chart-container',
-  data: financialData,
-  options: {
-    title: 'NASDAQ Composite',
-    xAxisName: 'Date',
-    yAxisName: 'Price',
-    isLogarithmic: false,
-    showZeroLine: true,
-    showRecessionLines: true,
-    recessions: [
-      { start: '2020-02-01', end: '2020-04-15' },
-      { start: '2007-12-01', end: '2009-06-30' }
+  container: '#my-chart',
+  data: [{
+    id: 'dataset-1',
+    name: 'Stock Price',
+    color: '#1468a8',
+    data: [
+      { x: new Date('2024-01-01'), y: 100 },
+      { x: new Date('2024-01-02'), y: 105 },
+      { x: new Date('2024-01-03'), y: 98 }
     ]
+  }],
+  options: {
+    title: 'Stock Performance',
+    xAxisName: 'Date',
+    yAxisName: 'Price ($)',
+    width: 800,
+    height: 400
   }
 });
 
 // Render the chart
-chart.render();
+await chart.render();
 ```
 
-## Multiple Datasets Example
+### Advanced Example with Technical Indicators
 
 ```javascript
-import { createChart } from 'visioncharts';
+import { LineChart } from 'visioncharts';
 
-// Create chart with multiple datasets
-const chart = createChart('line', {
-  container: '#chart-container',
-  data: [
-    {
-      id: 'nasdaq',
-      name: 'NASDAQ',
-      color: '#1468a8',
-      width: 2,
-      data: nasdaqData
-    },
-    {
-      id: 'dow',
-      name: 'Dow Jones',
-      color: '#34A853',
-      width: 2,
-      data: dowData
-    },
-    {
-      id: 'sp500',
-      name: 'S&P 500',
-      color: '#EA4335',
-      width: 2,
-      data: spData
-    }
-  ],
-  options: {
-    title: 'Market Comparison',
-    isPanelView: false, // Show all on same chart
-    isLogarithmic: true
-  }
-});
-
-chart.render();
-```
-
-## Using Technical Indicators
-
-```javascript
-import { LineChart, calculateIndicator } from 'visioncharts';
-
-// Create a chart
 const chart = new LineChart({
-  container: '#chart-container',
-  data: stockData,
+  container: '#advanced-chart',
+  data: [/* your time series data */],
   options: {
-    title: 'Stock Price with Moving Averages'
+    title: 'Advanced Financial Chart',
+    showRecessionLines: true,
+    isLogarithmic: false,
+    margin: { top: 40, right: 60, bottom: 60, left: 80 }
   }
 });
 
-// Calculate SMA and add to chart
-const smaData = calculateIndicator('sma', stockData, { 
-  period: 20,
-  valueField: 'y',
-  xField: 'x'
-});
+await chart.render();
 
-// Add SMA as a new dataset
-chart.addDataset({
-  id: 'sma-20',
+// Add technical indicators
+chart.addStudy('sma', {
   name: 'SMA (20)',
-  color: '#FBBC05',
-  width: 1.5,
-  data: smaData
+  period: 20,
+  color: '#FF6B35',
+  strokeWidth: 2
 });
 
-chart.render();
-```
-
-## Chart Customization API
-
-All charts expose a consistent API for customization:
-
-```javascript
-// Toggle logarithmic scale
-chart.toggleLogarithmic(true);
-
-// Toggle panel view
-chart.togglePanelView(true);
-
-// Toggle recession lines
-chart.toggleRecessionLines(true);
-
-// Toggle zero line
-chart.toggleZeroLine(true);
-
-// Set axis names
-chart.setXAxisName('Time');
-chart.setYAxisName('Value ($)');
-
-// Filter data by date range
-chart.filterByDate('2020-01-01', '2021-12-31');
-
-// Add a study/indicator
-chart.addStudy('dataset-1', {
-  id: 'ema-50',
-  type: 'ema',
-  params: { period: 50 },
+chart.addStudy('bollinger', {
+  name: 'Bollinger Bands',
+  period: 20,
+  standardDeviations: 2,
   color: '#9C27B0'
 });
+```
 
-// Export as SVG or PNG
-const svgString = chart.exportSVG();
-chart.exportPNG(2).then(dataUrl => {
-  // Use the PNG data URL
+## 📚 API Reference
+
+### Core Classes
+
+#### Chart (Base Class)
+```javascript
+// Initialize
+const chart = new Chart(config);
+
+// Configuration methods
+chart.addDataset(dataset);
+chart.removeDataset(datasetId);
+chart.updateDataset(datasetId, updates);
+
+// Rendering
+await chart.render();
+chart.update();
+chart.resize(width, height);
+
+// Interaction
+chart.toggleLogarithmicScale(enabled);
+chart.toggleRecessionLines(enabled);
+chart.toggleZeroLine(enabled);
+```
+
+#### LineChart
+```javascript
+const lineChart = new LineChart({
+  container: '#chart',
+  data: datasets,
+  options: {
+    // Line-specific options
+    curve: 'monotone', // 'linear', 'step', 'cardinal', 'monotone'
+    fillArea: false,
+    fillOpacity: 0.3
+  }
 });
 ```
 
-## Development
+#### BarChart
+```javascript
+const barChart = new BarChart({
+  container: '#chart',
+  data: datasets,
+  options: {
+    // Bar-specific options
+    barWidth: 0.8,
+    groupPadding: 0.1,
+    showValues: true
+  }
+});
+```
 
+### Technical Studies
+
+#### Adding Studies
+```javascript
+// Simple Moving Average
+const smaId = chart.addStudy('sma', {
+  name: 'SMA (50)',
+  datasetId: 'dataset-1',
+  parameters: { period: 50 },
+  color: '#34A853',
+  strokeWidth: 2,
+  visible: true
+});
+
+// Exponential Moving Average  
+const emaId = chart.addStudy('ema', {
+  name: 'EMA (20)',
+  datasetId: 'dataset-1',
+  parameters: { period: 20 },
+  color: '#EA4335',
+  strokeWidth: 2,
+  visible: true
+});
+
+// Bollinger Bands
+const bollingerId = chart.addStudy('bollinger', {
+  name: 'Bollinger Bands',
+  datasetId: 'dataset-1',
+  parameters: { 
+    period: 20,
+    standardDeviations: 2 
+  },
+  color: '#9C27B0',
+  strokeWidth: 1,
+  visible: true
+});
+```
+
+#### Managing Studies
+```javascript
+// Update study parameters
+chart.updateStudy(studyId, {
+  parameters: { period: 30 },
+  color: '#FF5722'
+});
+
+// Remove study
+chart.removeStudy(studyId);
+
+// Get all studies
+const studies = chart.getAllStudies();
+
+// Get visible studies only
+const visibleStudies = chart.getVisibleStudies();
+```
+
+### Data Format
+
+#### Dataset Structure
+```javascript
+const dataset = {
+  id: 'unique-id',           // Required: Unique identifier
+  name: 'Display Name',      // Required: Human-readable name
+  color: '#1468a8',          // Required: Chart color
+  data: [                    // Required: Array of data points
+    { 
+      x: Date | number,      // X-axis value (timestamp or number)
+      y: number              // Y-axis value
+    }
+  ],
+  
+  // Optional properties
+  fill: false,               // Enable area fill (LineChart only)
+  fillOpacity: 0.3,         // Fill opacity (0-1)
+  strokeWidth: 2,           // Line width
+  strokeOpacity: 1,         // Line opacity (0-1)
+  visible: true,            // Dataset visibility
+  interpolation: 'linear'   // Curve interpolation method
+};
+```
+
+#### Time Series Data
+```javascript
+// Preferred format for financial data
+const timeSeriesData = [
+  { x: new Date('2024-01-01T09:30:00'), y: 150.25 },
+  { x: new Date('2024-01-01T09:31:00'), y: 151.10 },
+  { x: new Date('2024-01-01T09:32:00'), y: 149.85 }
+];
+
+// Also supports timestamps
+const timestampData = [
+  { x: 1704110400000, y: 150.25 },  // milliseconds since epoch
+  { x: 1704110460000, y: 151.10 },
+  { x: 1704110520000, y: 149.85 }
+];
+```
+
+### Configuration Options
+
+#### Chart Options
+```javascript
+const options = {
+  // Dimensions
+  width: 800,
+  height: 400,
+  margin: { top: 40, right: 60, bottom: 60, left: 80 },
+  
+  // Content
+  title: 'Chart Title',
+  xAxisName: 'Date',
+  yAxisName: 'Value',
+  
+  // Data processing
+  xField: 'x',              // X data field name
+  yField: 'y',              // Y data field name  
+  xType: 'time',            // 'time', 'number', 'category'
+  yType: 'number',          // Data type for Y axis
+  
+  // Visualization
+  isLogarithmic: false,     // Enable logarithmic Y scale
+  showGrid: true,           // Show grid lines
+  showLegend: true,         // Show legend
+  showRecessionLines: false,// Show recession indicators
+  
+  // Styling
+  titleFontSize: 16,
+  titleFontFamily: 'Arial, sans-serif',
+  titleColor: '#333333',
+  backgroundColor: 'white',
+  
+  // Advanced
+  enableCrosshair: true,    // Enable crosshair interaction
+  enableZoom: true,         // Enable zoom/pan
+  enableTooltips: true,     // Enable data tooltips
+  animationDuration: 300    // Animation duration (ms)
+};
+```
+
+## 🎨 Styling & Themes
+
+### Custom Colors
+```javascript
+// Define custom color palette
+const customPalette = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', 
+  '#96CEB4', '#FECA57', '#FF9FF3'
+];
+
+// Apply to datasets
+datasets.forEach((dataset, index) => {
+  dataset.color = customPalette[index % customPalette.length];
+});
+```
+
+### CSS Customization
+```css
+/* Override default styles */
+.visioncharts-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.visioncharts-title {
+  font-family: 'Helvetica Neue', sans-serif;
+  font-weight: 300;
+}
+
+.visioncharts-legend-item {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.visioncharts-crosshair-line {
+  stroke-dasharray: 3,3;
+}
+```
+
+## 🔧 Browser Support
+
+VisionCharts automatically detects browser capabilities and selects the optimal renderer:
+
+| Browser | Canvas 2D | WebGL | SVG | Notes |
+|---------|-----------|-------|-----|-------|
+| Chrome 60+ | ✅ | ✅ | ✅ | Full support |
+| Firefox 55+ | ✅ | ✅ | ✅ | Full support |
+| Safari 12+ | ✅ | ✅ | ✅ | Full support |
+| Edge 79+ | ✅ | ✅ | ✅ | Full support |
+| IE 11 | ✅ | ❌ | ✅ | Limited (no WebGL) |
+
+### Capability Detection
+```javascript
+import { browserSupport } from 'visioncharts';
+
+// Check browser capabilities
+const capabilities = browserSupport.getSupportSummary();
+console.log('Canvas 2D:', capabilities.canvas2d);
+console.log('WebGL:', capabilities.webgl);
+console.log('High DPI:', capabilities.isHighDPI);
+
+// Get recommended renderer for dataset size
+const renderer = browserSupport.suggestRenderer(dataPointCount);
+console.log(`Recommended renderer: ${renderer}`);
+```
+
+## 📊 Performance Guidelines
+
+### Dataset Size Recommendations
+
+| Data Points | Recommended Renderer | Expected Performance |
+|-------------|---------------------|----------------------|
+| < 1,000 | SVG or Canvas 2D | Excellent |
+| 1,000 - 10,000 | Canvas 2D | Very Good |
+| 10,000 - 50,000 | Canvas 2D | Good |
+| 50,000+ | WebGL | Excellent |
+
+### Optimization Tips
+
+```javascript
+// For large datasets, use WebGL
+const chart = new LineChart({
+  container: '#chart',
+  data: largeDataset,
+  options: {
+    preferredRenderer: 'webgl',  // Force WebGL
+    enableDataSampling: true,    // Sample data for better performance
+    maxDataPoints: 100000        // Limit maximum points
+  }
+});
+
+// Pre-process data for better performance
+const processedData = chart.dataProcessor.processData(rawData, {
+  removeOutliers: true,
+  interpolateGaps: true,
+  downsample: true,
+  targetPoints: 10000
+});
+```
+
+## 🛠️ Development
+
+### Project Structure
+```
+visioncharts/
+├── src/
+│   ├── core/                 # Core chart classes
+│   │   ├── Chart.js         # Base chart class
+│   │   ├── Axis.js          # Axis rendering
+│   │   └── Scale.js         # Scale management
+│   ├── charts/              # Chart implementations
+│   │   ├── LineChart.js     # Line/area charts
+│   │   └── BarChart.js      # Bar charts
+│   ├── components/          # Reusable components
+│   │   ├── Legend.js        # Legend component
+│   │   ├── Grid.js          # Grid system
+│   │   └── Crosshair.js     # Crosshair interaction
+│   ├── renderers/           # Rendering backends
+│   │   ├── CanvasRenderer.js# Canvas 2D renderer
+│   │   └── WebGLRenderer.js # WebGL renderer
+│   ├── utils/               # Utility modules
+│   │   ├── DataProcessor.js # Data processing
+│   │   ├── PathGenerator.js # Path generation
+│   │   └── BrowserSupport.js# Browser detection
+│   └── index.js             # Main export
+├── examples/                # Demo and examples
+│   ├── index.html          # Interactive demo
+│   ├── scripts/            # Demo scripts
+│   └── styles/             # Demo styles
+├── dist/                   # Built files
+└── docs/                   # Documentation
+```
+
+### Building from Source
 ```bash
 # Clone the repository
-git clone https://github.com/VisionKernel/visioncharts.git
+git clone https://github.com/your-username/visioncharts.git
+cd visioncharts
 
 # Install dependencies
 npm install
 
+# Build the library
+npm run build
+
 # Run development server
 npm run dev
 
-# Build for production
-npm run build
+# Run tests
+npm test
+
+# Generate documentation
+npm run docs
 ```
 
-## License
+## 📈 Examples
 
-MIT License - see the [LICENSE](LICENSE) file for details.
+### Financial Dashboard
+See the complete example in [`examples/financial-dashboard.html`](examples/financial-dashboard.html)
 
-## About
+### Multi-Panel Analysis  
+See the complete example in [`examples/multi-panel.html`](examples/multi-panel.html)
 
-VisionCharts is developed as a core component of the VisionKernel platform, a comprehensive solution for financial and economic data analysis.
+### Real-time Data
+See the complete example in [`examples/realtime-data.html`](examples/realtime-data.html)
+
+## 🤝 Community & Support
+
+- **GitHub Issues**: [Report bugs and request features](https://github.com/visionkernel/visioncharts/issues)
+- **Discussions**: [Join our community discussions](https://github.com/visionkernel/visioncharts/discussions)
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+**VisionCharts v2.0.0** | © 2025 VisionKernel Team
