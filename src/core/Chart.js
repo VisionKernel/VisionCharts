@@ -940,6 +940,12 @@ async render() {
     if (this.coordinateSystem) {
       this.coordinateSystem.setScales(this.scales);
     }
+
+    if (this.isPanelMode && this.panelManager) {
+      // In panel mode - refresh panels instead of single mode rendering
+      await this.panelManager.refreshPanelMode();
+      return;
+    }
     
     // Continue with rest of rendering...
     await this._renderSingleMode();
