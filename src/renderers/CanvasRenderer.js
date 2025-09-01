@@ -193,7 +193,7 @@ export default class CanvasRenderer extends AbstractRenderer {
     ctx.beginPath();
 
     // Get chart bottom (where fill should end)
-    const chartBottom = scales.y.range[1]; // Bottom of Y scale range
+    const chartBottom = scales.y.range[0]; // Bottom of Y scale range
 
     // Start from first point
     const firstPoint = this._convertUnifiedToCanvas(vertices[0]);
