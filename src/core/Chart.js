@@ -560,11 +560,14 @@ _calculateDataDomains() {
     yMin = 0.1; // or a small fraction of yMax
   }
   
+  const yRange = yMax - yMin;
+  const yPadding = yRange * 0.05; // 5% padding
+
   this.dataDomains = {
     x: [xMin, xMax],
-    y: [yMin, yMax]
+    y: [yMin - yPadding, yMax + yPadding]
   };
-  
+    
   console.log(`Data domains calculated from ${totalPoints} processed points:`, this.dataDomains);
 }
   

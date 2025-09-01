@@ -323,7 +323,11 @@ export class Panel {
     
     let yMin = Math.min(...yValues);
     let yMax = Math.max(...yValues);
-    const yDomain = [yMin, yMax];
+    
+    // Add 5% padding to Y domain for visual breathing room
+    const yDataRange = yMax - yMin;
+    const yPadding = yDataRange * 0.05; // 5% padding
+    const yDomain = [yMin - yPadding, yMax + yPadding];
     
     // Determine scale type
     const scaleType = 'linear';
