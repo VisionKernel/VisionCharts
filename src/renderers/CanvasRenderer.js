@@ -389,7 +389,7 @@ export default class CanvasRenderer extends AbstractRenderer {
     
     // FIXED: For Canvas coordinate system, baseline should be at the bottom of chart area
     const chartArea = scales.y.range; // [top, bottom] in Canvas coordinates
-    const baselineY = chartArea[1]; // Bottom of chart area (higher Y value in Canvas)
+    const baselineY = chartArea[0]; // Bottom of chart area (higher Y value in Canvas)
     const barHeight = Math.abs(baselineY - y); // Height from baseline to data point
     const barY = Math.min(y, baselineY); // Top of the bar
     

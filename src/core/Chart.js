@@ -627,7 +627,7 @@ _createScales() {
   this.scales.y = new Scale({
     type: yScaleType,
     domain: [...this.dataDomains.y],
-    range: [this.chartArea.y, this.chartArea.y + this.chartArea.height],
+    range: [this.chartArea.y + this.chartArea.height, this.chartArea.y],
     coordinateSystem: 'unified',
     orientation: 'vertical',
     dataType: this.config.options.yType,

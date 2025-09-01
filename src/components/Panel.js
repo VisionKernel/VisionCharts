@@ -329,7 +329,7 @@ export class Panel {
     const scaleType = 'linear';
     
     // Y scale range: flip for canvas coordinate system (Y increases downward)
-    const yRange = [this.panelChartArea.y, this.panelChartArea.y + this.panelChartArea.height];
+    const yRange = [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y];
     
     this.yScale = new Scale({
       type: scaleType,
