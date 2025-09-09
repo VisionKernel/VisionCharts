@@ -414,7 +414,7 @@ const processedData = chart.dataProcessor.processData(rawData, {
 ```
 visioncharts/
 ├── src/
-│   ├── core/                 # Core chart classes
+│   ├── core/                # Core chart classes
 │   │   ├── Chart.js         # Base chart class
 │   │   ├── Axis.js          # Axis rendering
 │   │   └── Scale.js         # Scale management
@@ -433,18 +433,17 @@ visioncharts/
 │   │   ├── PathGenerator.js # Path generation
 │   │   └── BrowserSupport.js# Browser detection
 │   └── index.js             # Main export
-├── examples/                # Demo and examples
-│   ├── index.html          # Interactive demo
-│   ├── scripts/            # Demo scripts
-│   └── styles/             # Demo styles
-├── dist/                   # Built files
-└── docs/                   # Documentation
+└── examples/                # Demo and examples
+    ├── index.html           # Interactive demo
+    ├── scripts/             # Demo script
+    ├── styles/              # Demo page style
+	└── data/ 				 # Sample JSON data
 ```
 
 ### Building from Source
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/visioncharts.git
+git clone https://github.com/visionkernel/visioncharts.git
 cd visioncharts
 
 # Install dependencies
@@ -456,23 +455,7 @@ npm run build
 # Run development server
 npm run dev
 
-# Run tests
-npm test
-
-# Generate documentation
-npm run docs
 ```
-
-## 📈 Examples
-
-### Financial Dashboard
-See the complete example in [`examples/financial-dashboard.html`](examples/financial-dashboard.html)
-
-### Multi-Panel Analysis  
-See the complete example in [`examples/multi-panel.html`](examples/multi-panel.html)
-
-### Real-time Data
-See the complete example in [`examples/realtime-data.html`](examples/realtime-data.html)
 
 ## 🤝 Community & Support
 
