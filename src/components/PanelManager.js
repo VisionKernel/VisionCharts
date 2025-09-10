@@ -413,8 +413,9 @@ _createSharedXScale() {
   
   // Create shared X scale with correct range
   const xDomain = [xMin, xMax];
-  const xRange = [panelLeftPadding, panelLeftPadding + chartAreaWidth]; // [60, 1138] instead of [60, 1180]
-  
+  const yAxisPadding = 20;
+  const xRange = [panelLeftPadding - yAxisPadding, panelLeftPadding + chartAreaWidth];
+
   const scaleType = this.chart.config.options.xType === 'time' ? 'time' : 'linear';
   this.sharedXScale = createScale(scaleType, xDomain, xRange);
   
