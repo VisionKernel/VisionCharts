@@ -325,4 +325,179 @@ export class StudiesManager {
   getSupportedStudies() {
     return { ...this.supportedStudies };
   }
+
+  /**
+   * Get study data points at specific X coordinate
+   * @param {number} exactDataX - Target X coordinate
+   * @returns {Array} Array of study data points at the given X coordinate
+   */
+  getStudyDataPointsAtX(exactDataX) {
+    const studyPoints = [];
+    
+    if (!this.chart?.scales?.x) {
+      return studyPoints;
+    }
+    
+    // Use the same tolerance calculation as the main chart
+    const tolerance = this.chart._calculateMouseProximityTolerance();
+    
+    console.log(`StudiesManager: Looking for study points at ${exactDataX} with tolerance ${tolerance}ms`);
+    
+    // Iterate through all visible studies
+    for (const study of this.getVisibleStudies()) {
+      if (!study.data || study.data.length === 0) continue;
+      
+      console.log(`Checking study: ${study.name} (${study.data.length} points)`);
+      
+      // Find points within tolerance for this study
+      const matchingPoints = [];
+      
+      for (const point of study.data) {
+        const pointX = this._extractXValue(point);
+        
+        if (Math.abs(pointX - exactDataX) <= tolerance) {
+          // Create study data point with consistent structure
+          if (study.type === 'bollinger') {
+            // Bollinger Bands: Add separate points for upper, middle, lower
+            matchingPoints.push(
+              {
+                datasetId: `${study.id}_upper`,
+                dataset: { 
+                  id: `${study.id}_upper`,
+                  name: `${study.name} (Upper)`,
+                  color: study.color,
+                  isStudy: true,
+                  studyType: study.type
+                },
+                dataX: pointX,
+                dataY: point.upper,
+                color: study.color,
+                isStudy: true,
+                studyId: study.id,
+                studyType: study.type,
+                studyLine: 'upper'
+              },
+              {
+                datasetId: `${study.id}_middle`,
+                dataset: { 
+                  id: `${study.id}_middle`,
+                  name: `${study.name} (Middle)`,
+                  color: study.color,
+                  isStudy: true,
+                  studyType: study.type
+                },
+                dataX: pointX,
+                dataY: point.middle,
+                color: study.color,
+                isStudy: true,
+                studyId: study.id,
+                studyType: study.type,
+                studyLine: 'middle'
+              },
+              {
+                datasetId: `${study.id}_lower`,
+                dataset: { 
+                  id: `${study.id}_lower`,
+                  name: `${study.name} (Lower)`,
+                  color: study.color,
+                  isStudy: true,
+                  studyType: study.type
+                },
+                dataX: pointX,
+                dataY: point.lower,
+                color: study.color,
+                isStudy: true,
+                studyId: study.id,
+                studyType: study.type,
+                studyLine: 'lower'
+              }
+            );
+          } else {
+            // Single value studies (SMA, EMA, etc.)
+            matchingPoints.push({
+              datasetId: `${study.id}_line`,
+              dataset: { 
+                id: `${study.id}_line`,
+                name: study.name,
+                color: study.color,
+                isStudy: true,
+                studyType: study.type
+              },
+              dataX: pointX,
+              dataY: this._extractYValue(point),
+              color: study.color,
+              isStudy: true,
+              studyId: study.id,
+              studyType: study.type
+            });
+          }
+        }
+      }
+      
+      console.log(`Found ${matchingPoints.length} matching points for study ${study.name}`);
+      studyPoints.push(...matchingPoints);
+    }
+    
+    console.log(`StudiesManager: Total study points found: ${studyPoints.length}`);
+    return studyPoints;
+  }
+
+  /**
+   * Extract X value from study data point
+   * @param {Object} point - Study data point
+   * @returns {number} X value
+   * @private
+   */
+  _extractXValue(point) {
+    const x = point.x || point.date || point.time || point.timestamp;
+    
+    // Convert Date objects to timestamps
+    if (x instanceof Date) {
+      return x.getTime();
+    }
+    
+    if (typeof x === 'string') {
+      return new Date(x).getTime();
+    }
+    
+    return typeof x === 'number' ? x : null;
+  }
+
+  /**
+   * Extract Y value from study data point
+   * @param {Object} point - Study data point
+   * @returns {number} Y value
+   * @private
+   */
+  _extractYValue(point) {
+    // For single-value studies, the Y value is in the study's value field
+    return point.y || point.value || point.sma || point.ema || null;
+  }
+
+  /**
+   * Get a specific study by ID
+   * @param {string} studyId - Study ID
+   * @returns {Object|null} Study object or null if not found
+   */
+  getStudy(studyId) {
+    return this.studies.get(studyId) || null;
+  }
+
+  /**
+ * Get studies that apply to a specific dataset
+ * @param {string} datasetId - Dataset ID
+ * @returns {Array} Array of studies for the dataset
+ */
+getStudiesForDataset(datasetId) {
+  const studies = [];
+  
+  for (const study of this.studies.values()) {
+    if (study.datasetId === datasetId) {
+      studies.push(study);
+    }
+  }
+  
+  console.log(`Found ${studies.length} studies for dataset ${datasetId}`);
+  return studies;
+}
 }

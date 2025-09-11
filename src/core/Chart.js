@@ -2233,26 +2233,42 @@ async ensureInitialized() {
   }
 
   /**
- * Get actual data points at specific X coordinate
- * @private
-  */
+   * Get actual data points at specific X coordinate (including studies)
+   * @private
+   */
   _getDataPointsAtX(exactDataX) {
     const dataPoints = [];
     
-    if (!Array.isArray(this.config.data) || exactDataX == null) {
+    if (exactDataX == null) {
       return dataPoints;
     }
     
-    // Get points from each dataset at the exact X coordinate
-    for (const dataset of this.config.data) {
-      if (dataset.data && Array.isArray(dataset.data)) {
-        const points = this.getDataPointsAtX(exactDataX, dataset);
-        if (points && points.length > 0) {
-          dataPoints.push(...points);
+    // Get points from regular datasets
+    if (Array.isArray(this.config.data)) {
+      for (const dataset of this.config.data) {
+        if (dataset.data && Array.isArray(dataset.data)) {
+          const points = this.getDataPointsAtX(exactDataX, dataset);
+          if (points && points.length > 0) {
+            dataPoints.push(...points);
+          }
         }
       }
     }
     
+    // NEW: Get points from studies
+    if (this.studiesManager) {
+      try {
+        const studyPoints = this.studiesManager.getStudyDataPointsAtX(exactDataX);
+        if (studyPoints && studyPoints.length > 0) {
+          console.log(`Adding ${studyPoints.length} study points to tooltip`);
+          dataPoints.push(...studyPoints);
+        }
+      } catch (error) {
+        console.error('Error getting study data points:', error);
+      }
+    }
+    
+    console.log(`Total data points (datasets + studies): ${dataPoints.length}`);
     return dataPoints;
   }
 

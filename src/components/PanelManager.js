@@ -1347,14 +1347,26 @@ _setupCrosshairEvents() {
 }
 
 _onMouseMove(event) {
-    if (!this.isPanelMode || !this.crosshair || !this.tooltip) return;
+    if (!this.chart.chartArea) return;
 
     const rect = this.chart.container.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const mouseY = event.clientY - rect.top;
 
+    // Check if mouse is within chart area
+    if (mouseX < this.chart.chartArea.x || 
+        mouseX > this.chart.chartArea.x + this.chart.chartArea.width ||
+        mouseY < this.chart.chartArea.y || 
+        mouseY > this.chart.chartArea.y + this.chart.chartArea.height) {
+        this.crosshair.hide();
+        this.tooltip.hide();
+        return;
+    }
+
+    // Convert mouse X to data X using shared scale
     const dataX = this.sharedXScale.invert(mouseX);
 
+    // Collect points from all panels (each panel now handles its own studies)
     let allPoints = [];
     this.panels.forEach(panel => {
         const points = panel.getDataPointsAtX(dataX);
@@ -1372,11 +1384,12 @@ _onMouseMove(event) {
             const y = panelTopOffset + p.pixelY;
             return { ...p, unifiedX: p.pixelX, unifiedY: y };
         }));
+        
         this.tooltip.show(allPoints.map(p => ({
              ...p, 
              dataX: p.x, 
              dataY: p.y,
-             dataset: this.chart.config.data.find(d => d.id === p.datasetId)
+             dataset: p.dataset || this.chart.config.data.find(d => d.id === p.datasetId)
             })), 
             event.clientX, 
             event.clientY
@@ -1386,7 +1399,6 @@ _onMouseMove(event) {
         this.tooltip.hide();
     }
 }
-
 
 _onMouseLeave(event) {
     if (this.crosshair) {
