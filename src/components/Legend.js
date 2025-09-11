@@ -54,7 +54,6 @@ export class Legend {
   updateDatasets(datasets, studies = []) {
     this.datasets = datasets || [];
     this._organizeStudiesByDataset(studies);
-    this.render();
   }
 
   /**
@@ -75,7 +74,11 @@ export class Legend {
     this.studiesByDataset.clear();
     
     studies.forEach(study => {
-      if (!study.datasetId || !study.visible) return;
+    console.log('Processing study:', study.name, 'datasetId:', study.datasetId, 'visible:', study.visible);
+    if (!study.datasetId || !study.visible) {
+      console.log('Skipping study due to missing datasetId or visible=false:', study.name);
+      return;
+    }
       
       if (!this.studiesByDataset.has(study.datasetId)) {
         this.studiesByDataset.set(study.datasetId, []);

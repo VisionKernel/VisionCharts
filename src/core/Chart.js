@@ -1091,7 +1091,7 @@ async _renderSingleMode() {
     this._renderZeroLine();
     
     // Update legend
-    this._updateLegend();
+    this._updateLegendWithStudies();
     
     // Update ending labels
     this._updateEndingLabels();
@@ -1933,32 +1933,39 @@ _debugDataStructure() {
    * @private
    */
   _updateLegendWithStudies() {
-    if (!this.legend) {
-      return;
-    }
-
-    try {
-      // Get current datasets and studies
-      const datasets = this.config.data || [];
-      const studies = this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
-      
-      // Update legend
-      this.legend.updateDatasets(datasets, studies);
-      
-      // Re-render legend if SVG overlay exists
-      if (this.svgOverlay && this.chartArea) {
-        this.legend.render(this.svgOverlay, this.chartArea);
-      }
-      
-      console.log(`Updated legend with ${datasets.length} datasets and ${studies.length} studies`);
-      
-    } catch (error) {
-      console.error('Error updating legend with studies:', error);
-    }
+  console.log('_updateLegendWithStudies called, legend exists:', !!this.legend);
+  
+  if (!this.legend) {
+    console.log('No legend instance available');
+    return;
   }
 
-
-
+  try {
+    // Get current datasets and studies
+    const datasets = this.config.data || [];
+    const allStudies = this.studiesManager ? this.studiesManager.getAllStudies() : [];
+    const visibleStudies = this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+    
+    console.log('Debug studies info:', {
+      allStudiesCount: allStudies.length,
+      visibleStudiesCount: visibleStudies.length,
+      allStudies: allStudies.map(s => ({name: s.name, visible: s.visible, datasetId: s.datasetId}))
+    });
+    
+    // Update legend
+    this.legend.updateDatasets(datasets, visibleStudies);
+    
+    // Re-render legend if SVG overlay exists
+    if (this.svgOverlay && this.chartArea) {
+      this.legend.render(this.svgOverlay, this.chartArea);
+    }
+    
+    console.log(`Updated legend with ${datasets.length} datasets and ${visibleStudies.length} studies`);
+    
+  } catch (error) {
+    console.error('Error updating legend with studies:', error);
+  }
+}
 
   /**
    * Get all studies
