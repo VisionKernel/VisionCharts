@@ -494,26 +494,20 @@ function setupLineChartControls() {
   if (legendToggle) {
     // Initialize button state - legend starts visible
     legendToggle.classList.add('active');
-    let legendVisible = true; // Track state manually
     
     legendToggle.addEventListener('click', () => {
       try {
-        if (lineChart.legend) {
-          // Toggle the state
-          legendVisible = !legendVisible;
-          
-          // Apply the new state
-          lineChart.legend.setVisible(legendVisible);
-          
-          console.log('Legend toggle - new state:', legendVisible);
-          
-          // Update button appearance
-          legendToggle.classList.toggle('active', legendVisible);
-          
-          console.log('Legend button classes after toggle:', legendToggle.className);
-        }
+        // Use the unified toggle method that works in both modes
+        const newState = lineChart.toggleLegend();
+        
+        console.log(`Line chart legend toggle - new state: ${newState}`);
+        console.log(`Chart is in ${lineChart.isPanelMode ? 'panel' : 'single'} mode`);
+        
+        // Update button appearance based on actual state
+        legendToggle.classList.toggle('active', newState);
+        
       } catch (error) {
-        console.error('Error toggling legend:', error);
+        console.error('Error toggling line chart legend:', error);
       }
     });
   }
@@ -742,26 +736,20 @@ function setupBarChartControls() {
   if (legendToggle) {
     // Initialize button state - legend starts visible
     legendToggle.classList.add('active');
-    let legendVisible = true; // Track state manually
     
     legendToggle.addEventListener('click', () => {
       try {
-        if (barChart.legend) {
-          // Toggle the state
-          legendVisible = !legendVisible;
-          
-          // Apply the new state
-          barChart.legend.setVisible(legendVisible);
-          
-          console.log('Bar legend toggle - new state:', legendVisible);
-          
-          // Update button appearance
-          legendToggle.classList.toggle('active', legendVisible);
-          
-          console.log('Bar legend button classes after toggle:', legendToggle.className);
-        }
+        // Use the unified toggle method that works in both modes (same as line chart)
+        const newState = barChart.toggleLegend();
+        
+        console.log(`Bar chart legend toggle - new state: ${newState}`);
+        console.log(`Chart is in ${barChart.isPanelMode ? 'panel' : 'single'} mode`);
+        
+        // Update button appearance based on actual state
+        legendToggle.classList.toggle('active', newState);
+        
       } catch (error) {
-        console.error('Error toggling bar legend:', error);
+        console.error('Error toggling bar chart legend:', error);
       }
     });
   }

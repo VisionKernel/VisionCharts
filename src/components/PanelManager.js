@@ -170,49 +170,63 @@ async refreshPanelMode() {
 }
 
   /**
-   * Switch to panel mode with validation
-   * @private
-   */
-  async _switchToPanelMode() {
-    // Validate we have multiple datasets
-    if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length <= 1) {
-      throw new Error('Panel mode requires multiple datasets');
-    }
-    
-    // Validate container size
-    if (!this._validateContainerForPanelMode()) {
-      console.warn('Container size validation failed, but proceeding with panel mode');
-    }
-    
-    console.log(`Creating panel mode with ${this.chart.config.data.length} panels and shared X axis`);
-    
-    // Store current single mode state
-    this._storeSingleModeState();
-    
-    // Destroy current single chart components
-    this._destroySingleModeComponents();
-    
-    // Create shared X scale
-    this._createSharedXScale();
-    
-    // Create shared X axis
-    this._createSharedXAxis();
-    
-    // Create panel container
-    this._createPanelContainer();
-
-    this._renderPanelModeTitle();
-    
-    // Create individual panels
-    await this._createPanels();
-    
-    // Render all panels and shared axis
-    await this._renderPanels();
-    
-    this._setupCrosshairAndTooltip();
-    
-    console.log('Panel mode activated successfully');
+ * UPDATED: Ensure legend state is preserved during mode switches
+ * Update the existing _switchToPanelMode method
+ */
+async _switchToPanelMode() {
+  // Validate we have multiple datasets
+  if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length <= 1) {
+    throw new Error('Panel mode requires multiple datasets');
   }
+  
+  // Validate container size
+  if (!this._validateContainerForPanelMode()) {
+    console.warn('Container size validation failed, but proceeding with panel mode');
+  }
+  
+  console.log(`Creating panel mode with ${this.chart.config.data.length} panels and shared X axis`);
+  
+  // ✅ NEW: Store single mode legend state
+  const singleModeLegendState = this.chart.legend && this.chart.legend.element
+    ? this.chart.legend.element.style.display !== 'none'
+    : true; // Default to visible
+  
+  // Store current single mode state
+  this._storeSingleModeState();
+  
+  // Destroy current single chart components
+  this._destroySingleModeComponents();
+  
+  // Create shared X scale
+  this._createSharedXScale();
+  
+  // Create shared X axis
+  this._createSharedXAxis();
+  
+  // Create panel container
+  this._createPanelContainer();
+
+  this._renderPanelModeTitle();
+  
+  // ✅ NEW: Create legend with preserved state
+  this._createLegend();
+  
+  // Create individual panels
+  await this._createPanels();
+  
+  // Render all panels and shared axis
+  await this._renderPanels();
+  
+  // ✅ NEW: Apply preserved legend state
+  if (this.legend) {
+    this.toggleLegend(singleModeLegendState);
+  }
+  
+  this._setupCrosshairAndTooltip();
+  
+  console.log('Panel mode activated successfully');
+  console.log(`Legend state preserved: ${singleModeLegendState}`);
+}
 
   /**
    * ✅ FIXED: Switch to single mode with proper container restoration
@@ -723,6 +737,54 @@ _renderLegend() {
 }
 
 /**
+ * Toggle legend visibility in panel mode
+ * @param {boolean|null} show - Force show/hide state, or null to toggle
+ * @returns {boolean} New visibility state
+ */
+toggleLegend(show = null) {
+  if (!this.isPanelMode) {
+    console.warn('PanelManager.toggleLegend() called but not in panel mode');
+    return false;
+  }
+  
+  if (!this.legend) {
+    console.warn('Panel mode legend not available');
+    return false;
+  }
+  
+  // Determine new state
+  let newState;
+  if (show !== null) {
+    newState = show;
+  } else {
+    // Toggle current state - check if element is currently visible
+    const isCurrentlyVisible = this.legend.element && 
+      this.legend.element.style.display !== 'none';
+    newState = !isCurrentlyVisible;
+  }
+  
+  // Apply the new state
+  this.legend.setVisible(newState);
+  
+  console.log(`Panel mode legend ${newState ? 'shown' : 'hidden'}`);
+  
+  return newState;
+}
+
+/**
+ * Get current legend visibility state in panel mode
+ * @returns {boolean} True if legend is visible
+ */
+isLegendVisible() {
+  if (!this.isPanelMode || !this.legend || !this.legend.element) {
+    return false;
+  }
+  
+  return this.legend.element.style.display !== 'none';
+}
+
+
+/**
  * Create and initialize EndingLabels for panel mode
  * @private
  */
@@ -980,7 +1042,8 @@ getEndingLabelsState() {
 }
 
 /**
- * Refresh panel mode - UPDATED to handle EndingLabels state
+ * UPDATED: Ensure legend state is preserved during panel refresh
+ * Update the existing refreshPanelMode method to preserve legend state
  */
 async refreshPanelMode() {
   if (!this.isPanelMode) return;
@@ -989,14 +1052,21 @@ async refreshPanelMode() {
     console.log('Refreshing panel mode with updated datasets');
     console.log(`Current dataset count: ${this.chart.config.data.length}`);
     
-    // ✅ UPDATED: Store EndingLabels state before refresh
-    const previousEndingLabelsState = this.endingLabels ? this.endingLabels.isVisible : false;
+    // ✅ NEW: Store legend state before refresh
+    const previousLegendState = this.isLegendVisible();
+    const previousEndingLabelsState = this.panels.length > 0 ? 
+      this.panels[0].getEndingLabelsState()?.isVisible : false;
     
-    // Completely destroy and recreate panel infrastructure
+    // Clean up the old crosshair and listeners before rebuilding
+    this._destroyCrosshairAndTooltip();
+    
+    // ✅ CRITICAL: Completely destroy and recreate panel infrastructure
     this._destroyPanels();
+    
+    // ✅ CRITICAL: Also destroy and recreate the panel container and SVG overlay
     this._destroyPanelContainer();
     
-    // Ensure we have valid datasets before proceeding
+    // ✅ CRITICAL: Ensure we have valid datasets before proceeding
     if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
       console.warn('No datasets available for panel mode refresh');
       return;
@@ -1005,27 +1075,40 @@ async refreshPanelMode() {
     // Process data first
     await this.chart._processData();
     
-    // Recreate shared X scale and axis
+    // Recreate shared X scale with all datasets
     this._createSharedXScale();
+    
+    // ✅ CRITICAL: Recreate shared X axis
     this._createSharedXAxis();
     
-    // Recreate panel container and SVG overlay (this also creates EndingLabels)
+    // ✅ CRITICAL: Recreate panel container and SVG overlay
     this._createPanelContainer();
-    
+
     this._renderPanelModeTitle();
-    
-    // ✅ UPDATED: Restore EndingLabels state after refresh
-    if (previousEndingLabelsState && this.endingLabels) {
-      this.endingLabels.config.enabled = true;
+
+    // ✅ NEW: Recreate and restore legend state
+    this._createLegend();
+
+    if (previousEndingLabelsState) {
+      this.toggleEndingLabels(true);
     }
     
-    // Recreate panels with fresh percentage calculations
+    // ✅ CRITICAL: Recreate panels with fresh percentage calculations
     await this._createPanels();
     
-    // Re-render all panels (this will also render EndingLabels if enabled)
+    // Re-render all panels
     await this._renderPanels();
+
+    // ✅ NEW: Restore legend visibility state
+    if (this.legend && previousLegendState !== this.isLegendVisible()) {
+      this.toggleLegend(previousLegendState);
+    }
+
+    // Re-initialize the crosshair and tooltip
+    this._setupCrosshairAndTooltip();
     
     console.log(`Panel mode refreshed successfully with ${this.panels.length} panels`);
+    console.log(`Legend state restored: ${this.isLegendVisible()}`);
     
   } catch (error) {
     console.error('Error refreshing panel mode:', error);

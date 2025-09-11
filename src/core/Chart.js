@@ -1190,6 +1190,66 @@ async _renderSingleMode() {
   }
 
   /**
+ * Toggle legend visibility - works in both single and panel modes
+ * @param {boolean|null} show - Force show/hide state, or null to toggle
+ * @returns {boolean} New visibility state
+ */
+toggleLegend(show = null) {
+  let currentLegend;
+  let newState;
+  
+  // Determine which legend instance to use based on current mode
+  if (this.isPanelMode) {
+    // Panel mode: use PanelManager's legend
+    currentLegend = this.panelManager?.legend;
+    if (!currentLegend) {
+      console.warn('Panel mode legend not available');
+      return false;
+    }
+  } else {
+    // Single mode: use chart's legend
+    currentLegend = this.legend;
+    if (!currentLegend) {
+      console.warn('Single mode legend not available');
+      return false;
+    }
+  }
+  
+  // Determine new state
+  if (show !== null) {
+    newState = show;
+  } else {
+    // Toggle current state - check if element is currently visible
+    const isCurrentlyVisible = currentLegend.element && 
+      currentLegend.element.style.display !== 'none';
+    newState = !isCurrentlyVisible;
+  }
+  
+  // Apply the new state
+  currentLegend.setVisible(newState);
+  
+  console.log(`Legend ${newState ? 'shown' : 'hidden'} in ${this.isPanelMode ? 'panel' : 'single'} mode`);
+  
+  return newState;
+}
+
+/**
+ * Get current legend visibility state
+ * @returns {boolean} True if legend is visible
+ */
+isLegendVisible() {
+  const currentLegend = this.isPanelMode 
+    ? this.panelManager?.legend 
+    : this.legend;
+    
+  if (!currentLegend || !currentLegend.element) {
+    return false;
+  }
+  
+  return currentLegend.element.style.display !== 'none';
+}
+
+  /**
    * Update panel mode
    * @private
    */
