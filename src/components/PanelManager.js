@@ -1469,6 +1469,40 @@ _createEndingLabels() {
   console.log('EndingLabels created for panel mode');
 }
 
+/**
+ * Update panel manager legend with studies
+ * @param {Array} studies - Array of study objects
+ */
+updateLegendWithStudies(studies) {
+  if (!this.legend) {
+    return;
+  }
+
+  try {
+    // Get all datasets from all panels
+    const allDatasets = [];
+    
+    for (const panel of this.panels) {
+      if (panel.config && panel.config.dataset) {
+        allDatasets.push(panel.config.dataset);
+      }
+    }
+    
+    // Update legend with datasets and studies
+    this.legend.updateDatasets(allDatasets, studies);
+    
+    // Re-render legend if SVG overlay exists
+    if (this.chart.svgOverlay && this.sharedChartArea) {
+      this.legend.render(this.chart.svgOverlay, this.sharedChartArea);
+    }
+    
+    console.log(`Panel mode legend updated with ${allDatasets.length} datasets and ${studies.length} studies`);
+    
+  } catch (error) {
+    console.error('Error updating panel manager legend with studies:', error);
+  }
+}
+
 _getPanelEndpoints() {
     const endpoints = [];
     this.panels.forEach(panel => {
