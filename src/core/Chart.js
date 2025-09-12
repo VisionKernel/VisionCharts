@@ -32,6 +32,11 @@ export class Chart {
     this.container = this._resolveContainer(config.container);
     this.config = {
       data: config.data || [],
+      legend: {
+        visible: config.legend?.visible !== false,
+        position: 'center-top',
+        ...config.legend
+      },
       options: {
         // Default options
         width: 800,
@@ -126,12 +131,26 @@ export class Chart {
     
     // Legend component
     this.legend = new Legend({
+      // Original options
       fontSize: 12,
       fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
       textColor: '#333333',
-      itemSpacing: 25,
+      itemSpacing: 30, // Increased for studies
       marginTop: 15,
-      marginBottom: 15
+      marginBottom: 15,
+      
+      // Enhanced options for inline studies
+      studyFontSize: 10,
+      studyTextColor: '#666666',
+      studyIndicatorSize: 6,
+      studySeparator: ' • ',
+      studySpacing: 4,
+      
+      // Optional: Professional styling
+      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      border: '1px solid #e0e0e0',
+      borderRadius: 4,
+      padding: 8
     });
 
     // Ending labels component
@@ -264,6 +283,9 @@ async _initialize() {
     
     // Initialize the selected renderer
     await this._initializeRenderer();
+
+    // Adds studies to legend
+    this._initializeLegendWithStudies();
     
     this.isInitialized = true;
     console.log('Chart initialization complete with unified coordinate system and', this.activeRenderer, 'renderer');
@@ -889,6 +911,50 @@ _getYValue(point) {
     
     console.log(`Title rendered: "${this.config.options.title}"`);
   }
+
+  /**
+   * Enhanced _renderLegend that works in both single and panel modes
+   * @private
+   */
+  _renderLegend() {
+    // Panel mode: delegate to PanelManager
+    if (this.isPanelMode) {
+      if (this.panelManager && this.panelManager.legend) {
+        // Get all studies across all panels
+        const allStudies = this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+        
+        // Update panel manager legend with studies
+        this.panelManager.updateLegendWithStudies(allStudies);
+      }
+      return;
+    }
+    
+    // Single mode: use chart legend
+    if (!this.legend || !this.config.legend?.visible) {
+      return;
+    }
+
+    try {
+      // Get datasets for legend
+      const datasets = this.config.data || [];
+      
+      // Get studies for legend (visible studies only)
+      const studies = this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+      
+      console.log(`Rendering legend with ${datasets.length} datasets and ${studies.length} studies`);
+      
+      // Update legend with both datasets and studies
+      this.legend.updateDatasets(datasets, studies);
+      
+      // Render legend to SVG overlay
+      if (this.svgOverlay && this.chartArea) {
+        this.legend.render(this.svgOverlay, this.chartArea);
+      }
+      
+    } catch (error) {
+      console.error('Error rendering legend with studies:', error);
+    }
+  }
   
   /**
    * UPDATED: Preprocess data for rendering using unified coordinate system
@@ -1025,7 +1091,7 @@ async _renderSingleMode() {
     this._renderZeroLine();
     
     // Update legend
-    this._updateLegend();
+    this._updateLegendWithStudies();
     
     // Update ending labels
     this._updateEndingLabels();
@@ -1188,6 +1254,66 @@ async _renderSingleMode() {
       return this._updateSingleMode();
     }
   }
+
+  /**
+ * Toggle legend visibility - works in both single and panel modes
+ * @param {boolean|null} show - Force show/hide state, or null to toggle
+ * @returns {boolean} New visibility state
+ */
+toggleLegend(show = null) {
+  let currentLegend;
+  let newState;
+  
+  // Determine which legend instance to use based on current mode
+  if (this.isPanelMode) {
+    // Panel mode: use PanelManager's legend
+    currentLegend = this.panelManager?.legend;
+    if (!currentLegend) {
+      console.warn('Panel mode legend not available');
+      return false;
+    }
+  } else {
+    // Single mode: use chart's legend
+    currentLegend = this.legend;
+    if (!currentLegend) {
+      console.warn('Single mode legend not available');
+      return false;
+    }
+  }
+  
+  // Determine new state
+  if (show !== null) {
+    newState = show;
+  } else {
+    // Toggle current state - check if element is currently visible
+    const isCurrentlyVisible = currentLegend.element && 
+      currentLegend.element.style.display !== 'none';
+    newState = !isCurrentlyVisible;
+  }
+  
+  // Apply the new state
+  currentLegend.setVisible(newState);
+  
+  console.log(`Legend ${newState ? 'shown' : 'hidden'} in ${this.isPanelMode ? 'panel' : 'single'} mode`);
+  
+  return newState;
+}
+
+/**
+ * Get current legend visibility state
+ * @returns {boolean} True if legend is visible
+ */
+isLegendVisible() {
+  const currentLegend = this.isPanelMode 
+    ? this.panelManager?.legend 
+    : this.legend;
+    
+  if (!currentLegend || !currentLegend.element) {
+    return false;
+  }
+  
+  return currentLegend.element.style.display !== 'none';
+}
 
   /**
    * Update panel mode
@@ -1509,34 +1635,19 @@ _debugDataStructure() {
   }
 
   /**
-   * Update dataset color
-   * @param {string} datasetId - The ID of the dataset to update
+   * Initialize legend with studies on first load
+   * @private
    */
-  updateDatasetColor(datasetId, newColor) {
-    const dataset = this.config.data.find(d => d.id === datasetId);
-    if (!dataset) return false;
-    
-    dataset.color = newColor;
-    
-    if (this.legend) {
-      this.legend.updateDatasetColor(datasetId, newColor);
-    }
-
-    if (this.isPanelMode) {
-      if (this.panelManager && this.panelManager.panels) {
-        const panel = this.panelManager.panels.find(p => p.config.dataset.id === datasetId);
-        if (panel && panel.endingLabels) {
-          panel.endingLabels.updateDatasetColor(datasetId, newColor);
-        }
-      }
-    } else {
-      if (this.endingLabels) {
-        this.endingLabels.updateDatasetColor(datasetId, newColor);
+  _initializeLegendWithStudies() {
+    if (this.config.legend?.visible && this.legend) {
+      // Get any existing studies
+      const studies = this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+      
+      if (studies.length > 0) {
+        console.log(`Initializing legend with ${studies.length} existing studies`);
+        this._updateLegendWithStudies();
       }
     }
-    
-    this.render();
-    return true;
   }
   
   /**
@@ -1729,7 +1840,8 @@ _debugDataStructure() {
   }
 
   /**
-   * Add a study to the chart
+   * Enhanced addStudy method that updates legend
+   * Replace your existing addStudy method with this version
    * @param {string} studyType - Type of study ('sma', 'ema', 'bollinger')
    * @param {Object} config - Study configuration
    * @returns {string} Study ID
@@ -1741,6 +1853,9 @@ _debugDataStructure() {
     
     const studyId = this.studiesManager.addStudy(studyType, config);
     
+    // Update legend to show new study
+    this._updateLegendWithStudies();
+    
     // Re-render chart to show the new study
     this.render().catch(error => {
       console.error('Error re-rendering after adding study:', error);
@@ -1750,8 +1865,10 @@ _debugDataStructure() {
     return studyId;
   }
 
+
   /**
-   * Remove a study from the chart
+   * Enhanced removeStudy method that updates legend
+   * Replace your existing removeStudy method with this version
    * @param {string} studyId - Study ID to remove
    * @returns {boolean} True if study was removed
    */
@@ -1763,6 +1880,9 @@ _debugDataStructure() {
     const removed = this.studiesManager.removeStudy(studyId);
     
     if (removed) {
+      // Update legend to remove study
+      this._updateLegendWithStudies();
+      
       // Re-render chart to remove the study
       this.render().catch(error => {
         console.error('Error re-rendering after removing study:', error);
@@ -1775,7 +1895,8 @@ _debugDataStructure() {
   }
 
   /**
-   * Update study parameters
+   * Enhanced updateStudy method that updates legend
+   * Replace your existing updateStudy method with this version
    * @param {string} studyId - Study ID
    * @param {Object} updates - Parameters to update
    */
@@ -1786,6 +1907,18 @@ _debugDataStructure() {
     
     this.studiesManager.updateStudy(studyId, updates);
     
+    // If color changed, update legend immediately
+    if (updates.color) {
+      if (this.legend && this.legend.updateStudyColor) {
+        this.legend.updateStudyColor(studyId, updates.color);
+      }
+    }
+    
+    // If visibility changed, update legend
+    if (updates.visible !== undefined) {
+      this._updateLegendWithStudies();
+    }
+    
     // Re-render chart to show updated study
     this.render().catch(error => {
       console.error('Error re-rendering after updating study:', error);
@@ -1793,6 +1926,46 @@ _debugDataStructure() {
     
     console.log(`Updated study: ${studyId}`);
   }
+
+  /**
+   * Update legend with current studies data
+   * Call this whenever studies change
+   * @private
+   */
+  _updateLegendWithStudies() {
+  console.log('_updateLegendWithStudies called, legend exists:', !!this.legend);
+  
+  if (!this.legend) {
+    console.log('No legend instance available');
+    return;
+  }
+
+  try {
+    // Get current datasets and studies
+    const datasets = this.config.data || [];
+    const allStudies = this.studiesManager ? this.studiesManager.getAllStudies() : [];
+    const visibleStudies = this.studiesManager ? this.studiesManager.getVisibleStudies() : [];
+    
+    console.log('Debug studies info:', {
+      allStudiesCount: allStudies.length,
+      visibleStudiesCount: visibleStudies.length,
+      allStudies: allStudies.map(s => ({name: s.name, visible: s.visible, datasetId: s.datasetId}))
+    });
+    
+    // Update legend
+    this.legend.updateDatasets(datasets, visibleStudies);
+    
+    // Re-render legend if SVG overlay exists
+    if (this.svgOverlay && this.chartArea) {
+      this.legend.render(this.svgOverlay, this.chartArea);
+    }
+    
+    console.log(`Updated legend with ${datasets.length} datasets and ${visibleStudies.length} studies`);
+    
+  } catch (error) {
+    console.error('Error updating legend with studies:', error);
+  }
+}
 
   /**
    * Get all studies
@@ -1819,20 +1992,103 @@ _debugDataStructure() {
   }
 
   /**
-   * Clear all studies
+   * Enhanced clearAllStudies method that updates legend
    */
   clearAllStudies() {
     if (this.studiesManager) {
       this.studiesManager.clearAllStudies();
+      
+      // Update legend to remove all studies
+      this._updateLegendWithStudies();
       
       // Re-render chart to remove all studies
       this.render().catch(error => {
         console.error('Error re-rendering after clearing studies:', error);
       });
       
-      console.log('All studies cleared');
+      console.log('All studies cleared and legend updated');
     }
   }
+
+/**
+ * Enhanced method to update dataset color across all components
+ * Handles legend, ending labels, and both single/panel modes
+ * @param {string} datasetId - The ID of the dataset to update
+ * @param {string} newColor - The new color value
+ * @returns {boolean} True if dataset was found and updated, false otherwise
+ */
+updateDatasetColor(datasetId, newColor) {
+  // Find and update dataset color in config data
+  const dataset = this.config.data?.find(d => d.id === datasetId);
+  if (!dataset) {
+    console.warn(`Dataset not found: ${datasetId}`);
+    return false;
+  }
+  
+  // Update the dataset color
+  dataset.color = newColor;
+  console.log(`Updated dataset ${datasetId} color to ${newColor}`);
+  
+  // Update legend in both single and panel modes
+  this._updateLegendForColorChange(datasetId, newColor);
+  
+  // Update ending labels in both single and panel modes
+  this._updateEndingLabelsForColorChange(datasetId, newColor);
+  
+  // Re-render chart with error handling
+  this.render().catch(error => {
+    console.error('Error re-rendering after dataset color change:', error);
+  });
+  
+  return true;
+}
+
+/**
+ * Update legend for color change - handles both modes
+ * @param {string} datasetId - Dataset ID
+ * @param {string} newColor - New color
+ * @private
+ */
+_updateLegendForColorChange(datasetId, newColor) {
+  if (this.isPanelMode) {
+    // Panel mode: update panel manager legend
+    if (this.panelManager?.legend?.updateDatasetColor) {
+      this.panelManager.legend.updateDatasetColor(datasetId, newColor);
+      console.log(`Updated panel mode legend color for dataset ${datasetId}`);
+    }
+  } else {
+    // Single mode: update chart legend  
+    if (this.legend?.updateDatasetColor) {
+      this.legend.updateDatasetColor(datasetId, newColor);
+      console.log(`Updated single mode legend color for dataset ${datasetId}`);
+    }
+  }
+}
+
+/**
+ * Update ending labels for color change - handles both modes  
+ * @param {string} datasetId - Dataset ID
+ * @param {string} newColor - New color
+ * @private
+ */
+_updateEndingLabelsForColorChange(datasetId, newColor) {
+  if (this.isPanelMode) {
+    // Panel mode: find the specific panel and update its ending labels
+    if (this.panelManager?.panels) {
+      const panel = this.panelManager.panels.find(p => p.config.dataset.id === datasetId);
+      if (panel?.endingLabels?.updateDatasetColor) {
+        panel.endingLabels.updateDatasetColor(datasetId, newColor);
+        console.log(`Updated panel ending labels color for dataset ${datasetId}`);
+      }
+    }
+  } else {
+    // Single mode: update chart ending labels
+    if (this.endingLabels?.updateDatasetColor) {
+      this.endingLabels.updateDatasetColor(datasetId, newColor);
+      console.log(`Updated single mode ending labels color for dataset ${datasetId}`);
+    }
+  }
+}
 
   /**
  * FIXED: Clear render without destroying generated paths
@@ -2173,26 +2429,42 @@ async ensureInitialized() {
   }
 
   /**
- * Get actual data points at specific X coordinate
- * @private
-  */
+   * Get actual data points at specific X coordinate (including studies)
+   * @private
+   */
   _getDataPointsAtX(exactDataX) {
     const dataPoints = [];
     
-    if (!Array.isArray(this.config.data) || exactDataX == null) {
+    if (exactDataX == null) {
       return dataPoints;
     }
     
-    // Get points from each dataset at the exact X coordinate
-    for (const dataset of this.config.data) {
-      if (dataset.data && Array.isArray(dataset.data)) {
-        const points = this.getDataPointsAtX(exactDataX, dataset);
-        if (points && points.length > 0) {
-          dataPoints.push(...points);
+    // Get points from regular datasets
+    if (Array.isArray(this.config.data)) {
+      for (const dataset of this.config.data) {
+        if (dataset.data && Array.isArray(dataset.data)) {
+          const points = this.getDataPointsAtX(exactDataX, dataset);
+          if (points && points.length > 0) {
+            dataPoints.push(...points);
+          }
         }
       }
     }
     
+    // NEW: Get points from studies
+    if (this.studiesManager) {
+      try {
+        const studyPoints = this.studiesManager.getStudyDataPointsAtX(exactDataX);
+        if (studyPoints && studyPoints.length > 0) {
+          console.log(`Adding ${studyPoints.length} study points to tooltip`);
+          dataPoints.push(...studyPoints);
+        }
+      } catch (error) {
+        console.error('Error getting study data points:', error);
+      }
+    }
+    
+    console.log(`Total data points (datasets + studies): ${dataPoints.length}`);
     return dataPoints;
   }
 

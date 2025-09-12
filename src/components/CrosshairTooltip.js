@@ -132,7 +132,7 @@ export class CrosshairTooltip {
   }
 
   /**
-   * Update tooltip content with data points
+   * Update tooltip content with data points (enhanced for studies)
    * @private
    */
   _updateContent(dataPoints) {
@@ -141,6 +141,10 @@ export class CrosshairTooltip {
     // Get the timestamp from the first point (should be same for all in crosshair)
     const timestamp = dataPoints[0].dataX;
     const formattedDate = this._formatDate(timestamp);
+    
+    // Separate regular datasets from studies
+    const regularPoints = dataPoints.filter(point => !point.isStudy);
+    const studyPoints = dataPoints.filter(point => point.isStudy);
     
     // Build HTML content
     let html = `
@@ -156,40 +160,107 @@ export class CrosshairTooltip {
       </div>
     `;
     
-    // Add dataset values
-    dataPoints.forEach((point, index) => {
-      const datasetName = point.dataset.name || point.datasetId || `Dataset ${index + 1}`;
-      const value = point.dataY;
-      const color = point.color || point.dataset.color || '#666';
-      const formattedValue = this._formatValue(value);
-      
-      html += `
-        <div style="
-          display: flex; 
-          align-items: center; 
-          margin-bottom: 4px;
-          ${index === dataPoints.length - 1 ? 'margin-bottom: 0;' : ''}
-        ">
-          <div style="
-            width: 10px; 
-            height: 10px; 
-            background-color: ${color}; 
-            border-radius: 2px; 
-            margin-right: 8px;
-            flex-shrink: 0;
-          "></div>
+    // Add regular dataset values first
+    if (regularPoints.length > 0) {
+      regularPoints.forEach((point, index) => {
+        const datasetName = point.dataset.name || point.datasetId || `Dataset ${index + 1}`;
+        const value = point.dataY;
+        const color = point.color || point.dataset.color || '#666';
+        const formattedValue = this._formatValue(value);
+        
+        html += `
           <div style="
             display: flex; 
-            justify-content: space-between; 
-            width: 100%; 
-            min-width: 120px;
+            align-items: center; 
+            margin-bottom: 4px;
           ">
-            <span style="margin-right: 12px; color: #ccc;">${datasetName}:</span>
-            <span style="font-weight: 500;">${formattedValue}</span>
+            <div style="
+              width: 10px; 
+              height: 10px; 
+              background-color: ${color}; 
+              border-radius: 2px; 
+              margin-right: 8px;
+              flex-shrink: 0;
+            "></div>
+            <div style="
+              display: flex; 
+              justify-content: space-between; 
+              width: 100%; 
+              min-width: 120px;
+            ">
+              <span style="margin-right: 12px; color: #ccc;">${datasetName}:</span>
+              <span style="font-weight: 500;">${formattedValue}</span>
+            </div>
+          </div>
+        `;
+      });
+    }
+    
+    // Add separator and studies section if there are studies
+    if (studyPoints.length > 0) {
+      // Add separator line
+      html += `
+        <div style="
+          border-top: 1px solid ${this.config.borderColor};
+          margin: 8px 0 6px 0;
+          padding-top: 6px;
+        ">
+          <div style="
+            font-size: ${this.config.fontSize - 1}px;
+            color: #999;
+            margin-bottom: 4px;
+            font-weight: 500;
+          ">
+            Technical Indicators:
           </div>
         </div>
       `;
-    });
+      
+      // Add study values with slightly different styling
+      studyPoints.forEach((point, index) => {
+        const studyName = point.dataset.name || `Study ${index + 1}`;
+        const value = point.dataY;
+        const color = point.color || point.dataset.color || '#666';
+        const formattedValue = this._formatValue(value);
+        
+        html += `
+          <div style="
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 3px;
+            padding-left: 8px;
+          ">
+            <div style="
+              width: 8px; 
+              height: 8px; 
+              background-color: ${color}; 
+              border-radius: 1px; 
+              margin-right: 8px;
+              flex-shrink: 0;
+              opacity: 0.8;
+            "></div>
+            <div style="
+              display: flex; 
+              justify-content: space-between; 
+              width: 100%; 
+              min-width: 120px;
+            ">
+              <span style="
+                margin-right: 12px; 
+                color: #aaa; 
+                font-size: ${this.config.fontSize - 1}px;
+                font-style: italic;
+              ">${studyName}:</span>
+              <span style="
+                font-weight: 400; 
+                font-size: ${this.config.fontSize - 1}px;
+                color: ${color};
+              ">${formattedValue}</span>
+            </div>
+          </div>
+        `;
+      });
+    }
     
     this.element.innerHTML = html;
   }

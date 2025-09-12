@@ -9,7 +9,7 @@
  * - Performance optimization and monitoring
  * color utilities and color picker component
  * 
- * @version 2.0.0
+ * @version 2.0.1
  * @license MIT
  */
 
@@ -45,7 +45,7 @@ export function createChart(type, config) {
 }
 
 // Library metadata
-export const version = '2.0.0';
+export const version = '2.0.1';
 export const name = 'VisionCharts';
 
 // UPDATED - Use the centralized browser support utility
