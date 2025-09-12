@@ -2,7 +2,7 @@
 
 > A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/visionkernel/visioncharts)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/visionkernel/visioncharts)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 
