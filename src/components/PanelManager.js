@@ -718,18 +718,23 @@ _createLegend() {
 }
 
 /**
- * Render legend for all panels
+ * Render legend for all panels - FIXED to include studies
  * @private
  */
 _renderLegend() {
     if (this.legend && this.chart.config.data) {
-        this.legend.updateDatasets(this.chart.config.data);
+        // Get visible studies from the chart's StudiesManager (same as single mode)
+        const studies = this.chart.studiesManager ? 
+            this.chart.studiesManager.getVisibleStudies() : [];
+        
+        // Update legend with both datasets AND studies
+        this.legend.updateDatasets(this.chart.config.data, studies);
 
         if (this.panelSvgOverlay && this.chart.chartArea) {
             const legendChartArea = {
                 ...this.chart.chartArea,
-                y: (this.chart.config.options.title ? this.chart.config.options.titlePadding + this.chart.config.options.titleFontSize : 0) + 15,
-
+                y: (this.chart.config.options.title ? 
+                    this.chart.config.options.titlePadding + this.chart.config.options.titleFontSize : 0) + 15,
             };
             this.legend.render(this.panelSvgOverlay, legendChartArea);
         }
