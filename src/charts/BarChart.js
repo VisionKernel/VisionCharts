@@ -893,4 +893,21 @@ async _renderChartData() {
     // Use half the average distance as tolerance (bar width consideration)
     return avgDistance * 0.5;
   }
+
+  /**
+   * Override destroy to ensure BarChart-specific cleanup
+   */
+  destroy() {
+    console.log('BarChart destroy called');
+    
+    // Call parent destroy
+    super.destroy();
+    
+    // BarChart-specific cleanup
+    this.coordinateValidationResults = [];
+    this.renderingDebugInfo = null;
+    this.barPositioningInfo = null;
+    
+    console.log('BarChart destroyed');
+  }
 }
