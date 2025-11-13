@@ -323,6 +323,12 @@ export class Panel {
     
     let yMin = Math.min(...yValues);
     let yMax = Math.max(...yValues);
+
+    if (yMin === yMax) {
+      const expansion = yMin !== 0 ? Math.abs(yMin) * 0.1 : 1;
+      yMin = yMin - expansion;
+      yMax = yMax + expansion;
+    }
     
     // Add 5% padding to Y domain for visual breathing room
     const yDataRange = yMax - yMin;

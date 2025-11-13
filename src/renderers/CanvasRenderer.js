@@ -443,51 +443,60 @@ export default class CanvasRenderer extends AbstractRenderer {
    * UPDATED: Calculate bar dimensions using unified coordinates
    */
   _calculateBarDimensions(datasets, scales, options) {
-    const firstDataset = datasets[0];
-    if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
-      return { width: 10, spacing: 2, totalDatasets: datasets.length, showBorder: false };
-    }
+  const firstDataset = datasets[0];
+  if (!firstDataset || !firstDataset.data || firstDataset.data.length === 0) {
+    return { width: 10, spacing: 2, totalDatasets: datasets.length, showBorder: false };
+  }
 
-    const data = firstDataset.data;
-    const barWidth = options.barWidth || 0.7;
-    const barSpacing = options.barSpacing || 0.1;
+  const data = firstDataset.data;
+  const barWidth = options.barWidth || 0.7;
+  const barSpacing = options.barSpacing || 0.1;
 
-    // For time series data, calculate based on unified pixel differences between points
-    if (data.length > 1) {
-      // UPDATED: Use unified coordinates for accurate spacing
-      const unifiedXValues = data
-        .map(point => point.unifiedX || point.screenX)
-        .filter(x => x != null && isFinite(x))
-        .sort((a, b) => a - b);
+  // ✅ DECLARE OUTSIDE THE IF BLOCK
+  const unifiedXValues = data
+    .map(point => point.unifiedX || point.screenX)
+    .filter(x => x != null && isFinite(x))
+    .sort((a, b) => a - b);
 
-      if (unifiedXValues.length > 1) {
-        // Calculate average pixel distance between consecutive points
-        let totalDiff = 0;
-        for (let i = 1; i < unifiedXValues.length; i++) {
-          totalDiff += unifiedXValues[i] - unifiedXValues[i - 1];
-        }
-        const avgPixelDistance = totalDiff / (unifiedXValues.length - 1);
-
-        // Calculate bar width based on available space
-        const calculatedWidth = Math.max(avgPixelDistance * barWidth, 1);
-        
-        return {
-          width: calculatedWidth,
-          spacing: avgPixelDistance * barSpacing,
-          totalDatasets: datasets.length,
-          showBorder: options.showBorder || false
-        };
-      }
-    }
-
-    // Fallback for edge cases
+  // Handle single datapoint case FIRST
+  if (unifiedXValues.length === 1) {
+    const chartWidth = scales.x.range[1] - scales.x.range[0];
+    const reasonableWidth = Math.min(chartWidth * 0.1, 50);
+    
     return {
-      width: 20,
-      spacing: 4,
+      width: reasonableWidth,
+      spacing: 0,
       totalDatasets: datasets.length,
       showBorder: options.showBorder || false
     };
   }
+
+  // Handle multiple datapoints
+  if (unifiedXValues.length > 1) {
+    let totalDiff = 0;
+    for (let i = 1; i < unifiedXValues.length; i++) {
+      totalDiff += unifiedXValues[i] - unifiedXValues[i - 1];
+    }
+    const avgPixelDistance = totalDiff / (unifiedXValues.length - 1);
+
+    const calculatedWidth = Math.max(avgPixelDistance * barWidth, 1);
+    
+    return {
+      width: calculatedWidth,
+      spacing: avgPixelDistance * barSpacing,
+      totalDatasets: datasets.length,
+      showBorder: options.showBorder || false
+    };
+  }
+
+  // Fallback for edge cases
+  return {
+    width: 20,
+    spacing: 4,
+    totalDatasets: datasets.length,
+    showBorder: options.showBorder || false
+  };
+}
 
   /**
    * Update with new datasets

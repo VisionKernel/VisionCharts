@@ -259,9 +259,6 @@ async _initialize() {
     // Process data (this includes domain calculation now)
     await this._processData();
     
-    // ✅ REMOVED: Don't calculate domains again, _processData() already does it
-    // this._calculateDataDomains();
-    
     // Choose optimal renderer first (before creating coordinate system)
     this._selectOptimalRenderer();
     
@@ -579,9 +576,22 @@ _calculateDataDomains() {
     yMax = 1;
   }
   
+  // ✅ CORRECT: Check for single value AFTER all points processed
+  if (xMin === xMax) {
+    const expansion = xMin !== 0 ? Math.abs(xMin) * 0.1 : 86400000;
+    xMin = xMin - expansion;
+    xMax = xMax + expansion;
+  }
+  
+  if (yMin === yMax) {
+    const expansion = yMin !== 0 ? Math.abs(yMin) * 0.1 : 1;
+    yMin = yMin - expansion;
+    yMax = yMax + expansion;
+  }
+  
   // Ensure yMin is positive for logarithmic scale
   if (this.config.options.isLogarithmic && yMin <= 0) {
-    yMin = 0.1; // or a small fraction of yMax
+    yMin = 0.1;
   }
   
   const yRange = yMax - yMin;
