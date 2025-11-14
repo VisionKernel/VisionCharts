@@ -2340,7 +2340,8 @@ destroy() {
     dateFormat: 'medium',
     valueDecimals: 2,
     offsetX: 15,
-    offsetY: 15
+    offsetY: 15,
+    container: this.container
   });
   
   // Debug the render call
