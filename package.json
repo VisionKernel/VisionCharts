@@ -37,7 +37,7 @@
   "bugs": {
     "url": "https://github.com/VisionKernel/visioncharts/issues"
   },
-  "homepage": "https://visionkernel.co/visioncharts",
+  "homepage": "https://visionkernel.co/guest/visioncharts",
   "publishConfig": {
     "access": "public"
   },
