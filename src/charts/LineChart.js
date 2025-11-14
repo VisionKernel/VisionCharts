@@ -813,4 +813,20 @@ addDataset(dataset) {
     const y = point.y || point.value || point.price || point.close;
     return typeof y === 'number' ? y : null;
   }
+
+  /**
+   * Override destroy to ensure LineChart-specific cleanup
+   */
+  destroy() {
+    console.log('LineChart destroy called');
+    
+    // Call parent destroy
+    super.destroy();
+    
+    // LineChart-specific cleanup
+    this.coordinateValidationResults = [];
+    this.renderingDebugInfo = null;
+    
+    console.log('LineChart destroyed');
+  }
 }

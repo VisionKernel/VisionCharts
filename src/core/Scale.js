@@ -77,25 +77,30 @@ export class Scale {
   }
   
   /**
-   * Convert normalized value to pixel range (renderer-agnostic)
-   * This replaces the old direct range conversion
-   */
-  _convertToPixelRange(normalizedValue) {
-    if (this.coordinateSystem === 'normalized') {
-      // For normalized coordinate system, always use bottom-up for Y-axis
-      // This ensures consistent behavior regardless of renderer
-      if (this.orientation === 'vertical') {
-        // Y-axis: 0 at bottom, 1 at top (mathematical coordinate system)
-        return this.range[0] + (1 - normalizedValue) * this._rangeExtent;
-      } else {
-        // X-axis: 0 at left, 1 at right (standard left-to-right)
+ * Convert normalized value to pixel range (renderer-agnostic)
+ * FIXED: Handle pre-flipped ranges correctly
+ */
+_convertToPixelRange(normalizedValue) {
+  if (this.coordinateSystem === 'normalized') {
+    if (this.orientation === 'vertical') {
+      // Check if range is already flipped (descending: range[0] > range[1])
+      // This happens when range is set as [bottom, top] for canvas coordinates
+      if (this._rangeExtent < 0) {
+        // Range is already in canvas order (bottom to top), use standard interpolation
         return this.range[0] + normalizedValue * this._rangeExtent;
+      } else {
+        // Range is in mathematical order (top to bottom), flip the normalized value
+        return this.range[0] + (1 - normalizedValue) * this._rangeExtent;
       }
     } else {
-      // Legacy behavior for backward compatibility
+      // X-axis: 0 at left, 1 at right (standard left-to-right)
       return this.range[0] + normalizedValue * this._rangeExtent;
     }
+  } else {
+    // Legacy behavior for backward compatibility
+    return this.range[0] + normalizedValue * this._rangeExtent;
   }
+}
   
   /**
    * Scale a pixel position back to data value (inverse transform)
@@ -128,23 +133,31 @@ export class Scale {
   }
   
   /**
-   * Convert pixel range to normalized value (renderer-agnostic)
-   */
-  _convertFromPixelRange(pixel) {
-    if (this.coordinateSystem === 'normalized') {
-      if (this.orientation === 'vertical') {
-        // Y-axis: Reverse the transformation applied in _convertToPixelRange
-        const rawNormalized = (pixel - this.range[0]) / this._rangeExtent;
-        return 1 - rawNormalized; // Flip back to mathematical coordinate system
+ * Convert pixel range to normalized value (renderer-agnostic)
+ * FIXED: Handle pre-flipped ranges correctly
+ */
+_convertFromPixelRange(pixel) {
+  if (this.coordinateSystem === 'normalized') {
+    if (this.orientation === 'vertical') {
+      const rawNormalized = (pixel - this.range[0]) / this._rangeExtent;
+      
+      // Check if range is already flipped
+      if (this._rangeExtent < 0) {
+        // Range is already in canvas order, use as-is
+        return rawNormalized;
       } else {
-        // X-axis: Standard left-to-right
-        return (pixel - this.range[0]) / this._rangeExtent;
+        // Range is in mathematical order, flip back
+        return 1 - rawNormalized;
       }
     } else {
-      // Legacy behavior
+      // X-axis: Standard left-to-right
       return (pixel - this.range[0]) / this._rangeExtent;
     }
+  } else {
+    // Legacy behavior
+    return (pixel - this.range[0]) / this._rangeExtent;
   }
+}
   
   /**
    * Update the domain (data range)

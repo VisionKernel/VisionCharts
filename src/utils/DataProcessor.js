@@ -116,6 +116,24 @@ export class DataProcessor {
       // Step 2: Validate and clean numeric values
       processedData = this._validateNumericValues(processedData, options);
       
+      if (processedData.length === 0) {
+        console.warn(`Dataset ${dataset.id || dataset.name || 'unknown'} has no valid data points after validation`);
+        return {
+          ...dataset,
+          data: [],
+          originalDataCount: dataset.data.length,
+          processedDataCount: 0,
+          isEmpty: true,
+          processed: true,
+          processedAt: Date.now(),
+          stats: {
+            count: 0,
+            timeRange: null,
+            valueRange: null
+          }
+        };
+      }
+      
       // Step 3: Handle missing data and gaps
       if (options.fillGaps) {
         processedData = this._fillGaps(processedData, options);
@@ -133,7 +151,25 @@ export class DataProcessor {
       
       // Step 6: Remove outliers if requested
       if (options.removeOutliers) {
+        const beforeOutlierRemoval = processedData.length;
         processedData = this._removeOutliers(processedData, options);
+        
+        // ✅ NEW: Prevent removing too many points
+        if (processedData.length === 0) {
+          console.warn(`Outlier removal would eliminate all data points - skipping outlier removal for dataset ${dataset.id || dataset.name || 'unknown'}`);
+          // Restore data from before outlier removal
+          processedData = this._removeOutliers(dataset.data, { ...options, removeOutliers: false });
+          // Re-process without outlier removal
+          processedData = await this._parseTimeValues(dataset.data, options);
+          processedData = this._validateNumericValues(processedData, options);
+          if (options.sortByTime) {
+            processedData = this._sortByTime(processedData, options);
+          }
+        }
+      }
+      
+      if (processedData.length === 1) {
+        console.warn(`Dataset ${dataset.id || dataset.name || 'unknown'} only has 1 data point after processing - some chart features may be limited`);
       }
       
       // Step 7: Calculate data statistics
@@ -145,6 +181,9 @@ export class DataProcessor {
         data: processedData,
         originalDataCount: dataset.data.length,
         processedDataCount: processedData.length,
+        // ✅ NEW: Add flags for edge cases
+        isEmpty: processedData.length === 0,
+        isSinglePoint: processedData.length === 1,
         stats: stats,
         processed: true,
         processedAt: Date.now()

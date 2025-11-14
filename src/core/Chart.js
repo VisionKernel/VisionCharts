@@ -126,6 +126,8 @@ export class Chart {
     
     // Initialization state
     this.isInitialized = false;
+    this._isDestroying = false;
+    this._isDestroyed = false; 
 
     this.panelManager = new PanelManager(this);
     
@@ -256,9 +258,6 @@ async _initialize() {
     
     // Process data (this includes domain calculation now)
     await this._processData();
-    
-    // ✅ REMOVED: Don't calculate domains again, _processData() already does it
-    // this._calculateDataDomains();
     
     // Choose optimal renderer first (before creating coordinate system)
     this._selectOptimalRenderer();
@@ -577,9 +576,22 @@ _calculateDataDomains() {
     yMax = 1;
   }
   
+  // ✅ CORRECT: Check for single value AFTER all points processed
+  if (xMin === xMax) {
+    const expansion = xMin !== 0 ? Math.abs(xMin) * 0.1 : 86400000;
+    xMin = xMin - expansion;
+    xMax = xMax + expansion;
+  }
+  
+  if (yMin === yMax) {
+    const expansion = yMin !== 0 ? Math.abs(yMin) * 0.1 : 1;
+    yMin = yMin - expansion;
+    yMax = yMax + expansion;
+  }
+  
   // Ensure yMin is positive for logarithmic scale
   if (this.config.options.isLogarithmic && yMin <= 0) {
-    yMin = 0.1; // or a small fraction of yMax
+    yMin = 0.1;
   }
   
   const yRange = yMax - yMin;
@@ -2150,96 +2162,153 @@ async ensureInitialized() {
 }
   
   /**
-   * Destroy the chart and clean up resources
-   */
-  destroy() {
+ * Destroy the chart and clean up resources
+ * FIXED: Added defensive checks for early destruction
+ */
+destroy() {
+  // Safety check: prevent multiple destroy calls
+  if (this._isDestroying || this._isDestroyed) {
+    console.warn('Chart already destroyed or being destroyed');
+    return;
+  }
+  
+  this._isDestroying = true;
+  
+  try {
+    console.log('Chart destroy() called, isInitialized:', this.isInitialized);
+    
+    // Cleanup legend
+    if (this.legend) {
+      this.legend.destroy?.();
+      this.legend = null;
+    }
+    
     // Cleanup crosshair
     if (this.crosshair) {
-      this.crosshair.destroy();
+      this.crosshair.destroy?.();
       this.crosshair = null;
     }
     
     // Cleanup tooltip
     if (this.tooltip) {
-      this.tooltip.destroy();
+      this.tooltip.destroy?.();
       this.tooltip = null;
     }
+    
     // Cleanup recession lines
     if (this.recessionLines) {
-      this.recessionLines.destroy();
+      this.recessionLines.destroy?.();
       this.recessionLines = null; 
     }
 
     // Cleanup zero line
     if (this.zeroLine) {
-      this.zeroLine.destroy();
+      this.zeroLine.destroy?.();
       this.zeroLine = null;
     }
 
     // Cleanup average and median lines
     if (this.averageLine) {
-      this.averageLine.destroy();
+      this.averageLine.destroy?.();
       this.averageLine = null;
     }
 
     if (this.medianLine) {
-      this.medianLine.destroy();
+      this.medianLine.destroy?.();
       this.medianLine = null;
     }
 
     // Cleanup ending labels
     if (this.endingLabels) {
-      this.endingLabels.destroy();
+      this.endingLabels.destroy?.();
       this.endingLabels = null;
     }
 
     // Cleanup studies
     if (this.studiesRenderer) {
-      this.studiesRenderer.destroy();
+      this.studiesRenderer.destroy?.();
       this.studiesRenderer = null;
     }
 
     if (this.studiesManager) {
-      this.studiesManager.clearAllStudies();
+      this.studiesManager.clearAllStudies?.();
       this.studiesManager = null;
     }
     
     // Remove mouse event listeners
     if (this._boundMouseMove && this.container) {
-      this.container.removeEventListener('mousemove', this._boundMouseMove);
-      this.container.removeEventListener('mouseleave', this._boundMouseLeave);
+      try {
+        this.container.removeEventListener('mousemove', this._boundMouseMove);
+        if (this._boundMouseLeave) {
+          this.container.removeEventListener('mouseleave', this._boundMouseLeave);
+        }
+      } catch (e) {
+        console.warn('Error removing event listeners:', e);
+      }
       this._boundMouseMove = null;
       this._boundMouseLeave = null;
     }
     
+    // Cleanup title
     if (this.titleElement) {
-      this.titleElement.remove();
+      try {
+        if (this.titleElement.parentNode) {
+          this.titleElement.parentNode.removeChild(this.titleElement);
+        }
+      } catch (e) {
+        console.warn('Error removing title element:', e);
+      }
       this.titleElement = null;
     }
 
+    // Cleanup panel manager
     if (this.panelManager) {
-      this.panelManager.destroy();
+      this.panelManager.destroy?.();
       this.panelManager = null;
     }
     
+    // Cleanup renderer
     if (this.rendererInstance) {
-      this.rendererInstance.destroy();
+      this.rendererInstance.destroy?.();
       this.rendererInstance = null;
     }
     
+    // Clear coordinate system cache
     if (this.coordinateSystem) {
-      this.coordinateSystem.clearCache();
+      this.coordinateSystem.clearCache?.();
+      this.coordinateSystem = null;
     }
     
+    // Clear container
     if (this.container) {
-      this.container.innerHTML = '';
+      try {
+        this.container.innerHTML = '';
+      } catch (e) {
+        console.warn('Error clearing container:', e);
+      }
     }
     
-    this.renderers.clear();
+    // Clear renderer references
+    if (this.renderers) {
+      this.renderers.clear();
+    }
+    
+    // Clear generated paths
+    this.generatedPaths = null;
+    this.transformedData = null;
+    
+    // Mark as destroyed
     this.isInitialized = false;
+    this._isDestroyed = true;
     
     console.log('Chart destroyed and resources cleaned up');
+    
+  } catch (error) {
+    console.error('Error during chart destruction:', error);
+  } finally {
+    this._isDestroying = false;
   }
+}
   
   _setupCrosshair() {
   // Skip crosshair creation in panel mode - PanelManager handles it
@@ -2271,7 +2340,8 @@ async ensureInitialized() {
     dateFormat: 'medium',
     valueDecimals: 2,
     offsetX: 15,
-    offsetY: 15
+    offsetY: 15,
+    container: this.container
   });
   
   // Debug the render call

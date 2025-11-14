@@ -1335,7 +1335,9 @@ _setupCrosshairAndTooltip() {
     this.crosshair.render(this.panelSvgOverlay, fullChartArea);
 
     // Create Tooltip
-    this.tooltip = new CrosshairTooltip();
+    this.tooltip = new CrosshairTooltip({
+      container: this.chart.container
+    });
 
     // Setup events
     this._setupCrosshairEvents();

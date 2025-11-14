@@ -2,14 +2,7 @@
  * VisionCharts - A modern, high-performance JavaScript charting library
  * optimized for financial and economic data visualization.
  * 
- * Enhanced Multi-Renderer Architecture (Phase 2A Complete)
- * - SVG, Canvas, and WebGL rendering backends
- * - Automatic renderer selection based on dataset size (50K+ points → WebGL)
- * - Unified event system and coordinate normalization
- * - Performance optimization and monitoring
- * color utilities and color picker component
- * 
- * @version 2.0.1
+ * @version 2.0.2
  * @license MIT
  */
 
@@ -45,7 +38,7 @@ export function createChart(type, config) {
 }
 
 // Library metadata
-export const version = '2.0.1';
+export const version = '2.0.2';
 export const name = 'VisionCharts';
 
 // UPDATED - Use the centralized browser support utility

@@ -12,6 +12,9 @@ export class CrosshairTooltip {
       offsetX: 15,        // Pixels from mouse
       offsetY: -10,       // Pixels from mouse
       
+      // ✅ NEW: Need container reference for proper positioning
+      container: null,    // Will be set during initialization
+      
       // Styling
       backgroundColor: 'rgba(0, 0, 0, 0.9)',
       borderRadius: 6,
@@ -56,25 +59,12 @@ export class CrosshairTooltip {
     // Position tooltip
     this._positionTooltip(mouseX, mouseY);
     
-    // Show tooltip with additional debug
+    // Show tooltip
     this.element.style.display = 'block';
     this.isVisible = true;
     
     // Force a reflow to ensure styles are applied
     void this.element.offsetWidth;
-    
-    // Debug
-    const rect = this.element.getBoundingClientRect();
-    console.log('Tooltip positioned at:', {
-      left: this.element.style.left,
-      top: this.element.style.top,
-      actualRect: {
-        left: rect.left,
-        top: rect.top,
-        width: rect.width, 
-        height: rect.height
-      }
-    });
   }
 
   /**
@@ -105,8 +95,8 @@ export class CrosshairTooltip {
     this.element = document.createElement('div');
     this.element.className = 'crosshair-tooltip';
     this.element.style.cssText = `
-      position: fixed; /* Change from absolute to fixed */
-      z-index: 999999; /* Even higher z-index */
+      position: fixed;
+      z-index: 999999;
       background: ${this.config.backgroundColor};
       border: 1px solid ${this.config.borderColor};
       border-radius: ${this.config.borderRadius}px;
@@ -119,16 +109,10 @@ export class CrosshairTooltip {
       white-space: nowrap;
       display: none;
       max-width: 300px;
-      opacity: 1 !important; /* Force opacity */
-      visibility: visible !important; /* Force visibility */
-      transform: none !important; /* Prevent transform issues */
     `;
     
     // Add to document body
     document.body.appendChild(this.element);
-    
-    // Debug output to console
-    console.log('Tooltip element created and added to DOM');
   }
 
   /**
@@ -267,28 +251,56 @@ export class CrosshairTooltip {
 
   /**
    * Position tooltip near mouse but avoid screen edges
+   * ✅ FIXED: Converts container-relative coords to viewport coords
    * @private
    */
   _positionTooltip(mouseX, mouseY) {
     if (!this.element) return;
+    
+    // ✅ FIX: Get container position to convert coordinates
+    let containerRect = { left: 0, top: 0 };
+    if (this.config.container) {
+      containerRect = this.config.container.getBoundingClientRect();
+    }
+    
+    // ✅ FIX: Convert container-relative coords to viewport coords
+    const viewportX = containerRect.left + mouseX;
+    const viewportY = containerRect.top + mouseY;
+    
+    // Make element visible temporarily to get dimensions
+    const wasVisible = this.element.style.display !== 'none';
+    if (!wasVisible) {
+      this.element.style.display = 'block';
+      this.element.style.visibility = 'hidden';
+    }
     
     // Get tooltip dimensions
     const rect = this.element.getBoundingClientRect();
     const tooltipWidth = rect.width;
     const tooltipHeight = rect.height;
     
-    // Calculate initial position
-    let left = mouseX + this.config.offsetX;
-    let top = mouseY + this.config.offsetY;
+    // Reset visibility
+    if (!wasVisible) {
+      this.element.style.display = 'none';
+      this.element.style.visibility = 'visible';
+    }
+    
+    // Calculate initial position using VIEWPORT coordinates
+    let left = viewportX + this.config.offsetX;
+    let top = viewportY + this.config.offsetY;
+    
+    // Edge detection using viewport coordinates
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
     
     // Prevent tooltip from going off right edge
-    if (left + tooltipWidth > window.innerWidth) {
-      left = mouseX - tooltipWidth - this.config.offsetX;
+    if (left + tooltipWidth > viewportWidth) {
+      left = viewportX - tooltipWidth - this.config.offsetX;
     }
     
     // Prevent tooltip from going off bottom edge  
-    if (top + tooltipHeight > window.innerHeight) {
-      top = mouseY - tooltipHeight - Math.abs(this.config.offsetY);
+    if (top + tooltipHeight > viewportHeight) {
+      top = viewportY - tooltipHeight - Math.abs(this.config.offsetY);
     }
     
     // Prevent tooltip from going off left edge
@@ -301,6 +313,7 @@ export class CrosshairTooltip {
       top = 10;
     }
     
+    // Apply position
     this.element.style.left = left + 'px';
     this.element.style.top = top + 'px';
   }
