@@ -171,6 +171,10 @@ export class Chart {
     this.lastMousePosition = null;
     this.mouseThreshold = 5; // pixels
 
+    // Tooltip functionality
+    this._tooltipOwner = null;
+    this._isSettingUpCrosshair = false;
+
     this.recessionLines = new RecessionLines({
       enabled: this.config.options.showRecessionLines,
       fillColor: this.config.options.recessionFillColor,
@@ -2183,12 +2187,6 @@ destroy() {
       this.legend = null;
     }
     
-    // Cleanup crosshair
-    if (this.crosshair) {
-      this.crosshair.destroy?.();
-      this.crosshair = null;
-    }
-    
     // Cleanup tooltip
     if (this.tooltip) {
       this.tooltip.destroy?.();
@@ -2310,51 +2308,71 @@ destroy() {
   }
 }
   
+  /**
+   * FIXED: Setup crosshair
+  */
   _setupCrosshair() {
-  // Skip crosshair creation in panel mode - PanelManager handles it
+  // ✅ GUARD 1: Skip if panel mode (PanelManager owns it)
   if (this.isPanelMode) {
     console.log('Crosshair setup skipped - panel mode uses PanelManager crosshair');
     return;
   }
   
-  // Original single mode crosshair setup
-  if (!this.svgOverlay) {
-    console.warn('SVG overlay not available for crosshair');
+  // ✅ GUARD 2: Skip if already owned by chart
+  if (this._tooltipOwner === 'chart') {
+    console.log('Crosshair already set up for chart mode');
     return;
   }
   
-  console.log('SVG overlay before crosshair render:', this.svgOverlay);
-  console.log('Chart area before crosshair render:', this.chartArea);
+  // ✅ GUARD 3: Prevent concurrent setup
+  if (this._isSettingUpCrosshair) {
+    console.log('Crosshair setup already in progress');
+    return;
+  }
   
-  this.crosshair = new Crosshair({
-    enabled: true,
-    lineColor: '#666666',
-    lineOpacity: 0.7,
-    highlightRadius: 3
-  });
+  this._isSettingUpCrosshair = true;
+  
+  try {
+    // ✅ CRITICAL: Clean up any existing instances first
+    this._cleanupCrosshairAndTooltip();
+    
+    // Original single mode crosshair setup
+    if (!this.svgOverlay) {
+      console.warn('SVG overlay not available for crosshair');
+      return;
+    }
+    
+    console.log('Setting up crosshair for single chart mode...');
+    
+    this.crosshair = new Crosshair({
+      enabled: true,
+      lineColor: '#666666',
+      lineOpacity: 0.7,
+      highlightRadius: 3
+    });
 
-  this.tooltip = new CrosshairTooltip({
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    textColor: '#ffffff',
-    fontSize: 12,
-    dateFormat: 'medium',
-    valueDecimals: 2,
-    offsetX: 15,
-    offsetY: 15,
-    container: this.container
-  });
-  
-  // Debug the render call
-  console.log('About to call crosshair.render with:', this.svgOverlay, this.chartArea);
-  this.crosshair.render(this.svgOverlay, this.chartArea);
-  console.log('Crosshair render completed');
-  
-  // Check if the crosshair group was actually added
-  const crosshairGroup = this.svgOverlay.querySelector('.crosshair');
-  console.log('Crosshair group after render:', crosshairGroup);
-  
-  this._setupCrosshairEvents();
-  console.log('Crosshair component created');
+    this.tooltip = new CrosshairTooltip({
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      textColor: '#ffffff',
+      fontSize: 12,
+      dateFormat: 'medium',
+      valueDecimals: 2,
+      offsetX: 15,
+      offsetY: 15,  // ✅ FIXED: Consistent positive offset
+      container: this.container
+    });
+    
+    this.crosshair.render(this.svgOverlay, this.chartArea);
+    this._setupCrosshairEvents();
+    
+    // ✅ Mark ownership
+    this._tooltipOwner = 'chart';
+    
+    console.log('Crosshair setup complete for single chart mode');
+    
+  } finally {
+    this._isSettingUpCrosshair = false;
+  }
 }
 
   /**
@@ -2374,6 +2392,51 @@ destroy() {
     
     console.log('Crosshair mouse events setup');
   }
+
+  /**
+ * ✅ NEW: Centralized cleanup for crosshair and tooltip
+ * Safe to call multiple times, cleans up everything
+ */
+_cleanupCrosshairAndTooltip() {
+  console.log('Chart: Cleaning up crosshair and tooltip...');
+  
+  // Remove event listeners first (before destroying objects)
+  if (this.container) {
+    if (this._boundOnMouseMove) {
+      this.container.removeEventListener('mousemove', this._boundOnMouseMove);
+      this._boundOnMouseMove = null;
+    }
+    if (this._boundOnMouseLeave) {
+      this.container.removeEventListener('mouseleave', this._boundOnMouseLeave);
+      this._boundOnMouseLeave = null;
+    }
+  }
+  
+  // Destroy crosshair
+  if (this.crosshair) {
+    try {
+      this.crosshair.destroy();
+    } catch (e) {
+      console.warn('Error destroying crosshair:', e);
+    }
+    this.crosshair = null;
+  }
+  
+  // Destroy tooltip
+  if (this.tooltip) {
+    try {
+      this.tooltip.destroy();
+    } catch (e) {
+      console.warn('Error destroying tooltip:', e);
+    }
+    this.tooltip = null;
+  }
+  
+  // Clear ownership
+  this._tooltipOwner = null;
+  
+  console.log('Chart: Crosshair and tooltip cleanup complete');
+}
 
   /**
    * Handle mouse move events for crosshair
@@ -2499,44 +2562,63 @@ destroy() {
   }
 
   /**
-   * Get actual data points at specific X coordinate (including studies)
-   * @private
-   */
-  _getDataPointsAtX(exactDataX) {
-    const dataPoints = [];
-    
-    if (exactDataX == null) {
-      return dataPoints;
-    }
-    
-    // Get points from regular datasets
-    if (Array.isArray(this.config.data)) {
-      for (const dataset of this.config.data) {
-        if (dataset.data && Array.isArray(dataset.data)) {
-          const points = this.getDataPointsAtX(exactDataX, dataset);
-          if (points && points.length > 0) {
-            dataPoints.push(...points);
-          }
-        }
-      }
-    }
-    
-    // NEW: Get points from studies
-    if (this.studiesManager) {
-      try {
-        const studyPoints = this.studiesManager.getStudyDataPointsAtX(exactDataX);
-        if (studyPoints && studyPoints.length > 0) {
-          console.log(`Adding ${studyPoints.length} study points to tooltip`);
-          dataPoints.push(...studyPoints);
-        }
-      } catch (error) {
-        console.error('Error getting study data points:', error);
-      }
-    }
-    
-    console.log(`Total data points (datasets + studies): ${dataPoints.length}`);
+ * Get actual data points at specific X coordinate (including studies)
+ * ✅ UPDATED: Ensure dataset object is always included
+ * @private
+ */
+_getDataPointsAtX(exactDataX) {
+  const dataPoints = [];
+  
+  if (exactDataX == null) {
     return dataPoints;
   }
+  
+  // Get points from regular datasets
+  if (Array.isArray(this.config.data)) {
+    for (const dataset of this.config.data) {
+      if (dataset.data && Array.isArray(dataset.data)) {
+        const points = this.getDataPointsAtX(exactDataX, dataset);
+        if (points && points.length > 0) {
+          // ✅ ENSURE: Each point has full dataset object
+          const enrichedPoints = points.map(p => ({
+            ...p,
+            dataset: p.dataset || dataset,  // Add dataset if missing
+            datasetId: p.datasetId || dataset.id
+          }));
+          dataPoints.push(...enrichedPoints);
+        }
+      }
+    }
+  }
+  
+  // Get points from studies
+  if (this.studiesManager) {
+    try {
+      const studyPoints = this.studiesManager.getStudyDataPointsAtX(exactDataX);
+      if (studyPoints && studyPoints.length > 0) {
+        console.log(`Adding ${studyPoints.length} study points to tooltip`);
+        dataPoints.push(...studyPoints);
+      }
+    } catch (error) {
+      console.error('Error getting study data points:', error);
+    }
+  }
+  
+  // ✅ NEW: Deduplicate before returning
+  const uniquePoints = [];
+  const seenIds = new Set();
+  
+  for (const point of dataPoints) {
+    const key = `${point.datasetId}_${point.dataX}`;
+    if (!seenIds.has(key)) {
+      seenIds.add(key);
+      uniquePoints.push(point);
+    }
+  }
+  
+  console.log(`Total data points: ${dataPoints.length}, unique: ${uniquePoints.length}`);
+  return uniquePoints;
+}
 
   /**
    * Update crosshair position and highlights

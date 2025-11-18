@@ -233,33 +233,36 @@ async _switchToPanelMode() {
    * @private
    */
   async _switchToSingleMode() {
-    console.log('Switching back to single chart mode');
+  console.log('Switching back to single chart mode');
+  
+  // ✅ CRITICAL: Clean up panel mode tooltip FIRST
+  this._destroyCrosshairAndTooltip();
 
-    if (this.endingLabels) {
-      if (this.endingLabels.destroy) {
-        this.endingLabels.destroy();
-      }
-      this.endingLabels = null;
-      console.log('  ✓ Panel EndingLabels cleaned up');
+  if (this.endingLabels) {
+    if (this.endingLabels.destroy) {
+      this.endingLabels.destroy();
     }
-    
-    // CRITICAL: Set state at the beginning
-    this.isPanelMode = false;
-    
-    // Destroy all panels
-    this._destroyPanels();
-    
-    // ✅ CRITICAL: Properly restore container for single chart
-    this._restoreContainerForSingleMode();
-    
-    // Restore single mode state
-    this._restoreSingleModeState();
-    
-    // Reinitialize single chart
-    await this._reinitializeSingleChart();
-    
-    console.log('Single chart mode restored successfully');
+    this.endingLabels = null;
+    console.log('  ✓ Panel EndingLabels cleaned up');
   }
+  
+  // Set state
+  this.isPanelMode = false;
+  
+  // Destroy all panels
+  this._destroyPanels();
+  
+  // Restore container for single mode
+  this._restoreContainerForSingleMode();
+  
+  // Restore single mode state
+  this._restoreSingleModeState();
+  
+  // Reinitialize single chart (this will call _setupCrosshair)
+  await this._reinitializeSingleChart();
+  
+  console.log('Single chart mode restored successfully');
+}
 
   /**
    * ✅ NEW: Properly restore container for single chart mode
@@ -1320,45 +1323,93 @@ async refreshPanelMode() {
   }
 
 _setupCrosshairAndTooltip() {
+  // ✅ GUARD: Prevent concurrent setup
+  if (this._isSettingUpCrosshair) {
+    console.log('PanelManager: Crosshair setup already in progress');
+    return;
+  }
+  
+  this._isSettingUpCrosshair = true;
+  
+  try {
+    console.log('PanelManager: Setting up crosshair and tooltip...');
+    
+    // ✅ CRITICAL: Clean up Chart's instances first
+    if (this.chart._tooltipOwner === 'chart') {
+      console.log('PanelManager: Taking ownership from Chart');
+      this.chart._cleanupCrosshairAndTooltip();
+    }
+    
+    // ✅ CRITICAL: Clean up our own old instances
+    this._destroyCrosshairAndTooltip();
+    
     // Create Crosshair
     this.crosshair = new Crosshair({
-        lineColor: '#555',
-        lineDash: [4, 4],
+      lineColor: '#555',
+      lineDash: [4, 4],
     });
 
     const fullChartArea = {
-        x: 0,
-        y: 0,
-        width: this.chart.config.options.width,
-        height: this.chart.config.options.height,
+      x: 0,
+      y: 0,
+      width: this.chart.config.options.width,
+      height: this.chart.config.options.height,
     };
     this.crosshair.render(this.panelSvgOverlay, fullChartArea);
 
-    // Create Tooltip
+    // Create Tooltip with consistent config
     this.tooltip = new CrosshairTooltip({
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      textColor: '#ffffff',
+      fontSize: 12,
+      dateFormat: 'medium',
+      valueDecimals: 2,
+      offsetX: 15,
+      offsetY: 15,  // ✅ FIXED: Consistent positive offset (same as single mode)
       container: this.chart.container
     });
 
     // Setup events
     this._setupCrosshairEvents();
+    
+    // ✅ Mark ownership
+    this.chart._tooltipOwner = 'panelManager';
+    
+    console.log('PanelManager: Crosshair and tooltip setup complete');
+    
+  } finally {
+    this._isSettingUpCrosshair = false;
+  }
 }
 
 _setupCrosshairEvents() {
-    if (!this.chart.container) return;
+  if (!this.chart.container) return;
+  
+  // ✅ GUARD: Remove old listeners if they exist
+  if (this._boundOnMouseMove) {
+    this.chart.container.removeEventListener('mousemove', this._boundOnMouseMove);
+  }
+  if (this._boundOnMouseLeave) {
+    this.chart.container.removeEventListener('mouseleave', this._boundOnMouseLeave);
+  }
 
-    this._boundOnMouseMove = this._onMouseMove.bind(this);
-    this._boundOnMouseLeave = this._onMouseLeave.bind(this);
+  // Create fresh bound functions
+  this._boundOnMouseMove = this._onMouseMove.bind(this);
+  this._boundOnMouseLeave = this._onMouseLeave.bind(this);
 
-    this.chart.container.addEventListener('mousemove', this._boundOnMouseMove);
-    this.chart.container.addEventListener('mouseleave', this._boundOnMouseLeave);
+  // Add new listeners
+  this.chart.container.addEventListener('mousemove', this._boundOnMouseMove);
+  this.chart.container.addEventListener('mouseleave', this._boundOnMouseLeave);
+  
+  console.log('PanelManager: Crosshair events attached');
 }
 
 _onMouseMove(event) {
     if (!this.chart.chartArea) return;
 
     const rect = this.chart.container.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
+    const mouseX = event.clientX - rect.left;  // Container-relative for crosshair
+    const mouseY = event.clientY - rect.top;   // Container-relative for crosshair
 
     // Check if mouse is within chart area
     if (mouseX < this.chart.chartArea.x || 
@@ -1373,7 +1424,7 @@ _onMouseMove(event) {
     // Convert mouse X to data X using shared scale
     const dataX = this.sharedXScale.invert(mouseX);
 
-    // Collect points from all panels (each panel now handles its own studies)
+    // Collect points from all panels
     let allPoints = [];
     this.panels.forEach(panel => {
         const points = panel.getDataPointsAtX(dataX);
@@ -1381,25 +1432,33 @@ _onMouseMove(event) {
     });
 
     if (allPoints.length > 0) {
+        // Deduplicate points
+        const seenDatasets = new Set();
+        const uniquePoints = [];
+        
+        for (const point of allPoints) {
+            const key = `${point.datasetId}_${point.dataX}`;
+            if (!seenDatasets.has(key)) {
+                seenDatasets.add(key);
+                uniquePoints.push(point);
+            }
+        }
+        
         this.crosshair.show();
-        // Use the mouse Y for the horizontal line to give immediate feedback
         this.crosshair.updatePosition(mouseX, mouseY); 
-        this.crosshair.updateHighlights(allPoints.map(p => {
+        this.crosshair.updateHighlights(uniquePoints.map(p => {
             const panel = this.panels[p.panelIndex];
-            // Mathematical calculation of the panel's top offset
             const panelTopOffset = p.panelIndex * panel.config.height;
             const y = panelTopOffset + p.pixelY;
             return { ...p, unifiedX: p.pixelX, unifiedY: y };
         }));
         
-        this.tooltip.show(allPoints.map(p => ({
-             ...p, 
-             dataX: p.x, 
-             dataY: p.y,
-             dataset: p.dataset || this.chart.config.data.find(d => d.id === p.datasetId)
-            })), 
-            event.clientX, 
-            event.clientY
+        // ✅ CORRECT: Pass viewport coordinates (event.clientX/Y) to tooltip
+        // The tooltip will handle the coordinate conversion internally
+        this.tooltip.show(
+            uniquePoints,
+            event.clientX,   // Viewport X
+            event.clientY    // Viewport Y
         );
     } else {
         this.crosshair.hide();
@@ -1434,22 +1493,46 @@ toggleRecessionLines(show) {
 }
 
 _destroyCrosshairAndTooltip() {
-    if (this.crosshair) {
-        this.crosshair.destroy();
-        this.crosshair = null;
+  console.log('PanelManager: Destroying crosshair and tooltip...');
+  
+  // ✅ Remove event listeners FIRST (before destroying objects)
+  if (this.chart.container) {
+    if (this._boundOnMouseMove) {
+      this.chart.container.removeEventListener('mousemove', this._boundOnMouseMove);
+      this._boundOnMouseMove = null;
     }
-    if (this.tooltip) {
-        this.tooltip.destroy();
-        this.tooltip = null;
+    if (this._boundOnMouseLeave) {
+      this.chart.container.removeEventListener('mouseleave', this._boundOnMouseLeave);
+      this._boundOnMouseLeave = null;
     }
-    if (this.chart.container) {
-        if (this._boundOnMouseMove) {
-            this.chart.container.removeEventListener('mousemove', this._boundOnMouseMove);
-        }
-        if (this._boundOnMouseLeave) {
-            this.chart.container.removeEventListener('mouseleave', this._boundOnMouseLeave);
-        }
+  }
+  
+  // Destroy crosshair
+  if (this.crosshair) {
+    try {
+      this.crosshair.destroy();
+    } catch (e) {
+      console.warn('PanelManager: Error destroying crosshair:', e);
     }
+    this.crosshair = null;
+  }
+  
+  // Destroy tooltip
+  if (this.tooltip) {
+    try {
+      this.tooltip.destroy();
+    } catch (e) {
+      console.warn('PanelManager: Error destroying tooltip:', e);
+    }
+    this.tooltip = null;
+  }
+  
+  // ✅ Clear ownership if we own it
+  if (this.chart._tooltipOwner === 'panelManager') {
+    this.chart._tooltipOwner = null;
+  }
+  
+  console.log('PanelManager: Crosshair and tooltip destroyed');
 }
 
 
