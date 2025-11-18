@@ -1,64 +1,34 @@
-/**
- * RecessionLines component for financial charts
- * Visualizes economic recession periods as shaded areas
- * Renders user-provided recession periods as vertical shaded areas using SVG.
- * Integrates with the unified coordinate system and chart scales.
- */
-
 export class RecessionLines {
   constructor(config = {}) {
     this.config = {
-      // Visual styling
-      fillColor: 'rgba(128, 128, 128, 0.2)',      // Grey instead of red
-      strokeColor: 'rgba(128, 128, 128, 0.3)',    // Grey border
-      strokeWidth: 0,                             // No border by default
-      
-      // Behavior
-      enabled: false,                             // Off by default as requested
-      
-      // Theme integration
-      useThemeColors: true,                       // Use colors from light/dark themes
-      
-      // NEW: User-provided recession data
-      recessionData: [],                          // Array of recession periods
-      
+      fillColor: 'rgba(128, 128, 128, 0.2)',
+      strokeColor: 'rgba(128, 128, 128, 0.3)',
+      strokeWidth: 0,
+      enabled: false,
+      useThemeColors: true,
+      recessionData: [],
       ...config
     };
-    
-    // SVG elements
-    this.svgElement = null;  // For single chart mode
+
+    this.svgElement = null;
     this.recessionGroup = null;
     this.parentSvg = null;
     this.currentRecessions = [];
-    
-    // Chart integration
     this.scales = null;
     this.chartArea = null;
-    
-    // State
     this.isVisible = false;
     this.isRendered = false;
-    
-    console.log('RecessionLines component created');
   }
-  
-  /**
-   * Set recession data from user
-   * @param {Array} recessionData - Array of recession periods
-   *   Format: [{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }, ...]
-   *   Or: [{ start: timestamp, end: timestamp }, ...]
-   */
+
   setRecessionData(recessionData) {
     if (!Array.isArray(recessionData)) {
-      console.warn('RecessionLines: recessionData must be an array');
       return this;
     }
-    
-    // Convert to standardized format with timestamps
+
     this.config.recessionData = recessionData.map(recession => {
       const startTime = this._parseDate(recession.start);
       const endTime = this._parseDate(recession.end);
-      
+
       return {
         start: startTime,
         end: endTime,
@@ -67,179 +37,106 @@ export class RecessionLines {
         name: recession.name || `Recession ${recession.start} - ${recession.end}`
       };
     });
-    
-    console.log(`RecessionLines: Set ${this.config.recessionData.length} recession periods`);
-    
-    // Update visible recessions if already rendered
+
     if (this.isRendered) {
       this._updateVisibleRecessions();
       this._renderRecessionRects();
     }
-    
+
     return this;
   }
-  
-  /**
-   * Parse date string or timestamp to milliseconds
-   * @private
-   */
+
   _parseDate(dateValue) {
     if (typeof dateValue === 'number') {
-      return dateValue; // Already a timestamp
+      return dateValue;
     }
-    
+
     if (typeof dateValue === 'string') {
       return new Date(dateValue).getTime();
     }
-    
+
     if (dateValue instanceof Date) {
       return dateValue.getTime();
     }
-    
-    console.warn('RecessionLines: Invalid date format:', dateValue);
-    return Date.now(); // Fallback
+
+    return Date.now();
   }
-  
-  /**
-   * Get recessions that overlap with a given date range
-   * @private
-   */
+
   _getRecessionsByDateRange(startTime, endTime) {
     if (!Array.isArray(this.config.recessionData)) {
       return [];
     }
-    
+
     return this.config.recessionData.filter(recession => {
-      // Include recession if it overlaps with the date range at all
       return recession.start <= endTime && recession.end >= startTime;
     });
   }
-  
-  /**
-   * Initialize and render recession areas
-   * @param {HTMLElement|SVGElement} container - Container (HTML for single mode, SVG for panel mode)
-   * @param {Object} chartArea - Chart area dimensions
-   * @param {Object} scales - Chart scales for coordinate conversion
-   */
+
   render(container, chartArea, scales) {
     if (!container || !chartArea || !scales) {
-      console.warn('RecessionLines: Container, chart area, and scales required');
       return;
     }
 
-    console.log('[RecessionLines Debug] render() called');
-    
     this.chartArea = chartArea;
     this.scales = scales;
-    
-    // Determine if this is an SVG container (panel mode) or HTML container (single mode)
+
     const isSvgContainer = container.tagName === 'svg';
-    
+
     if (isSvgContainer) {
-      // Panel mode: render into existing SVG
       this._renderIntoExistingSVG(container);
     } else {
-      // Single mode: create our own SVG
       this._renderWithOwnSVG(container);
     }
-    
-    // Calculate visible recessions
+
     this._updateVisibleRecessions();
-    
-    // Render recession rectangles
     this._renderRecessionRects();
-    
     this.isRendered = true;
-    
-    // Show/hide based on current state
+
     if (this.config.enabled) {
       this.show();
     } else {
       this.hide();
     }
-    
-    console.log(`RecessionLines rendered: ${this.currentRecessions.length} periods`);
   }
-  
-  /**
-   * Render into existing SVG container (panel mode)
-   * @private
-   */
+
   _renderIntoExistingSVG(svgContainer) {
-    // Remove existing recession elements from this SVG
     this._removeFromSVG(svgContainer);
-    
-    // Create recession group in existing SVG
     this._createRecessionGroup(svgContainer);
-    
-    console.log('Recession group created in panel SVG');
   }
-  
-  /**
-   * Render with own SVG element (single chart mode)
-   * @private
-   */
+
   _renderWithOwnSVG(container) {
-    // Remove existing SVG if present
     this._removeOwnSVG();
-    
-    // Create dedicated recession SVG layer
     this._createRecessionSVG(container);
-    
-    console.log('Recession SVG layer created for single chart');
   }
-  
-  /**
-   * Create dedicated SVG element for recession areas (single chart mode)
-   * @private
-   */
+
   _createRecessionSVG(container) {
-    // Create SVG element with z-index: 1.5 (between data and UI)
     this.svgElement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.svgElement.setAttribute('width', container.offsetWidth);
     this.svgElement.setAttribute('height', container.offsetHeight);
     this.svgElement.style.position = 'absolute';
     this.svgElement.style.top = '0';
     this.svgElement.style.left = '0';
-    this.svgElement.style.zIndex = '1.5';  // Between grid (0) and data (1)
-    this.svgElement.style.pointerEvents = 'none'; // Don't interfere with interactions
+    this.svgElement.style.zIndex = '1.5';
+    this.svgElement.style.pointerEvents = 'none';
     this.svgElement.setAttribute('class', 'recession-lines-svg');
-    
-    // Create group for recession rectangles
+
     this.recessionGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.recessionGroup.setAttribute('class', 'recession-periods');
     this.svgElement.appendChild(this.recessionGroup);
-    
-    // Add to container
+
     container.appendChild(this.svgElement);
-    
-    // Store reference for cleanup
     this.parentSvg = this.svgElement;
   }
-  
-  /**
-   * Create recession group in existing SVG container (panel mode)
-   * @private
-   */
+
   _createRecessionGroup(svgContainer) {
-    // Create group for recession rectangles within existing SVG
     this.recessionGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.recessionGroup.setAttribute('class', 'recession-periods');
     this.recessionGroup.style.pointerEvents = 'none';
-    
-    // Add to existing SVG container
     svgContainer.appendChild(this.recessionGroup);
-    
-    // Store reference to parent SVG for cleanup
     this.parentSvg = svgContainer;
   }
-  
-  /**
-   * Remove recession elements from SVG
-   * @private
-   */
+
   _removeFromSVG(svgContainer) {
-    // Remove any existing recession groups from this SVG
     const existingGroups = svgContainer.querySelectorAll('.recession-periods');
     existingGroups.forEach(group => {
       if (group.parentNode) {
@@ -247,118 +144,83 @@ export class RecessionLines {
       }
     });
   }
-  
-  /**
-   * Remove own SVG element (single chart mode)
-   * @private
-   */
+
   _removeOwnSVG() {
     if (this.svgElement && this.svgElement.parentElement) {
       this.svgElement.parentElement.removeChild(this.svgElement);
     }
     this.svgElement = null;
   }
-  
-  /**
-   * Show recession areas
-   */
+
   show() {
     if (!this.isRendered) {
-      console.warn('RecessionLines: Must render before showing');
       return false;
     }
-    
+
     this.config.enabled = true;
     this.isVisible = true;
-    
-    // Handle both single chart mode (svgElement) and panel mode (recessionGroup)
+
     if (this.svgElement) {
       this.svgElement.style.display = 'block';
     } else if (this.recessionGroup) {
       this.recessionGroup.style.display = 'block';
     }
-    
+
     return true;
   }
-  
-  /**
-   * Hide recession areas
-   */
+
   hide() {
     this.config.enabled = false;
     this.isVisible = false;
-    
-    // Handle both single chart mode (svgElement) and panel mode (recessionGroup)
+
     if (this.svgElement) {
       this.svgElement.style.display = 'none';
     } else if (this.recessionGroup) {
       this.recessionGroup.style.display = 'none';
     }
-    
+
     return true;
   }
-  
-  /**
-   * Toggle recession areas visibility
-   * @param {boolean} show - Force show/hide state, or null to toggle
-   * @returns {boolean} New visibility state
-   */
+
   toggle(show = null) {
     const newState = show !== null ? show : !this.config.enabled;
-    
     if (newState) {
       return this.show();
     } else {
       return this.hide();
     }
   }
-  
-  /**
-   * Update with new scales (when chart updates)
-   * @param {Object} newScales - Updated chart scales
-   */
+
   updateScales(newScales) {
     this.scales = newScales;
-    
+
     if (this.isRendered) {
       this._updateVisibleRecessions();
       this._renderRecessionRects();
     }
   }
-  
-  /**
-   * Update chart area (when chart resizes)
-   * @param {Object} newChartArea - Updated chart area
-   */
+
   updateChartArea(newChartArea) {
     this.chartArea = newChartArea;
-    
-    // Update SVG dimensions for single chart mode
+
     if (this.svgElement) {
       this.svgElement.setAttribute('width', newChartArea.width);
       this.svgElement.setAttribute('height', newChartArea.height);
     }
-    
+
     if (this.isRendered) {
       this._renderRecessionRects();
     }
   }
-  
-  /**
-   * Update styling/theme colors
-   * @param {Object} newConfig - New configuration options
-   */
+
   updateConfig(newConfig) {
     Object.assign(this.config, newConfig);
-    
+
     if (this.isRendered) {
       this._renderRecessionRects();
     }
   }
-  
-  /**
-   * Get current recession component state
-   */
+
   getState() {
     return {
       enabled: this.config.enabled,
@@ -370,49 +232,29 @@ export class RecessionLines {
       hasChartArea: !!this.chartArea
     };
   }
-  
-  /**
-   * Calculate which recessions are visible in current chart range
-   * @private
-   */
+
   _updateVisibleRecessions() {
     if (!this.scales || !this.scales.x) {
       this.currentRecessions = [];
       return;
     }
-    
-    // Get current chart time range
+
     const xDomain = this.scales.x.domain;
     const chartStartTime = xDomain[0];
     const chartEndTime = xDomain[1];
 
-    console.log('[RecessionLines Debug] Checking for recessions in range:', {
-        start: new Date(chartStartTime).toISOString(),
-        end: new Date(chartEndTime).toISOString()
-    });
-    
-    // Get recessions that overlap with visible range
     this.currentRecessions = this._getRecessionsByDateRange(chartStartTime, chartEndTime);
-    
-    console.log(`[RecessionLines Debug] Found ${this.currentRecessions.length} recessions in visible range.`);
   }
-  
-  /**
-   * Render recession rectangles using chart scales
-   * @private
-   */
+
   _renderRecessionRects() {
     if (!this.recessionGroup || !this.scales || !this.chartArea) {
       return;
     }
-    
-    // Clear existing rectangles
+
     this.recessionGroup.innerHTML = '';
-    
-    // Get current colors (theme-aware)
+
     const colors = this._getCurrentColors();
-    
-    // Create rectangle for each visible recession
+
     this.currentRecessions.forEach((recession, index) => {
       const rect = this._createRecessionRect(recession, colors, index);
       if (rect) {
@@ -420,107 +262,72 @@ export class RecessionLines {
       }
     });
   }
-  
-  /**
-   * Create single recession rectangle with panel-relative coordinates
-   * @private
-   */
+
   _createRecessionRect(recession, colors, index) {
     try {
-      // Convert recession dates to pixel coordinates using chart scales
       const startX = this.scales.x.scale(recession.start);
       const endX = this.scales.x.scale(recession.end);
 
-      console.log(`[RecessionLines Debug] Creating rect for recession: ${recession.name}`, {
-          startX,
-          endX,
-          chartArea: this.chartArea
-      });
-      
-      // Skip if recession is completely outside visible area
       if (endX < this.chartArea.x || startX > this.chartArea.x + this.chartArea.width) {
         return null;
       }
-      
-      // Clamp to chart area bounds
+
       const clampedStartX = Math.max(startX, this.chartArea.x);
       const clampedEndX = Math.min(endX, this.chartArea.x + this.chartArea.width);
       const rectWidth = clampedEndX - clampedStartX;
-      
-      // Skip if width is too small to be visible
+
       if (rectWidth < 1) {
         return null;
       }
-      
-      // Create SVG rectangle with panel-relative coordinates
+
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       rect.setAttribute('class', 'recession-period');
-      rect.setAttribute('x', clampedStartX);  // Use absolute coordinates within SVG
-      rect.setAttribute('y', this.chartArea.y);  // Start at chart area top
+      rect.setAttribute('x', clampedStartX);
+      rect.setAttribute('y', this.chartArea.y);
       rect.setAttribute('width', rectWidth);
       rect.setAttribute('height', this.chartArea.height);
       rect.setAttribute('fill', colors.fill);
-      
+
       if (this.config.strokeWidth > 0) {
         rect.setAttribute('stroke', colors.stroke);
         rect.setAttribute('stroke-width', this.config.strokeWidth);
       }
-      
-      // Add metadata for debugging
+
       rect.setAttribute('data-recession-start', recession.startDate);
       rect.setAttribute('data-recession-end', recession.endDate);
       rect.setAttribute('data-recession-index', index);
-      
-      // Add title for tooltip (optional)
+
       if (recession.name) {
         const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
         title.textContent = recession.name;
         rect.appendChild(title);
       }
-      
+
       return rect;
-      
     } catch (error) {
-      console.error('Error creating recession rectangle:', error);
       return null;
     }
   }
-  
-  /**
-   * Get current colors based on theme and configuration
-   * @private
-   */
+
   _getCurrentColors() {
-    // TODO: In the future, we could integrate with theme system here
-    // For now, use the configured colors
-    
     return {
       fill: this.config.fillColor,
       stroke: this.config.strokeColor
     };
   }
-  
-  /**
-   * Remove recession elements and clean up references
-   * @private
-   */
+
   _remove() {
-    // Clean up own SVG element (single chart mode)
     this._removeOwnSVG();
-    
-    // Clean up recession group (panel mode)
+
     if (this.recessionGroup && this.recessionGroup.parentNode) {
       this.recessionGroup.parentNode.removeChild(this.recessionGroup);
     }
-    
+
     this.recessionGroup = null;
     this.parentSvg = null;
     this.isRendered = false;
   }
-  
-  /**
-   * Destroy recession lines and clean up resources
-   */
+
   destroy() {
     this._remove();
     this.scales = null;
@@ -528,7 +335,5 @@ export class RecessionLines {
     this.currentRecessions = [];
     this.config.recessionData = [];
     this.isVisible = false;
-    
-    console.log('RecessionLines destroyed');
   }
 }
