@@ -288,7 +288,6 @@ footer {
   pointer-events: none;
 }
 
-/* Toggle button active state for statistical lines */
 #line-toggle-average.active,
 #bar-toggle-average.active {
   background-color: #FF6B35;
@@ -299,13 +298,11 @@ footer {
   background-color: #9C27B0;
 }
 
-/* Toggle button active state for ending labels */
 #line-toggle-ending-labels.active,
 #bar-toggle-ending-labels.active {
   background-color: #2196F3;
 }
 
-/* Ending labels configuration styling */
 .ending-labels-config {
   background-color: #f8f9fa;
   border: 1px solid #dee2e6;
@@ -322,7 +319,6 @@ footer {
   font-weight: 600;
 }
 
-/* Checkbox styling */
 input[type="checkbox"] + label {
   display: inline-flex;
   align-items: center;
@@ -332,12 +328,10 @@ input[type="checkbox"] + label {
   cursor: pointer;
 }
 
-/* Range input styling improvements */
 input[type="range"] {
   accent-color: #1468a8;
 }
 
-/* Responsive design for statistical controls */
 @media (max-width: 768px) {
   .control-row {
     flex-direction: column;
@@ -348,7 +342,6 @@ input[type="range"] {
     min-width: 100%;
   }
   
-  /* Stack visualization buttons vertically on mobile */
   .control-group > div[style*="display: flex"] {
     flex-direction: column !important;
     gap: 5px !important;
@@ -361,7 +354,6 @@ input[type="range"] {
   }
 }
 
-/* Improved accordion styling */
 .accordion-header:hover {
   background-color: #e9ecef;
 }
@@ -377,7 +369,6 @@ input[type="range"] {
   transform: rotate(45deg);
 }
 
-/* Study item styling */
 .study-item {
   transition: background-color 0.2s ease;
 }
@@ -390,7 +381,6 @@ input[type="range"] {
   background-color: #c82333 !important;
 }
 
-/* Dataset selector styling */
 .dataset-selector {
   background-color: #f8f9fa;
   border: 1px solid #dee2e6;
