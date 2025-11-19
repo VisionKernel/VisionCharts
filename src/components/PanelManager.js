@@ -190,6 +190,9 @@ export class PanelManager {
   _createSharedXScale() {
     let xMin = Infinity;
     let xMax = -Infinity;
+    
+    const allXValues = [];
+    
     for (const dataset of this.chart.config.data) {
       if (!dataset.data || !Array.isArray(dataset.data)) continue;
       for (const point of dataset.data) {
@@ -197,12 +200,38 @@ export class PanelManager {
           const xValue = point.x instanceof Date ? point.x.getTime() : point.x;
           xMin = Math.min(xMin, xValue);
           xMax = Math.max(xMax, xValue);
+          allXValues.push(xValue);
         }
       }
     }
+    
     if (xMin === Infinity || xMax === -Infinity) {
       throw new Error('No valid X values found in datasets');
     }
+    
+    if (this.chart.chartType === 'bar' && allXValues.length > 1) {
+      const sortedXValues = [...allXValues].sort((a, b) => a - b);
+      
+      let totalSpacing = 0;
+      let spacingCount = 0;
+      for (let i = 1; i < sortedXValues.length; i++) {
+        const spacing = sortedXValues[i] - sortedXValues[i - 1];
+        if (spacing > 0) {
+          totalSpacing += spacing;
+          spacingCount++;
+        }
+      }
+      
+      if (spacingCount > 0) {
+        const avgSpacing = totalSpacing / spacingCount;
+        const barWidth = this.chart.config.options.barWidth || 0.7;
+        const barPadding = (avgSpacing * barWidth) / 2;
+
+        xMin = xMin - barPadding;
+        xMax = xMax + barPadding;
+      }
+    }
+    
     const chartMargin = this.chart.config.options.margin;
     const panelLeftPadding = chartMargin.left;
     const panelRightPadding = chartMargin.right;

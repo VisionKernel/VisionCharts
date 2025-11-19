@@ -343,6 +343,9 @@ export class Chart {
     let yMin = Infinity;
     let yMax = -Infinity;
     let totalPoints = 0;
+    
+    const allXValues = [];
+    
     for (const dataset of this.config.data) {
       if (!dataset.data || !Array.isArray(dataset.data) || dataset.data.length === 0) {
         continue;
@@ -354,6 +357,7 @@ export class Chart {
         if (xValue != null && isFinite(xValue)) {
           xMin = Math.min(xMin, xValue);
           xMax = Math.max(xMax, xValue);
+          allXValues.push(xValue);
         }
         if (yValue != null && isFinite(yValue)) {
           yMin = Math.min(yMin, yValue);
@@ -361,6 +365,7 @@ export class Chart {
         }
       }
     }
+    
     if (xMin === Infinity || xMax === -Infinity) {
       xMin = 0;
       xMax = 1;
@@ -379,6 +384,30 @@ export class Chart {
       yMin = yMin - expansion;
       yMax = yMax + expansion;
     }
+    
+    if (this.chartType === 'bar' && allXValues.length > 1) {
+      const sortedXValues = [...allXValues].sort((a, b) => a - b);
+      
+      let totalSpacing = 0;
+      let spacingCount = 0;
+      for (let i = 1; i < sortedXValues.length; i++) {
+        const spacing = sortedXValues[i] - sortedXValues[i - 1];
+        if (spacing > 0) {
+          totalSpacing += spacing;
+          spacingCount++;
+        }
+      }
+      
+      if (spacingCount > 0) {
+        const avgSpacing = totalSpacing / spacingCount;
+        const barWidth = this.config.options.barWidth || 0.7;
+        const barPadding = (avgSpacing * barWidth) / 2;
+        
+        xMin = xMin - barPadding;
+        xMax = xMax + barPadding;
+      }
+    }
+    
     if (this.config.options.isLogarithmic && yMin <= 0) {
       yMin = 0.1;
     }
