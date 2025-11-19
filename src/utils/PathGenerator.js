@@ -1,10 +1,3 @@
-/**
- * PathGenerator - SINGLE SOURCE for all path generation (Enhanced)
- * 
- * Now designed as a centralized service that can be shared across components
- * without duplication. Supports both static utility methods and instance-based usage.
- */
-
 export class PathGenerator {
   constructor(config = {}) {
     this.config = {
@@ -18,82 +11,51 @@ export class PathGenerator {
       fillOpacity: 0.3,
       ...config
     };
-    
-    console.log('PathGenerator created with unified coordinate system support');
   }
 
-  // ===================================================================
-  // STATIC METHODS - Primary interface for centralized path generation
-  // ===================================================================
-
-  /**
-   * ✅ MAIN ENTRY POINT: Generate paths using shared static instance
-   * This eliminates the need for multiple PathGenerator instances
-   */
   static async generatePaths(datasets, options = {}) {
     const generator = PathGenerator.getSharedInstance(options);
     return await generator.generatePaths(datasets, options);
   }
 
-  /**
-   * ✅ MAIN ENTRY POINT: Generate single path using shared static instance
-   */
   static async generatePath(dataset, options = {}) {
     const generator = PathGenerator.getSharedInstance(options);
     return await generator.generatePath(dataset, options);
   }
 
-  /**
-   * ✅ Get or create shared PathGenerator instance
-   * This prevents creating multiple instances across components
-   */
   static getSharedInstance(config = {}) {
-    // Create a key based on critical config properties
     const configKey = `${config.curve || 'linear'}-${config.targetRenderer || 'auto'}`;
-    
+
     if (!PathGenerator._sharedInstances) {
       PathGenerator._sharedInstances = new Map();
     }
 
     let instance = PathGenerator._sharedInstances.get(configKey);
-    
+
     if (!instance) {
       instance = new PathGenerator(config);
       PathGenerator._sharedInstances.set(configKey, instance);
-      console.log(`Created shared PathGenerator instance: ${configKey}`);
     }
 
     return instance;
   }
 
-  /**
-   * ✅ Update configuration for shared instance
-   */
   static updateSharedConfig(configKey, newConfig) {
     if (!PathGenerator._sharedInstances) return false;
-    
+
     const instance = PathGenerator._sharedInstances.get(configKey);
     if (instance) {
       Object.assign(instance.config, newConfig);
-      console.log(`Updated shared PathGenerator config: ${configKey}`);
       return true;
     }
     return false;
   }
 
-  /**
-   * ✅ Clear shared instances (useful for testing or memory management)
-   */
   static clearSharedInstances() {
     if (PathGenerator._sharedInstances) {
       PathGenerator._sharedInstances.clear();
-      console.log('Cleared all shared PathGenerator instances');
     }
   }
-
-  // ===================================================================
-  // INSTANCE METHODS - Keep existing functionality for backwards compatibility
-  // ===================================================================
 
   async generatePaths(datasets, options = {}) {
     if (!Array.isArray(datasets)) {
@@ -110,11 +72,8 @@ export class PathGenerator {
         generatedPaths.push(pathData);
       }
 
-      console.log(`PathGenerator: Generated ${generatedPaths.length} standardized paths`);
       return generatedPaths;
-
     } catch (error) {
-      console.error('Error generating paths:', error);
       throw error;
     }
   }
@@ -128,9 +87,8 @@ export class PathGenerator {
     const data = dataset.data;
 
     const unifiedPoints = this._extractUnifiedCoordinates(data);
-    
+
     if (unifiedPoints.length === 0) {
-      console.warn('No valid unified coordinates found in dataset');
       return this._createEmptyPath(dataset);
     }
 
@@ -160,24 +118,18 @@ export class PathGenerator {
     };
   }
 
-  // ===================================================================
-  // PRIVATE HELPER METHODS (existing functionality)
-  // ===================================================================
-
   _extractUnifiedCoordinates(data) {
-    return data.map(point => ({
-      x: point.unifiedX || point.screenX || point.x,
-      y: point.unifiedY || point.screenY || point.y
-    })).filter(point => 
-      point.x !== undefined && point.y !== undefined &&
-      !isNaN(point.x) && !isNaN(point.y)
-    );
+    return data
+      .map(point => ({
+        x: point.unifiedX || point.screenX || point.x,
+        y: point.unifiedY || point.screenY || point.y
+      }))
+      .filter(point => point.x !== undefined && point.y !== undefined && !isNaN(point.x) && !isNaN(point.y));
   }
 
   _validateUnifiedCoordinates(points, datasetName) {
-    // Add validation logic as needed
     if (points.length === 0) {
-      console.warn(`No valid coordinates for dataset: ${datasetName}`);
+      // intentionally no-op beyond length check
     }
   }
 
@@ -187,7 +139,7 @@ export class PathGenerator {
     }
 
     const curveType = options.curve || 'linear';
-    
+
     switch (curveType) {
       case 'linear':
         return this._generateLinearVertices(points);
@@ -198,55 +150,47 @@ export class PathGenerator {
       case 'monotone':
         return this._generateMonotoneVertices(points);
       default:
-        console.warn(`Unknown curve type: ${curveType}, falling back to linear`);
         return this._generateLinearVertices(points);
     }
   }
 
   _generateLinearVertices(points) {
-    // Simple linear interpolation - connect points with straight lines
     return points.map(point => ({ x: point.x, y: point.y }));
   }
 
   _generateStepVertices(points) {
     if (points.length < 2) return points;
-    
+
     const vertices = [];
-    
+
     for (let i = 0; i < points.length - 1; i++) {
       const current = points[i];
       const next = points[i + 1];
-      
-      // Add current point
+
       vertices.push({ x: current.x, y: current.y });
-      
-      // Add step point (same y as current, x of next)
       vertices.push({ x: next.x, y: current.y });
     }
-    
-    // Add the last point
+
     vertices.push({ x: points[points.length - 1].x, y: points[points.length - 1].y });
-    
+
     return vertices;
   }
 
   _generateCardinalVertices(points) {
     if (points.length < 3) return this._generateLinearVertices(points);
-    
+
     const vertices = [];
-    const tension = 0.5; // Cardinal spline tension parameter
-    
-    // Add first point
+    const tension = 0.5;
+
     vertices.push({ x: points[0].x, y: points[0].y });
-    
+
     for (let i = 0; i < points.length - 1; i++) {
       const p0 = i > 0 ? points[i - 1] : points[i];
       const p1 = points[i];
       const p2 = points[i + 1];
       const p3 = i < points.length - 2 ? points[i + 2] : p2;
-      
-      // Generate intermediate points for smooth curve
-      const segments = 10; // Number of segments between points
+
+      const segments = 10;
       for (let j = 1; j <= segments; j++) {
         const t = j / segments;
         const x = this._cardinalSpline(p0.x, p1.x, p2.x, p3.x, t, tension);
@@ -254,29 +198,26 @@ export class PathGenerator {
         vertices.push({ x, y });
       }
     }
-    
+
     return vertices;
   }
 
   _generateMonotoneVertices(points) {
     if (points.length < 3) return this._generateLinearVertices(points);
-    
+
     const vertices = [];
-    
-    // Add first point
+
     vertices.push({ x: points[0].x, y: points[0].y });
-    
+
     for (let i = 0; i < points.length - 1; i++) {
       const p0 = i > 0 ? points[i - 1] : points[i];
       const p1 = points[i];
       const p2 = points[i + 1];
       const p3 = i < points.length - 2 ? points[i + 2] : p2;
-      
-      // Calculate monotone tangents
+
       const m0 = this._calculateMonotoneTangent(p0, p1, p2);
       const m1 = this._calculateMonotoneTangent(p1, p2, p3);
-      
-      // Generate intermediate points using cubic Hermite interpolation
+
       const segments = 10;
       for (let j = 1; j <= segments; j++) {
         const t = j / segments;
@@ -285,20 +226,19 @@ export class PathGenerator {
         vertices.push({ x, y });
       }
     }
-    
+
     return vertices;
   }
 
   _cardinalSpline(p0, p1, p2, p3, t, tension) {
     const t2 = t * t;
     const t3 = t2 * t;
-    
-    // Cardinal spline coefficients
+
     const c0 = -tension * t3 + 2 * tension * t2 - tension * t;
     const c1 = (2 - tension) * t3 + (tension - 3) * t2 + 1;
     const c2 = (tension - 2) * t3 + (3 - 2 * tension) * t2 + tension * t;
     const c3 = tension * t3 - tension * t2;
-    
+
     return c0 * p0 + c1 * p1 + c2 * p2 + c3 * p3;
   }
 
@@ -306,17 +246,15 @@ export class PathGenerator {
     const dx = p2.x - p0.x;
     const dy = p2.y - p0.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    
+
     if (length === 0) return { x: 0, y: 0 };
-    
-    // Monotone constraint: ensure the curve doesn't overshoot
+
     const tangent = { x: dx / length, y: dy / length };
-    
-    // Apply monotone constraint
+
     const d1 = Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2);
     const d2 = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
     const scale = Math.min(d1, d2) / 3;
-    
+
     return {
       x: tangent.x * scale,
       y: tangent.y * scale
@@ -326,13 +264,12 @@ export class PathGenerator {
   _cubicHermite(p0, p1, m0, m1, t) {
     const t2 = t * t;
     const t3 = t2 * t;
-    
-    // Cubic Hermite basis functions
+
     const h00 = 2 * t3 - 3 * t2 + 1;
     const h10 = t3 - 2 * t2 + t;
     const h01 = -2 * t3 + 3 * t2;
     const h11 = t3 - t2;
-    
+
     return h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
   }
 
@@ -349,7 +286,7 @@ export class PathGenerator {
     if (colorString.startsWith('#')) {
       const hex = colorString.slice(1);
       let r, g, b;
-      
+
       if (hex.length === 3) {
         r = parseInt(hex[0] + hex[0], 16);
         g = parseInt(hex[1] + hex[1], 16);
@@ -361,7 +298,7 @@ export class PathGenerator {
       } else {
         return { r: 0.08, g: 0.41, b: 0.66, a: 1.0 };
       }
-      
+
       return { r: r / 255, g: g / 255, b: b / 255, a: 1.0 };
     }
 
@@ -399,12 +336,10 @@ export class PathGenerator {
     };
   }
 
-  // Keep existing setter methods for backwards compatibility
   setCurveType(curveType) {
     const validCurves = ['linear', 'step', 'cardinal', 'monotone'];
     if (validCurves.includes(curveType)) {
       this.config.curve = curveType;
-      console.log(`PathGenerator curve type set to: ${curveType}`);
     }
     return this;
   }
@@ -413,7 +348,6 @@ export class PathGenerator {
     const validRenderers = ['canvas', 'webgl', 'auto'];
     if (validRenderers.includes(renderer)) {
       this.config.targetRenderer = renderer;
-      console.log(`PathGenerator target renderer set to: ${renderer}`);
     }
     return this;
   }

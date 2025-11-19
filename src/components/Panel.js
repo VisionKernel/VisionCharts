@@ -693,122 +693,124 @@ _renderRecessionLines() {
   }
 
   getDataPointsAtX(dataX) {
-    const tolerance = (this.config.sharedXScale.domain[1] - this.config.sharedXScale.domain[0]) * 0.01; 
-    const allPoints = [];
-    
-    // Get regular dataset points (your existing logic)
-    const datasetPoints = this.config.dataset.data.filter(p => Math.abs(p.x - dataX) < tolerance);
-    const mappedDatasetPoints = datasetPoints.map(p => ({
-        ...p,
-        pixelX: this.config.sharedXScale.scale(p.x),
-        pixelY: this.yScale.scale(p.y),
-        panelIndex: this.config.panelIndex,
-        datasetId: this.config.dataset.id,
-        color: this.config.dataset.color,
-    }));
-    
-    allPoints.push(...mappedDatasetPoints);
-    
-    // Add study points for this panel's dataset
-    if (this.chart && this.chart.studiesManager) {
-        try {
-            const panelStudies = this.chart.studiesManager.getStudiesForDataset(this.config.dataset.id);
-            const visibleStudies = panelStudies.filter(study => study.visible && study.data);
-            
-            for (const study of visibleStudies) {
-                // Find study points within tolerance
-                const studyPoints = study.data.filter(p => Math.abs(p.x - dataX) < tolerance);
-                
-                for (const studyPoint of studyPoints) {
-                    if (study.type === 'bollinger') {
-                        // Bollinger Bands: three values per point
-                        allPoints.push(
-                            {
-                                x: studyPoint.x,
-                                y: studyPoint.upper,
-                                pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                                pixelY: this.yScale.scale(studyPoint.upper),
-                                panelIndex: this.config.panelIndex,
-                                datasetId: `${study.id}_upper`,
-                                dataset: { 
-                                    name: `${study.name} (Upper)`,
-                                    color: study.color,
-                                    isStudy: true 
-                                },
-                                color: study.color,
-                                isStudy: true,
-                                dataX: studyPoint.x,
-                                dataY: studyPoint.upper
-                            },
-                            {
-                                x: studyPoint.x,
-                                y: studyPoint.middle,
-                                pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                                pixelY: this.yScale.scale(studyPoint.middle),
-                                panelIndex: this.config.panelIndex,
-                                datasetId: `${study.id}_middle`,
-                                dataset: { 
-                                    name: `${study.name} (Middle)`,
-                                    color: study.color,
-                                    isStudy: true 
-                                },
-                                color: study.color,
-                                isStudy: true,
-                                dataX: studyPoint.x,
-                                dataY: studyPoint.middle
-                            },
-                            {
-                                x: studyPoint.x,
-                                y: studyPoint.lower,
-                                pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                                pixelY: this.yScale.scale(studyPoint.lower),
-                                panelIndex: this.config.panelIndex,
-                                datasetId: `${study.id}_lower`,
-                                dataset: { 
-                                    name: `${study.name} (Lower)`,
-                                    color: study.color,
-                                    isStudy: true 
-                                },
-                                color: study.color,
-                                isStudy: true,
-                                dataX: studyPoint.x,
-                                dataY: studyPoint.lower
-                            }
-                        );
-                    } else {
-                        // Single value studies (SMA, EMA, etc.)
-                        const studyValue = studyPoint.y || studyPoint.value || studyPoint.sma || studyPoint.ema;
-                        if (studyValue != null) {
-                            allPoints.push({
-                                x: studyPoint.x,
-                                y: studyValue,
-                                pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                                pixelY: this.yScale.scale(studyValue),
-                                panelIndex: this.config.panelIndex,
-                                datasetId: `${study.id}_line`,
-                                dataset: { 
-                                    name: study.name,
-                                    color: study.color,
-                                    isStudy: true 
-                                },
-                                color: study.color,
-                                isStudy: true,
-                                dataX: studyPoint.x,
-                                dataY: studyValue
-                            });
-                        }
-                    }
-                }
-            }
-            
-            console.log(`Panel ${this.config.panelIndex}: Found ${mappedDatasetPoints.length} dataset points + ${allPoints.length - mappedDatasetPoints.length} study points`);
-            
-        } catch (error) {
-            console.error(`Panel ${this.config.panelIndex}: Error getting study points:`, error);
-        }
-    }
-    
-    return allPoints;
+  const tolerance = (this.config.sharedXScale.domain[1] - this.config.sharedXScale.domain[0]) * 0.01; 
+  const allPoints = [];
+  
+  // Get regular dataset points (your existing logic)
+  const datasetPoints = this.config.dataset.data.filter(p => Math.abs(p.x - dataX) < tolerance);
+  const mappedDatasetPoints = datasetPoints.map(p => ({
+      ...p,
+      pixelX: this.config.sharedXScale.scale(p.x),
+      pixelY: this.yScale.scale(p.y),
+      panelIndex: this.config.panelIndex,
+      datasetId: this.config.dataset.id,
+      dataset: this.config.dataset,  // ✅ ADD: Include full dataset object
+      color: this.config.dataset.color,
+      // ✅ ADD: Standardize property names for tooltip
+      dataX: p.x,
+      dataY: p.y
+  }));
+  
+  allPoints.push(...mappedDatasetPoints);
+  
+  // Add study points for this panel's dataset
+  if (this.chart && this.chart.studiesManager) {
+      try {
+          const panelStudies = this.chart.studiesManager.getStudiesForDataset(this.config.dataset.id);
+          const visibleStudies = panelStudies.filter(study => study.visible && study.data);
+          
+          for (const study of visibleStudies) {
+              // Find study points within tolerance
+              const studyPoints = study.data.filter(p => Math.abs(p.x - dataX) < tolerance);
+              
+              for (const studyPoint of studyPoints) {
+                  if (study.type === 'bollinger') {
+                      // Bollinger Bands: three values per point
+                      allPoints.push(
+                          {
+                              x: studyPoint.x,
+                              y: studyPoint.upper,
+                              pixelX: this.config.sharedXScale.scale(studyPoint.x),
+                              pixelY: this.yScale.scale(studyPoint.upper),
+                              panelIndex: this.config.panelIndex,
+                              datasetId: `${study.id}_upper`,
+                              dataset: {  // ✅ FIXED: Proper dataset object structure
+                                  id: `${study.id}_upper`,
+                                  name: `${study.name} (Upper)`,
+                                  color: study.color,
+                                  isStudy: true 
+                              },
+                              color: study.color,
+                              isStudy: true,
+                              dataX: studyPoint.x,
+                              dataY: studyPoint.upper
+                          },
+                          {
+                              x: studyPoint.x,
+                              y: studyPoint.middle,
+                              pixelX: this.config.sharedXScale.scale(studyPoint.x),
+                              pixelY: this.yScale.scale(studyPoint.middle),
+                              panelIndex: this.config.panelIndex,
+                              datasetId: `${study.id}_middle`,
+                              dataset: {  // ✅ FIXED: Proper dataset object structure
+                                  id: `${study.id}_middle`,
+                                  name: `${study.name} (Middle)`,
+                                  color: study.color,
+                                  isStudy: true 
+                              },
+                              color: study.color,
+                              isStudy: true,
+                              dataX: studyPoint.x,
+                              dataY: studyPoint.middle
+                          },
+                          {
+                              x: studyPoint.x,
+                              y: studyPoint.lower,
+                              pixelX: this.config.sharedXScale.scale(studyPoint.x),
+                              pixelY: this.yScale.scale(studyPoint.lower),
+                              panelIndex: this.config.panelIndex,
+                              datasetId: `${study.id}_lower`,
+                              dataset: {  // ✅ FIXED: Proper dataset object structure
+                                  id: `${study.id}_lower`,
+                                  name: `${study.name} (Lower)`,
+                                  color: study.color,
+                                  isStudy: true 
+                              },
+                              color: study.color,
+                              isStudy: true,
+                              dataX: studyPoint.x,
+                              dataY: studyPoint.lower
+                          }
+                      );
+                  } else {
+                      // Single value studies (SMA, EMA, etc.)
+                      allPoints.push({
+                          x: studyPoint.x,
+                          y: studyPoint.y,
+                          pixelX: this.config.sharedXScale.scale(studyPoint.x),
+                          pixelY: this.yScale.scale(studyPoint.y),
+                          panelIndex: this.config.panelIndex,
+                          datasetId: study.id,
+                          dataset: {  // ✅ FIXED: Proper dataset object structure
+                              id: study.id,
+                              name: study.name,
+                              color: study.color,
+                              isStudy: true
+                          },
+                          color: study.color,
+                          isStudy: true,
+                          dataX: studyPoint.x,
+                          dataY: studyPoint.y
+                      });
+                  }
+              }
+          }
+      } catch (error) {
+          console.error('Error getting study points in panel:', error);
+      }
+  }
+  
+  return allPoints;
 }
 
   /**

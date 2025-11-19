@@ -1,21 +1,9 @@
-/**
- * CrosshairTooltip.js - Professional tooltip for crosshair data points
- * Location: /src/components/CrosshairTooltip.js
- * 
- * Shows dataset values and timestamps when crosshair is active
- */
-
 export class CrosshairTooltip {
   constructor(config = {}) {
     this.config = {
-      // Positioning
-      offsetX: 15,        // Pixels from mouse
-      offsetY: -10,       // Pixels from mouse
-      
-      // ✅ NEW: Need container reference for proper positioning
-      container: null,    // Will be set during initialization
-      
-      // Styling
+      offsetX: 15,
+      offsetY: -10,
+      container: null,
       backgroundColor: 'rgba(0, 0, 0, 0.9)',
       borderRadius: 6,
       padding: 12,
@@ -24,52 +12,33 @@ export class CrosshairTooltip {
       textColor: '#ffffff',
       headerColor: '#ffffff',
       borderColor: 'rgba(255, 255, 255, 0.2)',
-      
-      // Content formatting
-      dateFormat: 'medium', // 'short', 'medium', 'long'
+      dateFormat: 'medium',
       valueDecimals: 2,
-      showValueChange: false, // Show change from previous value
-      
+      showValueChange: false,
       ...config
     };
-    
-    // DOM elements
+
     this.element = null;
     this.isVisible = false;
     this.currentData = null;
-    
-    // Create tooltip element
+
     this._createTooltip();
   }
 
-  /**
-   * Show tooltip with data points
-   */
   show(dataPoints, mouseX, mouseY) {
     if (!dataPoints || dataPoints.length === 0) {
       this.hide();
       return;
     }
-    
+
     this.currentData = dataPoints;
-    
-    // Update content
     this._updateContent(dataPoints);
-    
-    // Position tooltip
     this._positionTooltip(mouseX, mouseY);
-    
-    // Show tooltip
     this.element.style.display = 'block';
     this.isVisible = true;
-    
-    // Force a reflow to ensure styles are applied
     void this.element.offsetWidth;
   }
 
-  /**
-   * Hide tooltip
-   */
   hide() {
     if (this.element) {
       this.element.style.display = 'none';
@@ -78,19 +47,12 @@ export class CrosshairTooltip {
     this.currentData = null;
   }
 
-  /**
-   * Update tooltip position
-   */
   updatePosition(mouseX, mouseY) {
     if (this.isVisible) {
       this._positionTooltip(mouseX, mouseY);
     }
   }
 
-  /**
-   * Create tooltip DOM element
-   * @private
-   */
   _createTooltip() {
     this.element = document.createElement('div');
     this.element.className = 'crosshair-tooltip';
@@ -110,27 +72,29 @@ export class CrosshairTooltip {
       display: none;
       max-width: 300px;
     `;
-    
-    // Add to document body
     document.body.appendChild(this.element);
   }
 
-  /**
-   * Update tooltip content with data points (enhanced for studies)
-   * @private
-   */
   _updateContent(dataPoints) {
     if (dataPoints.length === 0) return;
-    
-    // Get the timestamp from the first point (should be same for all in crosshair)
-    const timestamp = dataPoints[0].dataX;
+
+    const uniqueDataPoints = [];
+    const seenIds = new Set();
+
+    for (const point of dataPoints) {
+      const key = point.datasetId || point.dataset?.id || Math.random();
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        uniqueDataPoints.push(point);
+      }
+    }
+
+    const timestamp = uniqueDataPoints[0].dataX || uniqueDataPoints[0].x;
     const formattedDate = this._formatDate(timestamp);
-    
-    // Separate regular datasets from studies
-    const regularPoints = dataPoints.filter(point => !point.isStudy);
-    const studyPoints = dataPoints.filter(point => point.isStudy);
-    
-    // Build HTML content
+
+    const regularPoints = uniqueDataPoints.filter(point => !point.isStudy);
+    const studyPoints = uniqueDataPoints.filter(point => point.isStudy);
+
     let html = `
       <div style="
         font-weight: bold; 
@@ -143,15 +107,14 @@ export class CrosshairTooltip {
         ${formattedDate}
       </div>
     `;
-    
-    // Add regular dataset values first
+
     if (regularPoints.length > 0) {
       regularPoints.forEach((point, index) => {
-        const datasetName = point.dataset.name || point.datasetId || `Dataset ${index + 1}`;
-        const value = point.dataY;
-        const color = point.color || point.dataset.color || '#666';
+        const datasetName = point.dataset?.name || point.datasetId || `Dataset ${index + 1}`;
+        const value = point.dataY || point.y;
+        const color = point.color || point.dataset?.color || '#666';
         const formattedValue = this._formatValue(value);
-        
+
         html += `
           <div style="
             display: flex; 
@@ -179,10 +142,8 @@ export class CrosshairTooltip {
         `;
       });
     }
-    
-    // Add separator and studies section if there are studies
+
     if (studyPoints.length > 0) {
-      // Add separator line
       html += `
         <div style="
           border-top: 1px solid ${this.config.borderColor};
@@ -199,14 +160,13 @@ export class CrosshairTooltip {
           </div>
         </div>
       `;
-      
-      // Add study values with slightly different styling
+
       studyPoints.forEach((point, index) => {
-        const studyName = point.dataset.name || `Study ${index + 1}`;
-        const value = point.dataY;
-        const color = point.color || point.dataset.color || '#666';
+        const studyName = point.dataset?.name || `Study ${index + 1}`;
+        const value = point.dataY || point.y;
+        const color = point.color || point.dataset?.color || '#666';
         const formattedValue = this._formatValue(value);
-        
+
         html += `
           <div style="
             display: flex; 
@@ -245,109 +205,93 @@ export class CrosshairTooltip {
         `;
       });
     }
-    
+
     this.element.innerHTML = html;
   }
 
-  /**
-   * Position tooltip near mouse but avoid screen edges
-   * ✅ FIXED: Converts container-relative coords to viewport coords
-   * @private
-   */
   _positionTooltip(mouseX, mouseY) {
     if (!this.element) return;
-    
-    // ✅ FIX: Get container position to convert coordinates
+
     let containerRect = { left: 0, top: 0 };
     if (this.config.container) {
       containerRect = this.config.container.getBoundingClientRect();
     }
-    
-    // ✅ FIX: Convert container-relative coords to viewport coords
+
     const viewportX = containerRect.left + mouseX;
     const viewportY = containerRect.top + mouseY;
-    
-    // Make element visible temporarily to get dimensions
+
     const wasVisible = this.element.style.display !== 'none';
     if (!wasVisible) {
       this.element.style.display = 'block';
       this.element.style.visibility = 'hidden';
     }
-    
-    // Get tooltip dimensions
+
     const rect = this.element.getBoundingClientRect();
     const tooltipWidth = rect.width;
     const tooltipHeight = rect.height;
-    
-    // Reset visibility
+
     if (!wasVisible) {
       this.element.style.display = 'none';
       this.element.style.visibility = 'visible';
     }
-    
-    // Calculate initial position using VIEWPORT coordinates
+
     let left = viewportX + this.config.offsetX;
     let top = viewportY + this.config.offsetY;
-    
-    // Edge detection using viewport coordinates
+
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    
-    // Prevent tooltip from going off right edge
-    if (left + tooltipWidth > viewportWidth) {
+    const edgePadding = 10;
+
+    if (left + tooltipWidth > viewportWidth - edgePadding) {
       left = viewportX - tooltipWidth - this.config.offsetX;
     }
-    
-    // Prevent tooltip from going off bottom edge  
-    if (top + tooltipHeight > viewportHeight) {
+
+    if (top + tooltipHeight > viewportHeight - edgePadding) {
       top = viewportY - tooltipHeight - Math.abs(this.config.offsetY);
     }
-    
-    // Prevent tooltip from going off left edge
-    if (left < 0) {
-      left = 10;
+
+    if (left < edgePadding) {
+      left = viewportX + this.config.offsetX;
+      if (left < edgePadding) {
+        left = edgePadding;
+      }
     }
-    
-    // Prevent tooltip from going off top edge
-    if (top < 0) {
-      top = 10;
+
+    if (top < edgePadding) {
+      top = viewportY + this.config.offsetY;
+      if (top < edgePadding) {
+        top = edgePadding;
+      }
     }
-    
-    // Apply position
+
     this.element.style.left = left + 'px';
     this.element.style.top = top + 'px';
   }
 
-  /**
-   * Format date for display
-   * @private
-   */
   _formatDate(timestamp) {
     const date = new Date(timestamp);
-    
+
     switch (this.config.dateFormat) {
       case 'short':
-        return date.toLocaleDateString('en-US', { 
-          month: 'short', 
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
           day: 'numeric',
           year: 'numeric'
         });
-        
       case 'long':
-        return date.toLocaleDateString('en-US', { 
+        return date.toLocaleDateString('en-US', {
           weekday: 'long',
-          year: 'numeric', 
-          month: 'long', 
+          year: 'numeric',
+          month: 'long',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
         });
-        
       case 'medium':
       default:
-        return date.toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'short', 
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
@@ -355,18 +299,13 @@ export class CrosshairTooltip {
     }
   }
 
-  /**
-   * Format value for display
-   * @private
-   */
   _formatValue(value) {
     if (value == null || isNaN(value)) {
       return 'N/A';
     }
-    
-    // Format large numbers with K/M/B suffixes
+
     const absValue = Math.abs(value);
-    
+
     if (absValue >= 1000000000) {
       return (value / 1000000000).toFixed(this.config.valueDecimals) + 'B';
     } else if (absValue >= 1000000) {
@@ -381,13 +320,9 @@ export class CrosshairTooltip {
     }
   }
 
-  /**
-   * Update tooltip styling
-   */
   updateConfig(newConfig) {
     Object.assign(this.config, newConfig);
-    
-    // Update element styles
+
     if (this.element) {
       const style = this.element.style;
       style.backgroundColor = this.config.backgroundColor;
@@ -398,16 +333,12 @@ export class CrosshairTooltip {
       style.fontFamily = this.config.fontFamily;
       style.color = this.config.textColor;
     }
-    
-    // Refresh content if visible
+
     if (this.isVisible && this.currentData) {
       this._updateContent(this.currentData);
     }
   }
 
-  /**
-   * Get current tooltip state
-   */
   getState() {
     return {
       isVisible: this.isVisible,
@@ -416,14 +347,10 @@ export class CrosshairTooltip {
     };
   }
 
-  /**
-   * Destroy tooltip and clean up
-   */
   destroy() {
     if (this.element && this.element.parentElement) {
       this.element.parentElement.removeChild(this.element);
     }
-    
     this.element = null;
     this.isVisible = false;
     this.currentData = null;

@@ -1,39 +1,17 @@
-/**
- * BrowserSupport.js - Consolidated Browser Capability Detection
- * 
- * Centralized utility for detecting browser capabilities and renderer support.
- * Replaces duplicated browser detection logic from index.js and WebGLRenderer.js
- * 
- */
-
-/**
- * Comprehensive browser support detection
- */
 export class BrowserSupport {
   constructor() {
     this._cache = new Map();
     this._initialize();
   }
 
-  /**
-   * Initialize browser support detection
-   * @private
-   */
   _initialize() {
-    // Cache all detection results on first load
     this._cache.set('canvas2d', this._detectCanvas2D());
     this._cache.set('webgl', this._detectWebGL());
     this._cache.set('webgl2', this._detectWebGL2());
     this._cache.set('devicePixelRatio', this._getDevicePixelRatio());
     this._cache.set('webglCapabilities', this._getWebGLCapabilities());
-    
-    console.log('BrowserSupport initialized with capability detection');
   }
 
-  /**
-   * Detect Canvas 2D support
-   * @private
-   */
   _detectCanvas2D() {
     try {
       const canvas = document.createElement('canvas');
@@ -43,10 +21,6 @@ export class BrowserSupport {
     }
   }
 
-  /**
-   * Detect WebGL support (WebGL 1.0 or 2.0)
-   * @private
-   */
   _detectWebGL() {
     try {
       const canvas = document.createElement('canvas');
@@ -57,10 +31,6 @@ export class BrowserSupport {
     }
   }
 
-  /**
-   * Detect WebGL 2.0 specific support
-   * @private
-   */
   _detectWebGL2() {
     try {
       const canvas = document.createElement('canvas');
@@ -70,18 +40,10 @@ export class BrowserSupport {
     }
   }
 
-  /**
-   * Get device pixel ratio
-   * @private
-   */
   _getDevicePixelRatio() {
     return window.devicePixelRatio || 1;
   }
 
-  /**
-   * Get detailed WebGL capabilities
-   * @private
-   */
   _getWebGLCapabilities() {
     if (!this._cache.get('webgl')) {
       return null;
@@ -90,7 +52,7 @@ export class BrowserSupport {
     try {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      
+
       if (!gl) return null;
 
       return {
@@ -110,58 +72,34 @@ export class BrowserSupport {
         isWebGL2: !!gl.getParameter(gl.VERSION).includes('WebGL 2.0')
       };
     } catch (e) {
-      console.warn('Error detecting WebGL capabilities:', e);
       return null;
     }
   }
 
-  // === PUBLIC API ===
-
-  /**
-   * Check if Canvas 2D is supported
-   */
   hasCanvas2D() {
     return this._cache.get('canvas2d');
   }
 
-  /**
-   * Check if WebGL is supported (any version)
-   */
   hasWebGL() {
     return this._cache.get('webgl');
   }
 
-  /**
-   * Check if WebGL 2.0 is supported specifically
-   */
   hasWebGL2() {
     return this._cache.get('webgl2');
   }
 
-  /**
-   * Get device pixel ratio
-   */
   getDevicePixelRatio() {
     return this._cache.get('devicePixelRatio');
   }
 
-  /**
-   * Check if device has high DPI display
-   */
   isHighDPI() {
     return this.getDevicePixelRatio() > 1;
   }
 
-  /**
-   * Get detailed WebGL capabilities
-   */
   getWebGLCapabilities() {
     return this._cache.get('webglCapabilities');
   }
 
-  /**
-   * Get comprehensive browser support summary
-   */
   getSupportSummary() {
     return {
       canvas2d: this.hasCanvas2D(),
@@ -173,12 +111,9 @@ export class BrowserSupport {
     };
   }
 
-  /**
-   * Suggest optimal renderer based on dataset size and browser capabilities
-   */
   suggestRenderer(dataPointCount) {
     const hasWebGL = this.hasWebGL();
-    
+
     if (dataPointCount > 100000) {
       if (hasWebGL) {
         return {
@@ -217,9 +152,6 @@ export class BrowserSupport {
     }
   }
 
-  /**
-   * Check if a specific renderer is supported
-   */
   isRendererSupported(rendererType) {
     switch (rendererType.toLowerCase()) {
       case 'canvas':
@@ -227,24 +159,18 @@ export class BrowserSupport {
       case 'webgl':
         return this.hasWebGL();
       case 'svg':
-        return true; // SVG is universally supported in modern browsers
+        return true;
       default:
         return false;
     }
   }
 
-  /**
-   * Get the best available renderer
-   */
   getBestRenderer() {
     if (this.hasWebGL()) return 'webgl';
     if (this.hasCanvas2D()) return 'canvas';
-    return 'svg'; // Fallback
+    return 'svg';
   }
 
-  /**
-   * Validate browser compatibility for VisionCharts
-   */
   validateCompatibility() {
     const issues = [];
     const warnings = [];
@@ -270,67 +196,25 @@ export class BrowserSupport {
     };
   }
 
-  /**
-   * Log browser capabilities to console
-   */
   logCapabilities() {
-    const summary = this.getSupportSummary();
-    console.group('🔍 Browser Capabilities - VisionCharts');
-    console.log('Canvas 2D:', summary.canvas2d ? '✅' : '❌');
-    console.log('WebGL:', summary.webgl ? '✅' : '❌');
-    console.log('WebGL 2.0:', summary.webgl2 ? '✅' : '❌');
-    console.log('Device Pixel Ratio:', summary.devicePixelRatio);
-    console.log('High DPI:', summary.isHighDPI ? '✅' : '❌');
-    
-    if (summary.webglCapabilities) {
-      console.log('WebGL Renderer:', summary.webglCapabilities.renderer);
-      console.log('Max Texture Size:', summary.webglCapabilities.maxTextureSize);
-    }
-    console.groupEnd();
+    return this.getSupportSummary();
   }
 }
 
-// === SINGLETON INSTANCE ===
-
-/**
- * Singleton instance for global use
- */
 export const browserSupport = new BrowserSupport();
 
-// === COMPATIBILITY EXPORTS ===
-
-/**
- * Legacy function export for backward compatibility
- * @deprecated Use browserSupport.getSupportSummary() instead
- */
 export function getBrowserSupport() {
-  console.warn('getBrowserSupport() is deprecated. Use browserSupport.getSupportSummary() instead.');
   return browserSupport.getSupportSummary();
 }
 
-/**
- * Legacy function export for backward compatibility  
- * @deprecated Use browserSupport.suggestRenderer() instead
- */
 export function suggestRenderer(dataPointCount) {
-  console.warn('suggestRenderer() is deprecated. Use browserSupport.suggestRenderer() instead.');
   return browserSupport.suggestRenderer(dataPointCount);
 }
 
-/**
- * Static WebGL support check for renderer compatibility
- * @deprecated Use browserSupport.hasWebGL() instead
- */
 export function isWebGLSupported() {
-  console.warn('isWebGLSupported() is deprecated. Use browserSupport.hasWebGL() instead.');
   return browserSupport.hasWebGL();
 }
 
-/**
- * Static WebGL capabilities check
- * @deprecated Use browserSupport.getWebGLCapabilities() instead  
- */
 export function getWebGLCapabilities() {
-  console.warn('getWebGLCapabilities() is deprecated. Use browserSupport.getWebGLCapabilities() instead.');
   return browserSupport.getWebGLCapabilities();
 }
