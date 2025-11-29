@@ -21,7 +21,7 @@ export class Panel {
       height: 200,
       padding: {
         top: Math.max(5, Math.floor(config.height * 0.05) || 8),
-        bottom: config.hasSharedXAxis ? 2 : Math.max(5, Math.floor(config.height * 0.05) || 8),
+        bottom: config.hasSharedXAxis ? 12 : Math.max(5, Math.floor(config.height * 0.05) || 8),
         left: 60,
         right: 20
       },
@@ -35,7 +35,7 @@ export class Panel {
 
     if (config.height) {
       this.config.padding.top = Math.max(5, Math.floor(config.height * 0.05));
-      this.config.padding.bottom = config.hasSharedXAxis ? 2 : Math.max(5, Math.floor(config.height * 0.05));
+      this.config.padding.bottom = config.hasSharedXAxis ? 12 : Math.max(5, Math.floor(config.height * 0.05));
     }
 
     this.isInitialized = false;
@@ -190,7 +190,7 @@ export class Panel {
       position: relative;
       width: 100%;
       height: ${this.config.height}px;
-      overflow: hidden;
+      overflow: visible;
       border-bottom: ${this.config.panelIndex < this.config.totalPanels - 1 ? '1px solid #eee' : 'none'};
       box-sizing: border-box;
     `;
