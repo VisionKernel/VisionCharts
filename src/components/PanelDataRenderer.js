@@ -28,6 +28,12 @@ export default class PanelDataRenderer {
       const transformedDataset = this._transformDatasetCoordinates(dataset, xScale, yScale, chartArea);
       renderer.setViewport(chartArea);
 
+      // Store scales for use in rendering methods
+      this._currentScales = {
+        x: xScale,
+        y: yScale
+      };
+
       if (dataset.isStudy || this.config.chartType === 'line') {
         await this._renderLineDataset(transformedDataset, renderer, chartArea);
       } else if (this.config.chartType === 'bar') {
@@ -52,7 +58,7 @@ export default class PanelDataRenderer {
       return;
     }
 
-    await renderer.renderLines([pathData], null, {
+    await renderer.renderLines([pathData], this._currentScales, {
       showPoints: this.config.showPoints,
       pointRadius: this.config.pointRadius,
       enableFill: transformedDataset.fill || false,

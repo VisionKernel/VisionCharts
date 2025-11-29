@@ -1,0 +1,8 @@
+  - refreshPanelMode (3 times)
+  - updateEndingLabels (2 times)
+  - toggleEndingLabels (2 times)
+  - getEndingLabelsState (2 times)
+  - _renderEndingLabels (2 times)
+  - _destroyPanels (2 times)
+  - _destroyPanelContainer (2 times)
+  - _createEndingLabels (2 times)
