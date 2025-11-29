@@ -115,8 +115,7 @@ export class Chart {
     this.endingLabels = new EndingLabels({
       fontSize: 11,
       fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
-      showBackground: true,
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
+      showBackground: false,
       formatValue: true,
       decimals: 1,
       enabled: false

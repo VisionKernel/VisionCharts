@@ -437,7 +437,7 @@ export class PanelManager {
       offsetX: 0,
       offsetY: 0,
       fontSize: 11,
-      showBackground: true,
+      showBackground: false,
       backgroundColor: 'rgba(255, 255, 255, 0.9)',
       backgroundPadding: 4,
       borderRadius: 3
@@ -855,7 +855,7 @@ export class PanelManager {
       offsetX: 0,
       offsetY: 0,
       fontSize: 11,
-      showBackground: true,
+      showBackground: false,
       backgroundColor: 'rgba(255, 255, 255, 0.9)',
       backgroundPadding: 4,
       borderRadius: 3
