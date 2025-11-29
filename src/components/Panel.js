@@ -507,40 +507,41 @@ export class Panel {
   }
 
   getDataPointsAtX(dataX) {
-    const tolerance = (this.config.sharedXScale.domain[1] - this.config.sharedXScale.domain[0]) * 0.01;
     const allPoints = [];
 
-    const datasetPoints = this.config.dataset.data.filter(p => Math.abs(p.x - dataX) < tolerance);
-    const mappedDatasetPoints = datasetPoints.map(p => ({
-      ...p,
-      pixelX: this.config.sharedXScale.scale(p.x),
-      pixelY: this.yScale.scale(p.y),
-      panelIndex: this.config.panelIndex,
-      datasetId: this.config.dataset.id,
-      dataset: this.config.dataset,
-      color: this.config.dataset.color,
-      dataX: p.x,
-      dataY: p.y
-    }));
+    // Use binary search to find single closest point for main dataset
+    const closestPoint = this._binarySearchClosest(this.config.dataset.data, dataX);
+    if (closestPoint) {
+      allPoints.push({
+        ...closestPoint,
+        pixelX: this.config.sharedXScale.scale(closestPoint.x),
+        pixelY: this.yScale.scale(closestPoint.y),
+        panelIndex: this.config.panelIndex,
+        datasetId: this.config.dataset.id,
+        dataset: this.config.dataset,
+        color: this.config.dataset.color,
+        dataX: closestPoint.x,
+        dataY: closestPoint.y
+      });
+    }
 
-    allPoints.push(...mappedDatasetPoints);
-
+    // Use binary search for studies as well
     if (this.chart && this.chart.studiesManager) {
       try {
         const panelStudies = this.chart.studiesManager.getStudiesForDataset(this.config.dataset.id);
         const visibleStudies = panelStudies.filter(study => study.visible && study.data);
 
         for (const study of visibleStudies) {
-          const studyPoints = study.data.filter(p => Math.abs(p.x - dataX) < tolerance);
+          const closestStudyPoint = this._binarySearchClosest(study.data, dataX);
 
-          for (const studyPoint of studyPoints) {
+          if (closestStudyPoint) {
             if (study.type === 'bollinger') {
               allPoints.push(
                 {
-                  x: studyPoint.x,
-                  y: studyPoint.upper,
-                  pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                  pixelY: this.yScale.scale(studyPoint.upper),
+                  x: closestStudyPoint.x,
+                  y: closestStudyPoint.upper,
+                  pixelX: this.config.sharedXScale.scale(closestStudyPoint.x),
+                  pixelY: this.yScale.scale(closestStudyPoint.upper),
                   panelIndex: this.config.panelIndex,
                   datasetId: `${study.id}_upper`,
                   dataset: {
@@ -551,14 +552,14 @@ export class Panel {
                   },
                   color: study.color,
                   isStudy: true,
-                  dataX: studyPoint.x,
-                  dataY: studyPoint.upper
+                  dataX: closestStudyPoint.x,
+                  dataY: closestStudyPoint.upper
                 },
                 {
-                  x: studyPoint.x,
-                  y: studyPoint.middle,
-                  pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                  pixelY: this.yScale.scale(studyPoint.middle),
+                  x: closestStudyPoint.x,
+                  y: closestStudyPoint.middle,
+                  pixelX: this.config.sharedXScale.scale(closestStudyPoint.x),
+                  pixelY: this.yScale.scale(closestStudyPoint.middle),
                   panelIndex: this.config.panelIndex,
                   datasetId: `${study.id}_middle`,
                   dataset: {
@@ -569,14 +570,14 @@ export class Panel {
                   },
                   color: study.color,
                   isStudy: true,
-                  dataX: studyPoint.x,
-                  dataY: studyPoint.middle
+                  dataX: closestStudyPoint.x,
+                  dataY: closestStudyPoint.middle
                 },
                 {
-                  x: studyPoint.x,
-                  y: studyPoint.lower,
-                  pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                  pixelY: this.yScale.scale(studyPoint.lower),
+                  x: closestStudyPoint.x,
+                  y: closestStudyPoint.lower,
+                  pixelX: this.config.sharedXScale.scale(closestStudyPoint.x),
+                  pixelY: this.yScale.scale(closestStudyPoint.lower),
                   panelIndex: this.config.panelIndex,
                   datasetId: `${study.id}_lower`,
                   dataset: {
@@ -587,16 +588,16 @@ export class Panel {
                   },
                   color: study.color,
                   isStudy: true,
-                  dataX: studyPoint.x,
-                  dataY: studyPoint.lower
+                  dataX: closestStudyPoint.x,
+                  dataY: closestStudyPoint.lower
                 }
               );
             } else {
               allPoints.push({
-                x: studyPoint.x,
-                y: studyPoint.y,
-                pixelX: this.config.sharedXScale.scale(studyPoint.x),
-                pixelY: this.yScale.scale(studyPoint.y),
+                x: closestStudyPoint.x,
+                y: closestStudyPoint.y,
+                pixelX: this.config.sharedXScale.scale(closestStudyPoint.x),
+                pixelY: this.yScale.scale(closestStudyPoint.y),
                 panelIndex: this.config.panelIndex,
                 datasetId: study.id,
                 dataset: {
@@ -607,8 +608,8 @@ export class Panel {
                 },
                 color: study.color,
                 isStudy: true,
-                dataX: studyPoint.x,
-                dataY: studyPoint.y
+                dataX: closestStudyPoint.x,
+                dataY: closestStudyPoint.y
               });
             }
           }
@@ -619,6 +620,95 @@ export class Panel {
     }
 
     return allPoints;
+  }
+
+  _binarySearchClosest(data, targetX) {
+    if (!data || data.length === 0) return null;
+
+    const isSorted = this._isDataSorted(data);
+
+    if (isSorted) {
+      return this._binarySearchSorted(data, targetX);
+    } else {
+      return this._linearSearchClosest(data, targetX);
+    }
+  }
+
+  _binarySearchSorted(data, targetX) {
+    let left = 0;
+    let right = data.length - 1;
+    let closest = data[0];
+    let minDistance = Math.abs(this._extractXValue(data[0]) - targetX);
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const midPoint = data[mid];
+      const midX = this._extractXValue(midPoint);
+      const distance = Math.abs(midX - targetX);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = midPoint;
+      }
+
+      if (midX < targetX) {
+        left = mid + 1;
+      } else if (midX > targetX) {
+        right = mid - 1;
+      } else {
+        return midPoint;
+      }
+    }
+
+    return closest;
+  }
+
+  _linearSearchClosest(data, targetX) {
+    let closest = null;
+    let minDistance = Infinity;
+
+    for (const point of data) {
+      const pointX = this._extractXValue(point);
+      const distance = Math.abs(pointX - targetX);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = point;
+      }
+    }
+
+    return closest;
+  }
+
+  _isDataSorted(data) {
+    if (data.length < 2) return true;
+
+    const checkCount = Math.min(10, Math.floor(data.length / 2));
+
+    for (let i = 1; i < checkCount; i++) {
+      const prevX = this._extractXValue(data[i - 1]);
+      const currX = this._extractXValue(data[i]);
+
+      if (prevX > currX) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  _extractXValue(point) {
+    const x = point.x || point.date || point.time || point.timestamp;
+
+    if (x instanceof Date) {
+      return x.getTime();
+    }
+
+    if (typeof x === 'string') {
+      return new Date(x).getTime();
+    }
+
+    return typeof x === 'number' ? x : null;
   }
 
   _renderGrid() {
