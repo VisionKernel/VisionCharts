@@ -12,6 +12,8 @@ class ThemeManager {
         this.activeTheme = this.themes.light;
         this.observers = new Set();
         this.mutationObserver = null;
+        this._mediaQueryHandler = null;
+        this._watcherCount = 0;
     }
 
     getTheme() {
@@ -99,52 +101,68 @@ class ThemeManager {
             return;
         }
 
-        this.stopWatching();
-
-        const checkAndUpdate = () => {
-            const detected = this.detectTheme();
-            if (detected !== this.activeThemeName) {
-                this.setTheme(detected);
-                if (onChange) {
-                    onChange(detected);
+        // CHANGED: Don't stop watching if others are still watching
+        this._watcherCount++;
+        
+        // Only set up the observer if it doesn't exist yet
+        if (!this.mutationObserver) {
+            console.log('ThemeManager: Setting up MutationObserver');
+            
+            const checkAndUpdate = () => {
+                const detected = this.detectTheme();
+                if (detected !== this.activeThemeName) {
+                    this.setTheme(detected);
                 }
-            }
-        };
+            };
 
-        this.mutationObserver = new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    checkAndUpdate();
-                    break;
+            this.mutationObserver = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                        checkAndUpdate();
+                        break;
+                    }
                 }
-            }
-        });
+            });
 
-        this.mutationObserver.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ['class']
-        });
-
-        if (document.body) {
-            this.mutationObserver.observe(document.body, {
+            this.mutationObserver.observe(document.documentElement, {
                 attributes: true,
                 attributeFilter: ['class']
             });
+
+            if (document.body) {
+                this.mutationObserver.observe(document.body, {
+                    attributes: true,
+                    attributeFilter: ['class']
+                });
+            }
+
+            if (window.matchMedia) {
+                const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+                this._mediaQueryHandler = () => checkAndUpdate();
+                
+                if (mediaQuery.addEventListener) {
+                    mediaQuery.addEventListener('change', this._mediaQueryHandler);
+                } else if (mediaQuery.addListener) {
+                    mediaQuery.addListener(this._mediaQueryHandler);
+                }
+            }
         }
 
-        if (window.matchMedia) {
-            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-            this._mediaQueryHandler = () => checkAndUpdate();
-            
-            if (mediaQuery.addEventListener) {
-                mediaQuery.addEventListener('change', this._mediaQueryHandler);
-            } else if (mediaQuery.addListener) {
-                mediaQuery.addListener(this._mediaQueryHandler);
-            }
+        if (onChange) {
+            this.observers.add(onChange);
         }
     }
 
     stopWatching() {
+        this._watcherCount = Math.max(0, this._watcherCount - 1);
+        
+        if (this._watcherCount > 0) {
+            console.log(`ThemeManager: ${this._watcherCount} charts still watching, keeping observer active`);
+            return;
+        }
+        
+        console.log('ThemeManager: No more watchers, disconnecting observer');
+        
         if (this.mutationObserver) {
             this.mutationObserver.disconnect();
             this.mutationObserver = null;
@@ -170,7 +188,7 @@ class ThemeManager {
             try {
                 callback(this.activeTheme, this.activeThemeName);
             } catch (error) {
-                // swallow observer errors
+                console.error('ThemeManager: Error in observer callback:', error);
             }
         }
     }
@@ -180,6 +198,7 @@ class ThemeManager {
     }
 
     destroy() {
+        this._watcherCount = 0;
         this.stopWatching();
         this.observers.clear();
     }
