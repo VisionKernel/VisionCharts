@@ -138,7 +138,10 @@ export class Chart {
       strokeWidth: 1,
       strokeOpacity: 1,
       strokeDash: [3, 3],
-      showLabel: false
+      showLabel: false,
+      labelText: '0',
+      labelPosition: 'right',
+      ...config.options?.zeroLineConfig
     });
     this.averageLine = new AverageLine({
       enabled: false,
@@ -149,7 +152,8 @@ export class Chart {
       showLabel: true,
       labelText: 'Avg',
       labelPosition: 'right',
-      useAllDatasets: true
+      useAllDatasets: true,
+      ...config.options?.averageLineConfig
     });
     this.medianLine = new MedianLine({
       enabled: false,
@@ -160,7 +164,8 @@ export class Chart {
       showLabel: true,
       labelText: 'Median',
       labelPosition: 'right',
-      useAllDatasets: true
+      useAllDatasets: true,
+      ...config.options?.medianLineConfig
     });
     this._initPromise = this._initialize();
   }
@@ -1164,6 +1169,13 @@ export class Chart {
   setMedianLineConfig(config) {
     if (this.medianLine) {
       this.medianLine.updateConfig(config);
+    }
+    return this;
+  }
+
+  setZeroLineConfig(config) {
+    if (this.zeroLine) {
+      this.zeroLine.updateConfig(config);
     }
     return this;
   }
