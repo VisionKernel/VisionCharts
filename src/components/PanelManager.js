@@ -72,10 +72,26 @@ export class PanelManager {
     this._createLegend();
     await this._createPanels();
     await this._renderPanels();
-    // Restore legend visibility from stored single-mode state
+
     if (this.legend && this.originalSingleModeState) {
       this.toggleLegend(this.originalSingleModeState.legendVisible);
     }
+
+    if (this.originalSingleModeState) {
+      if (this.originalSingleModeState.zeroLineVisible) {
+        this.toggleZeroLine(true);
+      }
+      if (this.originalSingleModeState.averageLineVisible) {
+        this.toggleAverageLine(true);
+      }
+      if (this.originalSingleModeState.medianLineVisible) {
+        this.toggleMedianLine(true);
+      }
+      if (this.originalSingleModeState.recessionLinesVisible) {
+        this.toggleRecessionLines(true);
+      }
+    }
+    
     this._setupCrosshairAndTooltip();
   }
 
@@ -88,8 +104,17 @@ export class PanelManager {
       this.endingLabels = null;
     }
 
-    // Store multi-panel legend state before destroying
-    const panelModeLegendState = this.legend?.element?.style.display ? this.legend.element.style.display !== 'none' : false;
+    const panelModeLegendState = this.legend?.element?.style.display ?
+      this.legend.element.style.display !== 'none' : false;
+
+    const panelModeZeroLineState = this.panels.length > 0 && this.panels[0].zeroLine ? 
+      this.panels[0].zeroLine.getState().enabled : false;
+    const panelModeAverageLineState = this.panels.length > 0 && this.panels[0].statisticalLines?.averageLine ? 
+      this.panels[0].statisticalLines.averageLine.getState().enabled : false;
+    const panelModeMedianLineState = this.panels.length > 0 && this.panels[0].statisticalLines?.medianLine ? 
+      this.panels[0].statisticalLines.medianLine.getState().enabled : false;
+    const panelModeRecessionLinesState = this.recessionLines ? 
+      this.recessionLines.getState().enabled : false;
 
     this.isPanelMode = false;
     this._destroyPanels();
@@ -97,9 +122,21 @@ export class PanelManager {
     this._restoreSingleModeState();
     await this._reinitializeSingleChart();
 
-    // Restore legend state from multi-panel mode
     if (this.chart.legend && panelModeLegendState !== undefined) {
       this.chart.toggleLegend(panelModeLegendState);
+    }
+
+    if (panelModeZeroLineState) {
+      this.chart.toggleZeroLine(true);
+    }
+    if (panelModeAverageLineState) {
+      this.chart.toggleAverageLine(true);
+    }
+    if (panelModeMedianLineState) {
+      this.chart.toggleMedianLine(true);
+    }
+    if (panelModeRecessionLinesState) {
+      this.chart.toggleRecessionLines(true);
     }
   }
 
@@ -140,8 +177,11 @@ export class PanelManager {
       chartArea: { ...this.chart.chartArea },
       generatedPaths: this.chart.generatedPaths ? [...this.chart.generatedPaths] : null,
       transformedData: this.chart.transformedData ? [...this.chart.transformedData] : null,
-      // Capture legend state BEFORE destroying - check element exists first, then check if not 'none'
-      legendVisible: this.chart.legend?.element ? this.chart.legend.element.style.display !== 'none' : false
+      legendVisible: this.chart.legend?.element ? this.chart.legend.element.style.display !== 'none' : false,
+      zeroLineVisible: this.chart.zeroLine?.getState().enabled ?? false,
+      averageLineVisible: this.chart.averageLine?.getState().enabled ?? false,
+      medianLineVisible: this.chart.medianLine?.getState().enabled ?? false,
+      recessionLinesVisible: this.chart.recessionLines?.getState().enabled ?? false
     };
   }
 
