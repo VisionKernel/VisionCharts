@@ -1004,7 +1004,7 @@ export class Chart {
 
   _applyTheme() {
     const theme = this.themeManager;
-    
+
     this.config.options.titleColor = theme.getColor('title');
     this.config.options.gridColor = theme.getColor('grid');
     
@@ -1040,6 +1040,11 @@ export class Chart {
     
     if (this.panelManager && this.isPanelMode) {
       this.panelManager.applyTheme(theme);
+    }
+
+    if (this.titleElement) {
+      const titleColor = theme.getColor('title') || '#333333';
+      this.titleElement.setAttribute('fill', titleColor);
     }
   }
 
