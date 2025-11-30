@@ -2,7 +2,7 @@
  * VisionCharts - A modern, high-performance JavaScript charting library
  * optimized for financial and economic data visualization.
  * 
- * @version 2.0.3
+ * @version 2.0.4
  * @license MIT
  */
 
@@ -43,7 +43,7 @@ export function createChart(type, config) {
 }
 
 // Library metadata
-export const version = '2.0.3';
+export const version = '2.0.4';
 export const name = 'VisionCharts';
 
 // Use the centralized browser support utility
