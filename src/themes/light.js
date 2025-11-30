@@ -11,9 +11,9 @@ export default {
     axis: '#666666',
     grid: '#adadadff',
     tooltip: {
-      background: '#ffffff',
-      border: '#cccccc',
-      text: '#333333'
+      background: 'rgba(0, 0, 0, 0.9)',
+      border: 'rgba(255, 255, 255, 0.2)',
+      text: '#ffffff'
     },
     legend: {
       background: 'rgba(255, 255, 255, 0.85)',
