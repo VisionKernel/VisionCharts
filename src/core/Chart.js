@@ -789,17 +789,17 @@ export class Chart {
     if (!this.zeroLine || !this.scales.x || !this.scales.y) {
       return;
     }
-    this.zeroLine.render(this.container, this.chartArea, this.scales);
+    this.zeroLine.render(this.svgOverlay, this.chartArea, this.scales);
   }
 
   _renderStatisticalLines() {
     if (this.averageLine && this.scales.x && this.scales.y) {
       this.averageLine.updateDatasets(this.config.data);
-      this.averageLine.render(this.container, this.chartArea, this.scales);
+      this.averageLine.render(this.svgOverlay, this.chartArea, this.scales);
     }
     if (this.medianLine && this.scales.x && this.scales.y) {
       this.medianLine.updateDatasets(this.config.data);
-      this.medianLine.render(this.container, this.chartArea, this.scales);
+      this.medianLine.render(this.svgOverlay, this.chartArea, this.scales);
     }
   }
 

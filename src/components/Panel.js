@@ -492,7 +492,7 @@ export class Panel {
   _renderStatisticalLines() {
     if (this.statisticalLines) {
       this.statisticalLines.updateDatasets([this.config.dataset]);
-      this.statisticalLines.render(this.panelContainer, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
+      this.statisticalLines.render(this.svgOverlay, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
     }
   }
 
@@ -502,7 +502,7 @@ export class Panel {
 
   _renderZeroLine() {
     if (this.zeroLine) {
-      this.zeroLine.render(this.panelContainer, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
+      this.zeroLine.render(this.svgOverlay, this.panelChartArea, { x: this.config.sharedXScale, y: this.yScale });
     }
   }
 

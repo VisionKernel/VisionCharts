@@ -32,6 +32,7 @@ export class AverageLine {
 
     this.isVisible = false;
     this.isRendered = false;
+    this.isEmbedded = false; // Track if rendered into existing SVG
 
     this.siblingLines = new Set();
   }
@@ -67,7 +68,14 @@ export class AverageLine {
 
     this._remove();
 
-    this._createAverageLineSVG(container, chartArea);
+    // Check if container is an SVG element
+    const isSvgContainer = container.tagName === 'svg';
+
+    if (isSvgContainer) {
+      this._renderIntoExistingSVG(container);
+    } else {
+      this._renderWithOwnSVG(container, chartArea);
+    }
 
     this._calculateAverage();
     this._renderAverageLine();
@@ -79,6 +87,30 @@ export class AverageLine {
     } else {
       this.hide();
     }
+  }
+
+  _renderIntoExistingSVG(svgContainer) {
+    this.isEmbedded = true;
+    this.svgElement = null; // No separate SVG element when embedded
+
+    // Remove any existing group from this SVG
+    const existingGroup = svgContainer.querySelector('.visioncharts-average-line-group');
+    if (existingGroup) {
+      existingGroup.remove();
+    }
+
+    // Create and append the group directly to the SVG overlay
+    this.averageLineGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.averageLineGroup.setAttribute('class', 'visioncharts-average-line-group');
+    svgContainer.appendChild(this.averageLineGroup);
+
+    // Store reference to parent SVG for cleanup
+    this._parentSvg = svgContainer;
+  }
+
+  _renderWithOwnSVG(container, chartArea) {
+    this.isEmbedded = false;
+    this._createAverageLineSVG(container, chartArea);
   }
 
   show() {
@@ -94,8 +126,16 @@ export class AverageLine {
     this.config.enabled = true;
     this.isVisible = true;
 
-    if (this.svgElement) {
-      this.svgElement.style.display = 'block';
+    if (this.isEmbedded) {
+      // When embedded, toggle the group visibility
+      if (this.averageLineGroup) {
+        this.averageLineGroup.style.display = 'block';
+      }
+    } else {
+      // When using own SVG, toggle the SVG element
+      if (this.svgElement) {
+        this.svgElement.style.display = 'block';
+      }
     }
 
     return true;
@@ -105,8 +145,14 @@ export class AverageLine {
     this.config.enabled = false;
     this.isVisible = false;
 
-    if (this.svgElement) {
-      this.svgElement.style.display = 'none';
+    if (this.isEmbedded) {
+      if (this.averageLineGroup) {
+        this.averageLineGroup.style.display = 'none';
+      }
+    } else {
+      if (this.svgElement) {
+        this.svgElement.style.display = 'none';
+      }
     }
 
     return true;
@@ -137,7 +183,8 @@ export class AverageLine {
   updateChartArea(newChartArea) {
     this.chartArea = newChartArea;
 
-    if (this.svgElement) {
+    // Only update SVG dimensions if we have our own SVG element
+    if (!this.isEmbedded && this.svgElement) {
       this.svgElement.setAttribute('width', newChartArea.width + newChartArea.x * 2);
       this.svgElement.setAttribute('height', newChartArea.height + newChartArea.y * 2);
     }
@@ -374,7 +421,15 @@ export class AverageLine {
   }
 
   _remove() {
-    if (this.svgElement && this.svgElement.parentElement) {
+    // Handle embedded mode (group inside existing SVG)
+    if (this.isEmbedded && this.averageLineGroup) {
+      if (this.averageLineGroup.parentElement) {
+        this.averageLineGroup.parentElement.removeChild(this.averageLineGroup);
+      }
+    }
+
+    // Handle standalone mode (own SVG element)
+    if (!this.isEmbedded && this.svgElement && this.svgElement.parentElement) {
       this.svgElement.parentElement.removeChild(this.svgElement);
     }
 
@@ -383,6 +438,7 @@ export class AverageLine {
     this.lineElement = null;
     this.labelElement = null;
     this.isRendered = false;
+    this._parentSvg = null;
   }
 
   destroy() {
@@ -392,6 +448,7 @@ export class AverageLine {
     this.datasets = [];
     this.currentAverage = null;
     this.isVisible = false;
+    this.isEmbedded = false;
     this.siblingLines.clear();
   }
 }
