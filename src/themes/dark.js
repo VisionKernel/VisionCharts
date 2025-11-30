@@ -7,9 +7,9 @@ export default {
     background: '#1e1e2e', // Dark background
     panel: '#313244',      // Slightly lighter for panels
     text: '#cdd6f4',       // Light text color for contrast
-    title: '#89b4fa',      // Light blue for titles
-    axis: '#a6adc8',       // Lighter color for axis
-    grid: '#45475a',       // Darker grid lines
+    title: '#ffffffff',      // Light blue for titles
+    axis: '#bfc3cfff',       // Lighter color for axis
+    grid: '#c7c7c7ff',       // Darker grid lines
     tooltip: {
       background: '#313244',
       border: '#45475a',
@@ -18,7 +18,7 @@ export default {
     legend: {
       background: 'rgba(49, 50, 68, 0.85)',
       border: '#45475a',
-      text: '#cdd6f4'
+      text: '#ffffffff'
     },
     zeroLine: {
       stroke: '#a6adc8',

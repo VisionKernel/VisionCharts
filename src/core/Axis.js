@@ -2,10 +2,13 @@ export class Axis {
   constructor(config = {}) {
     this.orientation = config.orientation || 'x';
     this.scale = config.scale;
+    this.themeManager = config.themeManager || null;
 
     if (!this.scale) {
       throw new Error('Axis requires a Scale instance');
     }
+
+    const defaultColor = this.themeManager?.getColor('axis') || '#333';
 
     this.options = {
       label: config.label || '',
@@ -14,7 +17,7 @@ export class Axis {
       tickPadding: config.tickPadding || 8,
       fontSize: config.fontSize || 12,
       fontFamily: config.fontFamily || 'Arial, sans-serif',
-      color: config.color || '#333',
+      color: config.color || defaultColor,
       strokeWidth: config.strokeWidth || 1,
       showTicks: config.showTicks !== false,
       showTickLabels: config.showTickLabels !== false,
@@ -416,6 +419,9 @@ export class Axis {
   }
 
   static createSharedXAxis(config = {}) {
+    const themeManager = config.themeManager;
+    const axisColor = themeManager?.getColor('axis') || '#666';
+    
     const sharedOptions = {
       tickCount: 'auto',
       fontSize: 11,
@@ -423,7 +429,7 @@ export class Axis {
       showAxisLine: true,
       showTicks: true,
       showTickLabels: true,
-      color: '#666',
+      color: axisColor,
       fontFamily: 'Arial, sans-serif',
       abbreviateLabels: false,
       ...config.options
@@ -432,7 +438,8 @@ export class Axis {
     return new Axis({
       orientation: 'x',
       scale: config.scale,
-      options: sharedOptions
+      options: sharedOptions,
+      themeManager: themeManager
     });
   }
 

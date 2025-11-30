@@ -7,9 +7,9 @@ export default {
     background: '#ffffff',
     panel: '#f9f9f9',
     text: '#333333',
-    title: '#1468a8',
+    title: '#111111ff',
     axis: '#666666',
-    grid: '#eeeeee',
+    grid: '#adadadff',
     tooltip: {
       background: '#ffffff',
       border: '#cccccc',

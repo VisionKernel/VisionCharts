@@ -409,3 +409,23 @@ input[type="range"] {
   max-height: 100px;
   overflow-y: auto;
 }
+
+.theme-toggle {
+  min-width: 100px;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.theme-toggle.dark-mode {
+  background-color: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+}
+
+.theme-toggle.dark-mode:hover {
+  background-color: #313244;
+}
+
+.chart-container.dark-mode {
+  background-color: #1e1e2e;
+  border-color: #45475a;
+}

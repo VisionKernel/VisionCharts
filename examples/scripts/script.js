@@ -315,6 +315,7 @@ async function initBarChart() {
     }
 
     updateStudyDatasetDropdowns();
+    setupBarThemeToggle();
   } catch (error) {
     console.error('Error initializing bar chart:', error);
     handleError('bar-chart', error);
@@ -622,6 +623,52 @@ function setupBarChartControls() {
         barPanelToggle.classList.remove('active');
         alert('Error switching panel mode. Please try again.');
       }
+    });
+  }
+}
+
+function setupLineThemeToggle() {
+  const lineThemeBtn = document.getElementById('line-toggle-theme');
+  const lineChartContainer = document.getElementById('line-chart');
+
+  if (lineThemeBtn && lineChart) {
+    const currentTheme = lineChart.getThemeName();
+    lineThemeBtn.textContent = currentTheme === 'dark' ? 'Dark' : 'Light';
+    lineThemeBtn.classList.toggle('dark-mode', currentTheme === 'dark');
+    lineChartContainer.classList.toggle('dark-mode', currentTheme === 'dark');
+    
+    lineThemeBtn.addEventListener('click', () => {
+      const isDark = lineChart.getThemeName() === 'dark';
+      const newTheme = isDark ? 'light' : 'dark';
+      
+      lineChart.setTheme(newTheme);
+      
+      lineThemeBtn.textContent = newTheme === 'dark' ? 'Dark' : 'Light';
+      lineThemeBtn.classList.toggle('dark-mode', newTheme === 'dark');
+      lineChartContainer.classList.toggle('dark-mode', newTheme === 'dark');
+    });
+  }
+}
+
+function setupBarThemeToggle() {
+  const barThemeBtn = document.getElementById('bar-toggle-theme');
+  const barChartContainer = document.getElementById('bar-chart');
+
+  if (barThemeBtn && barChart) {
+    const currentTheme = barChart.getThemeName();
+    barThemeBtn.textContent = currentTheme === 'dark' ? 'Dark' : 'Light';
+    barThemeBtn.classList.toggle('dark-mode', currentTheme === 'dark');
+    barChartContainer.classList.toggle('dark-mode', currentTheme === 'dark');
+    
+    barThemeBtn.addEventListener('click', () => {
+      const isDark = barChart.getThemeName() === 'dark';
+      const newTheme = isDark ? 'light' : 'dark';
+      
+      barChart.setTheme(newTheme);
+      
+      barThemeBtn.textContent = newTheme === 'dark' ? 'Dark' : 'Light';
+      barThemeBtn.classList.toggle('dark-mode', newTheme === 'dark');
+      barChartContainer.classList.toggle('dark-mode', newTheme === 'dark');
     });
   }
 }
@@ -972,6 +1019,7 @@ async function initializeCharts() {
     setupTabs();
     await initLineChart();
     initStudyControls();
+    setupLineThemeToggle();
   } catch (error) {
     console.error('Failed to initialize charts:', error);
     const errorDiv = document.createElement('div');

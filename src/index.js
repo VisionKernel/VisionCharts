@@ -25,6 +25,11 @@ export {
   BrowserSupport
 } from './utils/BrowserSupport.js';
 
+// Theme Support
+export { themeManager, ThemeManager } from './themes/ThemeManager.js';
+export { default as lightTheme } from './themes/light.js';
+export { default as darkTheme } from './themes/dark.js';
+
 // Convenience function to create charts with automatic renderer selection
 export function createChart(type, config) {
   switch (type.toLowerCase()) {

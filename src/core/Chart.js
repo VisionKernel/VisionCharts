@@ -5,6 +5,7 @@ import { Grid } from '../components/Grid.js';
 import CanvasRenderer from '../renderers/CanvasRenderer.js';
 import WebGLRenderer from '../renderers/WebGLRenderer.js';
 import { PanelManager } from '../components/PanelManager.js';
+import { themeManager } from '../themes/ThemeManager.js';
 import { CoordinateSystem } from '../utils/CoordinateSystem.js';
 import { DataProcessor } from '../utils/DataProcessor.js';
 import { PathGenerator } from '../utils/PathGenerator.js';
@@ -22,6 +23,15 @@ import { StudiesRenderer } from '../components/StudiesRenderer.js';
 export class Chart {
   constructor(config = {}) {
     this.container = this._resolveContainer(config.container);
+    this.themeManager = config.themeManager || themeManager;
+    if (config.theme) {
+      this.themeManager.setTheme(config.theme);
+    } else if (config.autoDetectTheme === true) {
+      this.themeManager.autoDetect();
+    } else {
+      this.themeManager.setTheme('light');  // Default to light
+    }
+    this._themeUnsubscribe = null;
     this.config = {
       data: config.data || [],
       legend: {
@@ -43,12 +53,12 @@ export class Chart {
         titleFontSize: 16,
         titleFontFamily: 'Arial, sans-serif',
         titleFontWeight: 'bold',
-        titleColor: '#333333',
+        titleColor: config.options?.titleColor || this.themeManager.getColor('title') || '#333333',
         titlePadding: 10,
         showGrid: true,
         showXGrid: true,
         showYGrid: true,
-        gridColor: '#e0e0e0',
+        gridColor: config.options?.gridColor || this.themeManager.getColor('grid') || '#e0e0e0',
         gridOpacity: 0.7,
         gridDash: [],
         showRecessionLines: false,
@@ -98,19 +108,20 @@ export class Chart {
     this.legend = new Legend({
       fontSize: 12,
       fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
-      textColor: '#333333',
+      textColor: this.themeManager.getColor('legend.text') || '#333333',
       itemSpacing: 30,
       marginTop: 15,
       marginBottom: 15,
       studyFontSize: 10,
-      studyTextColor: '#666666',
+      studyTextColor: this.themeManager.getColor('text') || '#666666',
       studyIndicatorSize: 6,
       studySeparator: ' • ',
       studySpacing: 4,
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      border: '1px solid #e0e0e0',
+      backgroundColor: this.themeManager.getColor('legend.background') || 'rgba(255, 255, 255, 0.9)',
+      border: `1px solid ${this.themeManager.getColor('legend.border') || '#e0e0e0'}`,
       borderRadius: 4,
-      padding: 8
+      padding: 8,
+      themeManager: this.themeManager
     });
     this.endingLabels = new EndingLabels({
       fontSize: 11,
@@ -483,18 +494,20 @@ export class Chart {
     if (!this.scales.x || !this.scales.y) {
       return;
     }
+    const gridColor = this.config.options.gridColor || this.themeManager.getColor('grid') || '#e0e0e0';
     this.grid = new Grid({
       xScale: this.scales.x,
       yScale: this.scales.y,
       chartArea: this.chartArea,
       showXGrid: this.config.options.showXGrid && this.config.options.showGrid,
       showYGrid: this.config.options.showYGrid && this.config.options.showGrid,
-      xGridColor: this.config.options.gridColor,
-      yGridColor: this.config.options.gridColor,
+      xGridColor: gridColor,
+      yGridColor: gridColor,
       xGridOpacity: this.config.options.gridOpacity,
       yGridOpacity: this.config.options.gridOpacity,
       xGridDash: this.config.options.gridDash,
-      yGridDash: this.config.options.gridDash
+      yGridDash: this.config.options.gridDash,
+      themeManager: this.themeManager
     });
   }
 
@@ -502,13 +515,14 @@ export class Chart {
     if (!this.scales.x || !this.scales.y) {
       return;
     }
+    const axisColor = this.themeManager.getColor('axis') || '#333';
     this.axes.x = new Axis({
       orientation: 'x',
       scale: this.scales.x,
       options: {
         label: this.config.options.xAxisName,
         fontSize: 12,
-        color: '#333'
+        color: axisColor
       }
     });
     this.axes.y = new Axis({
@@ -517,8 +531,9 @@ export class Chart {
       options: {
         label: this.config.options.yAxisName,
         fontSize: 12,
-        color: '#333'
-      }
+        color: axisColor
+      },
+      themeManager: this.themeManager
     });
   }
 
@@ -629,7 +644,7 @@ export class Chart {
     this.titleElement.setAttribute('font-size', this.config.options.titleFontSize);
     this.titleElement.setAttribute('font-family', this.config.options.titleFontFamily);
     this.titleElement.setAttribute('font-weight', this.config.options.titleFontWeight);
-    this.titleElement.setAttribute('fill', this.config.options.titleColor);
+    this.titleElement.setAttribute('fill', this.config.options.titleColor || this.themeManager.getColor('title') || '#333333');
     this.titleElement.setAttribute('class', 'chart-title');
     this.titleElement.textContent = this.config.options.title;
     this.svgOverlay.appendChild(this.titleElement);
@@ -960,6 +975,72 @@ export class Chart {
     }
     await this._initializeRenderer();
     await this.render();
+  }
+
+  setTheme(themeName) {
+    if (this.themeManager.setTheme(themeName)) {
+      this._applyTheme();
+      this.render();
+    }
+    return this;
+  }
+
+  getThemeName() {
+    return this.themeManager.getThemeName();
+  }
+
+  watchTheme() {
+    this.themeManager.watchForChanges(() => {
+      this._applyTheme();
+      this.render();
+    });
+    return this;
+  }
+
+  stopWatchingTheme() {
+    this.themeManager.stopWatching();
+    return this;
+  }
+
+  _applyTheme() {
+    const theme = this.themeManager;
+    
+    this.config.options.titleColor = theme.getColor('title');
+    this.config.options.gridColor = theme.getColor('grid');
+    
+    const axisColor = theme.getColor('axis');
+    if (this.axes.x) {
+      this.axes.x.updateOptions({ color: axisColor });
+    }
+    if (this.axes.y) {
+      this.axes.y.updateOptions({ color: axisColor });
+    }
+    
+    if (this.grid) {
+      const gridColor = theme.getColor('grid');
+      this.grid.setGridColor(gridColor);
+    }
+    
+    if (this.legend) {
+      this.legend.updateThemeColors({
+        textColor: theme.getColor('legend.text'),
+        studyTextColor: theme.getColor('text'),
+        backgroundColor: theme.getColor('legend.background'),
+        border: `1px solid ${theme.getColor('legend.border')}`
+      });
+    }
+    
+    if (this.tooltip) {
+      this.tooltip.updateConfig({
+        backgroundColor: theme.getColor('tooltip.background'),
+        textColor: theme.getColor('tooltip.text'),
+        borderColor: theme.getColor('tooltip.border')
+      });
+    }
+    
+    if (this.panelManager && this.isPanelMode) {
+      this.panelManager.applyTheme(theme);
+    }
   }
 
   setTitle(title) {
@@ -1352,6 +1433,10 @@ export class Chart {
     }
     this._isDestroying = true;
     try {
+      if (this._themeUnsubscribe) {
+        this._themeUnsubscribe();
+      }
+      this.themeManager.stopWatching();
       if (this.legend) {
         this.legend.destroy?.();
         this.legend = null;

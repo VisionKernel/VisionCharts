@@ -1,17 +1,23 @@
 export class CrosshairTooltip {
   constructor(config = {}) {
+    this.themeManager = config.themeManager || null;
+    
+    const themeBgColor = this.themeManager?.getColor('tooltip.background') || 'rgba(0, 0, 0, 0.9)';
+    const themeTextColor = this.themeManager?.getColor('tooltip.text') || '#ffffff';
+    const themeBorderColor = this.themeManager?.getColor('tooltip.border') || 'rgba(255, 255, 255, 0.2)';
+
     this.config = {
       offsetX: 15,
       offsetY: -10,
       container: null,
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      backgroundColor: config.backgroundColor || themeBgColor,
       borderRadius: 6,
       padding: 12,
       fontSize: 12,
       fontFamily: 'Arial, sans-serif',
-      textColor: '#ffffff',
-      headerColor: '#ffffff',
-      borderColor: 'rgba(255, 255, 255, 0.2)',
+      textColor: config.textColor || themeTextColor,
+      headerColor: config.headerColor || themeTextColor,
+      borderColor: config.borderColor || themeBorderColor,
       dateFormat: 'medium',
       valueDecimals: 2,
       showValueChange: false,

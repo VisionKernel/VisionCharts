@@ -7,6 +7,7 @@ import { Legend } from './Legend.js';
 import { Crosshair } from './Crosshair.js';
 import { CrosshairTooltip } from './CrosshairTooltip.js';
 import { RecessionLines } from './RecessionLines.js';
+import themeManager from '../themes/ThemeManager.js';
 
 export class PanelManager {
   constructor(chart) {
@@ -238,7 +239,8 @@ export class PanelManager {
         labelPadding: 20,
         tickCount: Math.min(8, Math.max(4, Math.floor(this.chart.container.offsetWidth / 100))),
         tickFormat: this.chart.config.options.xType === 'time' ? 'time' : 'number'
-      }
+      },
+      themeManager: this.chart.themeManager
     });
   }
 
@@ -369,20 +371,22 @@ export class PanelManager {
     titleElement.setAttribute('font-size', this.chart.config.options.titleFontSize);
     titleElement.setAttribute('font-family', this.chart.config.options.titleFontFamily);
     titleElement.setAttribute('font-weight', this.chart.config.options.titleFontWeight);
-    titleElement.setAttribute('fill', this.chart.config.options.titleColor);
+    titleElement.setAttribute('fill', this.chart.config.options.titleColor || this.chart.themeManager?.getColor('title') || '#333333');
     titleElement.setAttribute('class', 'chart-title panel-mode');
     titleElement.textContent = this.chart.config.options.title;
     this.panelSvgOverlay.appendChild(titleElement);
   }
 
   _createLegend() {
+    const themeManager = this.chart.themeManager;
     this.legend = new Legend({
       fontSize: 12,
       fontFamily: this.chart.config.options.titleFontFamily || 'Arial, sans-serif',
-      textColor: '#333333',
+      textColor: themeManager?.getColor('legend.text') || '#333333',
       itemSpacing: 25,
       marginTop: 15,
-      marginBottom: 15
+      marginBottom: 15,
+      themeManager: themeManager
     });
   }
 
@@ -469,6 +473,37 @@ export class PanelManager {
       height: panelAreaHeight - this.chart.config.options.margin.top
     };
     this.recessionLines.render(this.panelContainer, fullPanelArea, { x: this.sharedXScale });
+  }
+
+  applyTheme(themeManager) {
+    if (this.legend) {
+      this.legend.updateThemeColors({
+        textColor: themeManager.getColor('legend.text'),
+        studyTextColor: themeManager.getColor('text'),
+        backgroundColor: themeManager.getColor('legend.background'),
+        border: `1px solid ${themeManager.getColor('legend.border')}`
+      });
+    }
+    
+    if (this.sharedXAxis) {
+      this.sharedXAxis.updateOptions({
+        color: themeManager.getColor('axis')
+      });
+    }
+    
+    if (this.panels) {
+      const axisColor = themeManager.getColor('axis');
+      const gridColor = themeManager.getColor('grid');
+      
+      for (const panel of this.panels) {
+        if (panel.yAxis) {
+          panel.yAxis.updateOptions({ color: axisColor });
+        }
+        if (panel.grid) {
+          panel.grid.setGridColor(gridColor);
+        }
+      }
+    }
   }
 
   _collectAllPanelEndpoints() {
