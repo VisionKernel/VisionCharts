@@ -12,7 +12,7 @@ export class MedianLine {
       showLabel: true,
       labelText: 'Median',
       labelOffset: -70,
-      labelVerticalOffset: 12,
+      labelVerticalOffset: -12,
       labelColor: '#9C27B0',
       labelFontSize: 11,
       labelPosition: 'right',
@@ -32,6 +32,7 @@ export class MedianLine {
 
     this.isVisible = false;
     this.isRendered = false;
+    this.isEmbedded = false; // Track if rendered into existing SVG
 
     this.siblingLines = new Set();
   }
@@ -50,6 +51,7 @@ export class MedianLine {
 
     if (this.isRendered) {
       this._renderMedianLine();
+
       if (this.config.enabled) {
         this.show();
       }
@@ -65,7 +67,15 @@ export class MedianLine {
     this.scales = scales;
 
     this._remove();
-    this._createMedianLineSVG(container, chartArea);
+
+    // Check if container is an SVG element
+    const isSvgContainer = container.tagName === 'svg';
+
+    if (isSvgContainer) {
+      this._renderIntoExistingSVG(container);
+    } else {
+      this._renderWithOwnSVG(container, chartArea);
+    }
 
     this._calculateMedian();
     this._renderMedianLine();
@@ -77,6 +87,30 @@ export class MedianLine {
     } else {
       this.hide();
     }
+  }
+
+  _renderIntoExistingSVG(svgContainer) {
+    this.isEmbedded = true;
+    this.svgElement = null; // No separate SVG element when embedded
+
+    // Remove any existing group from this SVG
+    const existingGroup = svgContainer.querySelector('.visioncharts-median-line-group');
+    if (existingGroup) {
+      existingGroup.remove();
+    }
+
+    // Create and append the group directly to the SVG overlay
+    this.medianLineGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.medianLineGroup.setAttribute('class', 'visioncharts-median-line-group');
+    svgContainer.appendChild(this.medianLineGroup);
+
+    // Store reference to parent SVG for cleanup
+    this._parentSvg = svgContainer;
+  }
+
+  _renderWithOwnSVG(container, chartArea) {
+    this.isEmbedded = false;
+    this._createMedianLineSVG(container, chartArea);
   }
 
   show() {
@@ -92,8 +126,16 @@ export class MedianLine {
     this.config.enabled = true;
     this.isVisible = true;
 
-    if (this.svgElement) {
-      this.svgElement.style.display = 'block';
+    if (this.isEmbedded) {
+      // When embedded, toggle the group visibility
+      if (this.medianLineGroup) {
+        this.medianLineGroup.style.display = 'block';
+      }
+    } else {
+      // When using own SVG, toggle the SVG element
+      if (this.svgElement) {
+        this.svgElement.style.display = 'block';
+      }
     }
 
     return true;
@@ -103,8 +145,14 @@ export class MedianLine {
     this.config.enabled = false;
     this.isVisible = false;
 
-    if (this.svgElement) {
-      this.svgElement.style.display = 'none';
+    if (this.isEmbedded) {
+      if (this.medianLineGroup) {
+        this.medianLineGroup.style.display = 'none';
+      }
+    } else {
+      if (this.svgElement) {
+        this.svgElement.style.display = 'none';
+      }
     }
 
     return true;
@@ -134,7 +182,8 @@ export class MedianLine {
   updateChartArea(newChartArea) {
     this.chartArea = newChartArea;
 
-    if (this.svgElement) {
+    // Only update SVG dimensions if we have our own SVG element
+    if (!this.isEmbedded && this.svgElement) {
       this.svgElement.setAttribute('width', newChartArea.width + newChartArea.x * 2);
       this.svgElement.setAttribute('height', newChartArea.height + newChartArea.y * 2);
     }
@@ -371,7 +420,15 @@ export class MedianLine {
   }
 
   _remove() {
-    if (this.svgElement && this.svgElement.parentElement) {
+    // Handle embedded mode (group inside existing SVG)
+    if (this.isEmbedded && this.medianLineGroup) {
+      if (this.medianLineGroup.parentElement) {
+        this.medianLineGroup.parentElement.removeChild(this.medianLineGroup);
+      }
+    }
+
+    // Handle standalone mode (own SVG element)
+    if (!this.isEmbedded && this.svgElement && this.svgElement.parentElement) {
       this.svgElement.parentElement.removeChild(this.svgElement);
     }
 
@@ -380,6 +437,7 @@ export class MedianLine {
     this.lineElement = null;
     this.labelElement = null;
     this.isRendered = false;
+    this._parentSvg = null;
   }
 
   destroy() {
@@ -389,6 +447,7 @@ export class MedianLine {
     this.datasets = [];
     this.currentMedian = null;
     this.isVisible = false;
+    this.isEmbedded = false;
     this.siblingLines.clear();
   }
 }

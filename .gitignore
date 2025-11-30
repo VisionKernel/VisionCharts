@@ -5,6 +5,9 @@ yarn-error.log
 yarn-debug.log
 yarn.lock
 
+#claude file
+CLAUDE.md
+
 # Build files
 dist/
 build/

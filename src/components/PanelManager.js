@@ -7,6 +7,7 @@ import { Legend } from './Legend.js';
 import { Crosshair } from './Crosshair.js';
 import { CrosshairTooltip } from './CrosshairTooltip.js';
 import { RecessionLines } from './RecessionLines.js';
+import themeManager from '../themes/ThemeManager.js';
 
 export class PanelManager {
   constructor(chart) {
@@ -35,8 +36,8 @@ export class PanelManager {
     }
     try {
       if (newPanelMode) {
+        this.isPanelMode = true;  // Set BEFORE switching so toggleLegend works
         await this._switchToPanelMode();
-        this.isPanelMode = true;
       } else {
         await this._switchToSingleMode();
       }
@@ -58,32 +59,6 @@ export class PanelManager {
     };
   }
 
-  async refreshPanelMode() {
-    if (!this.isPanelMode) return;
-    try {
-      const previousEndingLabelsState = this.panels.length > 0 ? this.panels[0].getEndingLabelsState()?.isVisible : false;
-      this._destroyCrosshairAndTooltip();
-      this._destroyPanels();
-      this._destroyPanelContainer();
-      if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
-        return;
-      }
-      await this.chart._processData();
-      this._createSharedXScale();
-      this._createSharedXAxis();
-      this._createPanelContainer();
-      this._renderPanelModeTitle();
-      if (previousEndingLabelsState) {
-        this.toggleEndingLabels(true);
-      }
-      await this._createPanels();
-      await this._renderPanels();
-      this._setupCrosshairAndTooltip();
-    } catch (error) {
-      throw error;
-    }
-  }
-
   async _switchToPanelMode() {
     if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length <= 1) {
       throw new Error('Panel mode requires multiple datasets');
@@ -97,12 +72,26 @@ export class PanelManager {
     this._createLegend();
     await this._createPanels();
     await this._renderPanels();
-    if (this.legend) {
-      const singleModeLegendState = this.chart.legend && this.chart.legend.element
-        ? this.chart.legend.element.style.display !== 'none'
-        : true;
-      this.toggleLegend(singleModeLegendState);
+
+    if (this.legend && this.originalSingleModeState) {
+      this.toggleLegend(this.originalSingleModeState.legendVisible);
     }
+
+    if (this.originalSingleModeState) {
+      if (this.originalSingleModeState.zeroLineVisible) {
+        this.toggleZeroLine(true);
+      }
+      if (this.originalSingleModeState.averageLineVisible) {
+        this.toggleAverageLine(true);
+      }
+      if (this.originalSingleModeState.medianLineVisible) {
+        this.toggleMedianLine(true);
+      }
+      if (this.originalSingleModeState.recessionLinesVisible) {
+        this.toggleRecessionLines(true);
+      }
+    }
+    
     this._setupCrosshairAndTooltip();
   }
 
@@ -114,11 +103,41 @@ export class PanelManager {
       }
       this.endingLabels = null;
     }
+
+    const panelModeLegendState = this.legend?.element?.style.display ?
+      this.legend.element.style.display !== 'none' : false;
+
+    const panelModeZeroLineState = this.panels.length > 0 && this.panels[0].zeroLine ? 
+      this.panels[0].zeroLine.getState().enabled : false;
+    const panelModeAverageLineState = this.panels.length > 0 && this.panels[0].statisticalLines?.averageLine ? 
+      this.panels[0].statisticalLines.averageLine.getState().enabled : false;
+    const panelModeMedianLineState = this.panels.length > 0 && this.panels[0].statisticalLines?.medianLine ? 
+      this.panels[0].statisticalLines.medianLine.getState().enabled : false;
+    const panelModeRecessionLinesState = this.recessionLines ? 
+      this.recessionLines.getState().enabled : false;
+
     this.isPanelMode = false;
     this._destroyPanels();
     this._restoreContainerForSingleMode();
     this._restoreSingleModeState();
     await this._reinitializeSingleChart();
+
+    if (this.chart.legend && panelModeLegendState !== undefined) {
+      this.chart.toggleLegend(panelModeLegendState);
+    }
+
+    if (panelModeZeroLineState) {
+      this.chart.toggleZeroLine(true);
+    }
+    if (panelModeAverageLineState) {
+      this.chart.toggleAverageLine(true);
+    }
+    if (panelModeMedianLineState) {
+      this.chart.toggleMedianLine(true);
+    }
+    if (panelModeRecessionLinesState) {
+      this.chart.toggleRecessionLines(true);
+    }
   }
 
   _restoreContainerForSingleMode() {
@@ -157,7 +176,12 @@ export class PanelManager {
       axes: { ...this.chart.axes },
       chartArea: { ...this.chart.chartArea },
       generatedPaths: this.chart.generatedPaths ? [...this.chart.generatedPaths] : null,
-      transformedData: this.chart.transformedData ? [...this.chart.transformedData] : null
+      transformedData: this.chart.transformedData ? [...this.chart.transformedData] : null,
+      legendVisible: this.chart.legend?.element ? this.chart.legend.element.style.display !== 'none' : false,
+      zeroLineVisible: this.chart.zeroLine?.getState().enabled ?? false,
+      averageLineVisible: this.chart.averageLine?.getState().enabled ?? false,
+      medianLineVisible: this.chart.medianLine?.getState().enabled ?? false,
+      recessionLinesVisible: this.chart.recessionLines?.getState().enabled ?? false
     };
   }
 
@@ -255,7 +279,8 @@ export class PanelManager {
         labelPadding: 20,
         tickCount: Math.min(8, Math.max(4, Math.floor(this.chart.container.offsetWidth / 100))),
         tickFormat: this.chart.config.options.xType === 'time' ? 'time' : 'number'
-      }
+      },
+      themeManager: this.chart.themeManager
     });
   }
 
@@ -386,20 +411,22 @@ export class PanelManager {
     titleElement.setAttribute('font-size', this.chart.config.options.titleFontSize);
     titleElement.setAttribute('font-family', this.chart.config.options.titleFontFamily);
     titleElement.setAttribute('font-weight', this.chart.config.options.titleFontWeight);
-    titleElement.setAttribute('fill', this.chart.config.options.titleColor);
+    titleElement.setAttribute('fill', this.chart.config.options.titleColor || this.chart.themeManager?.getColor('title') || '#333333');
     titleElement.setAttribute('class', 'chart-title panel-mode');
     titleElement.textContent = this.chart.config.options.title;
     this.panelSvgOverlay.appendChild(titleElement);
   }
 
   _createLegend() {
+    const themeManager = this.chart.themeManager;
     this.legend = new Legend({
       fontSize: 12,
       fontFamily: this.chart.config.options.titleFontFamily || 'Arial, sans-serif',
-      textColor: '#333333',
+      textColor: themeManager?.getColor('legend.text') || '#333333',
       itemSpacing: 25,
       marginTop: 15,
-      marginBottom: 15
+      marginBottom: 15,
+      themeManager: themeManager
     });
   }
 
@@ -454,7 +481,7 @@ export class PanelManager {
       offsetX: 0,
       offsetY: 0,
       fontSize: 11,
-      showBackground: true,
+      showBackground: false,
       backgroundColor: 'rgba(255, 255, 255, 0.9)',
       backgroundPadding: 4,
       borderRadius: 3
@@ -486,6 +513,37 @@ export class PanelManager {
       height: panelAreaHeight - this.chart.config.options.margin.top
     };
     this.recessionLines.render(this.panelContainer, fullPanelArea, { x: this.sharedXScale });
+  }
+
+  applyTheme(themeManager) {
+    if (this.legend) {
+      this.legend.updateThemeColors({
+        textColor: themeManager.getColor('legend.text'),
+        studyTextColor: themeManager.getColor('text'),
+        backgroundColor: themeManager.getColor('legend.background'),
+        border: `1px solid ${themeManager.getColor('legend.border')}`
+      });
+    }
+    
+    if (this.sharedXAxis) {
+      this.sharedXAxis.updateOptions({
+        color: themeManager.getColor('axis')
+      });
+    }
+    
+    if (this.panels) {
+      const axisColor = themeManager.getColor('axis');
+      const gridColor = themeManager.getColor('grid');
+      
+      for (const panel of this.panels) {
+        if (panel.yAxis) {
+          panel.yAxis.updateOptions({ color: axisColor });
+        }
+        if (panel.grid) {
+          panel.grid.setGridColor(gridColor);
+        }
+      }
+    }
   }
 
   _collectAllPanelEndpoints() {
@@ -593,38 +651,6 @@ export class PanelManager {
       panelCount: this.panels.length,
       mode: 'panel'
     };
-  }
-
-  async refreshPanelMode() {
-    if (!this.isPanelMode) return;
-    try {
-      const previousLegendState = this.isLegendVisible();
-      const previousEndingLabelsState = this.panels.length > 0 ?
-        this.panels[0].getEndingLabelsState()?.isVisible : false;
-      this._destroyCrosshairAndTooltip();
-      this._destroyPanels();
-      this._destroyPanelContainer();
-      if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
-        return;
-      }
-      await this.chart._processData();
-      this._createSharedXScale();
-      this._createSharedXAxis();
-      this._createPanelContainer();
-      this._renderPanelModeTitle();
-      this._createLegend();
-      if (previousEndingLabelsState) {
-        this.toggleEndingLabels(true);
-      }
-      await this._createPanels();
-      await this._renderPanels();
-      if (this.legend && previousLegendState !== this.isLegendVisible()) {
-        this.toggleLegend(previousLegendState);
-      }
-      this._setupCrosshairAndTooltip();
-    } catch (error) {
-      throw error;
-    }
   }
 
   _destroyPanels() {
@@ -791,8 +817,12 @@ export class PanelManager {
       mouseX > this.chart.chartArea.x + this.chart.chartArea.width ||
       mouseY < this.chart.chartArea.y ||
       mouseY > this.chart.chartArea.y + this.chart.chartArea.height) {
-      this.crosshair.hide();
-      this.tooltip.hide();
+      if (this.crosshair) {
+        this.crosshair.hide();
+      }
+      if (this.tooltip) {
+        this.tooltip.hide();
+      }
       return;
     }
     const dataX = this.sharedXScale.invert(mouseX);
@@ -811,22 +841,30 @@ export class PanelManager {
           uniquePoints.push(point);
         }
       }
-      this.crosshair.show();
-      this.crosshair.updatePosition(mouseX, mouseY);
-      this.crosshair.updateHighlights(uniquePoints.map(p => {
-        const panel = this.panels[p.panelIndex];
-        const panelTopOffset = p.panelIndex * panel.config.height;
-        const y = panelTopOffset + p.pixelY;
-        return { ...p, unifiedX: p.pixelX, unifiedY: y };
-      }));
-      this.tooltip.show(
-        uniquePoints,
-        event.clientX,
-        event.clientY
-      );
+      if (this.crosshair) {
+        this.crosshair.show();
+        this.crosshair.updatePosition(mouseX, mouseY);
+        this.crosshair.updateHighlights(uniquePoints.map(p => {
+          const panel = this.panels[p.panelIndex];
+          const panelTopOffset = p.panelIndex * panel.config.height;
+          const y = panelTopOffset + p.pixelY;
+          return { ...p, unifiedX: p.pixelX, unifiedY: y };
+        }));
+      }
+      if (this.tooltip) {
+        this.tooltip.show(
+          uniquePoints,
+          event.clientX,
+          event.clientY
+        );
+      }
     } else {
-      this.crosshair.hide();
-      this.tooltip.hide();
+      if (this.crosshair) {
+        this.crosshair.hide();
+      }
+      if (this.tooltip) {
+        this.tooltip.hide();
+      }
     }
   }
 
@@ -892,7 +930,7 @@ export class PanelManager {
       offsetX: 0,
       offsetY: 0,
       fontSize: 11,
-      showBackground: true,
+      showBackground: false,
       backgroundColor: 'rgba(255, 255, 255, 0.9)',
       backgroundPadding: 4,
       borderRadius: 3
@@ -997,22 +1035,42 @@ export class PanelManager {
   async refreshPanelMode() {
     if (!this.isPanelMode) return;
     try {
+      // Preserve UI state before destroying panels
+      const previousLegendState = this.isLegendVisible();
       const previousEndingLabelsState = this.endingLabels ? this.endingLabels.isVisible : false;
+
+      // Destroy existing panel components
+      this._destroyCrosshairAndTooltip();
       this._destroyPanels();
       this._destroyPanelContainer();
+
       if (!Array.isArray(this.chart.config.data) || this.chart.config.data.length === 0) {
         return;
       }
+
+      // Recreate panel structure
       await this.chart._processData();
       this._createSharedXScale();
       this._createSharedXAxis();
       this._createPanelContainer();
       this._renderPanelModeTitle();
+
+      // Restore ending labels state
       if (previousEndingLabelsState && this.endingLabels) {
         this.endingLabels.config.enabled = true;
       }
+
+      // Create and render panels
       await this._createPanels();
       await this._renderPanels();
+
+      // Restore legend state if it changed
+      if (this.legend && previousLegendState !== this.isLegendVisible()) {
+        this.toggleLegend(previousLegendState);
+      }
+
+      // Setup interactive components
+      this._setupCrosshairAndTooltip();
     } catch (error) {
       throw error;
     }

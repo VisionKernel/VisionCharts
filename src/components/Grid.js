@@ -1,5 +1,9 @@
 export class Grid {
   constructor(config = {}) {
+    this.themeManager = config.themeManager || null;
+    
+    const themeGridColor = this.themeManager?.getColor('grid') || '#e0e0e0';
+
     this.scales = {
       x: config.xScale || null,
       y: config.yScale || null
@@ -10,11 +14,11 @@ export class Grid {
     this.options = {
       showXGrid: config.showXGrid !== false,
       showYGrid: config.showYGrid !== false,
-      xGridColor: config.xGridColor || '#e0e0e0',
+      xGridColor: config.xGridColor || themeGridColor,
       xGridWidth: config.xGridWidth || 1,
       xGridOpacity: config.xGridOpacity || 1,
       xGridDash: config.xGridDash || [],
-      yGridColor: config.yGridColor || '#e0e0e0',
+      yGridColor: config.yGridColor || themeGridColor,
       yGridWidth: config.yGridWidth || 1,
       yGridOpacity: config.yGridOpacity || 1,
       yGridDash: config.yGridDash || [],

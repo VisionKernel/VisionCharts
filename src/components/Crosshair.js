@@ -7,7 +7,7 @@ export class Crosshair {
       lineDash: [2, 2],
       highlightRadius: 3,
       highlightStrokeWidth: 2,
-      highlightStroke: '#ffffff',
+      highlightStroke: config.highlightStroke || (config.themeManager?.isDarkMode() ? '#333' : '#fff'),
       highlightOpacity: 1.0,
       enabled: true,
       ...config

@@ -103,6 +103,12 @@ export default class CanvasRenderer extends AbstractRenderer {
     const vertices = pathData.vertices;
     if (vertices.length < 2) return;
 
+    // Save context state to isolate each fill operation
+    ctx.save();
+
+    // Explicitly set globalAlpha to 1.0 to ensure opacity is only controlled by fillStyle
+    ctx.globalAlpha = 1.0;
+
     const fillColor = pathData.color || '#1468a8';
     const fillOpacity = pathData.fillOpacity || options.fillOpacity || 0.3;
     const colorMatch = fillColor.match(/rgba?\(([^)]+)\)/);
@@ -141,6 +147,9 @@ export default class CanvasRenderer extends AbstractRenderer {
     ctx.lineTo(firstPointConverted.x, chartBottom);
     ctx.closePath();
     ctx.fill();
+
+    // Restore context state after fill operation
+    ctx.restore();
   }
 
   async _renderUnifiedPath(ctx, pathData, options, pathIndex) {

@@ -1,5 +1,12 @@
 export class Legend {
   constructor(config = {}) {
+    this.themeManager = config.themeManager || null;
+
+    const themeTextColor = this.themeManager?.getColor('legend.text') || '#333333';
+    const themeStudyTextColor = this.themeManager?.getColor('text') || '#666666';
+    const themeBgColor = this.themeManager?.getColor('legend.background') || 'rgba(255, 255, 255, 0.9)';
+    const themeBorderColor = this.themeManager?.getColor('legend.border') || '#e0e0e0';
+
     this.config = {
       position: 'center-top',
       marginTop: 20,
@@ -7,17 +14,17 @@ export class Legend {
       fontSize: 12,
       fontFamily: 'Arial, sans-serif',
       fontWeight: 'normal',
-      textColor: '#333333',
+      textColor: config.textColor || themeTextColor,
       studyFontSize: 10,
-      studyTextColor: '#666666',
+      studyTextColor: config.studyTextColor || themeStudyTextColor,
       studyIndicatorSize: 6,
       studySeparator: ' • ',
       itemSpacing: 25,
       indicatorSize: 10,
       indicatorSpacing: 6,
       studySpacing: 4,
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      border: '1px solid #e0e0e0',
+      backgroundColor: config.backgroundColor || themeBgColor,
+      border: config.border || `1px solid ${themeBorderColor}`,
       borderRadius: 4,
       padding: 8,
       ...config
@@ -36,6 +43,13 @@ export class Legend {
   updateStudies(studies) {
     this._organizeStudiesByDataset(studies);
     this.render();
+  }
+
+  updateThemeColors(colors) {
+    if (colors.textColor) this.config.textColor = colors.textColor;
+    if (colors.studyTextColor) this.config.studyTextColor = colors.studyTextColor;
+    if (colors.backgroundColor) this.config.backgroundColor = colors.backgroundColor;
+    if (colors.border) this.config.border = colors.border;
   }
 
   _organizeStudiesByDataset(studies) {

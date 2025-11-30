@@ -208,6 +208,14 @@ export class LineChart extends Chart {
 
       dataset.fill = fillEnabled;
 
+      // Clear caches so the updated fill property is not overwritten by cached datasets
+      if (this.dataProcessor) {
+        this.dataProcessor.clearCache();
+      }
+      if (this.coordinateSystem) {
+        this.coordinateSystem.clearCache();
+      }
+
       this.render();
 
       return true;

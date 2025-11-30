@@ -24,6 +24,7 @@ export class ZeroLine {
 
     this.isVisible = false;
     this.isRendered = false;
+    this.isEmbedded = false; // Track if rendered into existing SVG
   }
 
   render(container, chartArea, scales) {
@@ -35,7 +36,16 @@ export class ZeroLine {
     this.scales = scales;
 
     this._remove();
-    this._createZeroLineSVG(container, chartArea);
+
+    // Check if container is an SVG element
+    const isSvgContainer = container.tagName === 'svg';
+
+    if (isSvgContainer) {
+      this._renderIntoExistingSVG(container);
+    } else {
+      this._renderWithOwnSVG(container, chartArea);
+    }
+
     this._renderZeroLine();
 
     this.isRendered = true;
@@ -45,6 +55,30 @@ export class ZeroLine {
     } else {
       this.hide();
     }
+  }
+
+  _renderIntoExistingSVG(svgContainer) {
+    this.isEmbedded = true;
+    this.svgElement = null; // No separate SVG element when embedded
+
+    // Remove any existing group from this SVG
+    const existingGroup = svgContainer.querySelector('.zero-line-group');
+    if (existingGroup) {
+      existingGroup.remove();
+    }
+
+    // Create and append the group directly to the SVG overlay
+    this.zeroLineGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.zeroLineGroup.setAttribute('class', 'zero-line-group');
+    svgContainer.appendChild(this.zeroLineGroup);
+
+    // Store reference to parent SVG for cleanup
+    this._parentSvg = svgContainer;
+  }
+
+  _renderWithOwnSVG(container, chartArea) {
+    this.isEmbedded = false;
+    this._createZeroLineSVG(container, chartArea);
   }
 
   show() {
@@ -68,8 +102,16 @@ export class ZeroLine {
     this.config.enabled = true;
     this.isVisible = true;
 
-    if (this.svgElement) {
-      this.svgElement.style.display = 'block';
+    if (this.isEmbedded) {
+      // When embedded, toggle the group visibility
+      if (this.zeroLineGroup) {
+        this.zeroLineGroup.style.display = 'block';
+      }
+    } else {
+      // When using own SVG, toggle the SVG element
+      if (this.svgElement) {
+        this.svgElement.style.display = 'block';
+      }
     }
 
     return true;
@@ -79,8 +121,14 @@ export class ZeroLine {
     this.config.enabled = false;
     this.isVisible = false;
 
-    if (this.svgElement) {
-      this.svgElement.style.display = 'none';
+    if (this.isEmbedded) {
+      if (this.zeroLineGroup) {
+        this.zeroLineGroup.style.display = 'none';
+      }
+    } else {
+      if (this.svgElement) {
+        this.svgElement.style.display = 'none';
+      }
     }
 
     return true;
@@ -109,7 +157,8 @@ export class ZeroLine {
   updateChartArea(newChartArea) {
     this.chartArea = newChartArea;
 
-    if (this.svgElement) {
+    // Only update SVG dimensions if we have our own SVG element
+    if (!this.isEmbedded && this.svgElement) {
       this.svgElement.setAttribute('width', newChartArea.width + newChartArea.x * 2);
       this.svgElement.setAttribute('height', newChartArea.height + newChartArea.y * 2);
     }
@@ -230,7 +279,15 @@ export class ZeroLine {
   }
 
   _remove() {
-    if (this.svgElement && this.svgElement.parentElement) {
+    // Handle embedded mode (group inside existing SVG)
+    if (this.isEmbedded && this.zeroLineGroup) {
+      if (this.zeroLineGroup.parentElement) {
+        this.zeroLineGroup.parentElement.removeChild(this.zeroLineGroup);
+      }
+    }
+
+    // Handle standalone mode (own SVG element)
+    if (!this.isEmbedded && this.svgElement && this.svgElement.parentElement) {
       this.svgElement.parentElement.removeChild(this.svgElement);
     }
 
@@ -239,6 +296,7 @@ export class ZeroLine {
     this.lineElement = null;
     this.labelElement = null;
     this.isRendered = false;
+    this._parentSvg = null;
   }
 
   destroy() {
@@ -246,5 +304,6 @@ export class ZeroLine {
     this.scales = null;
     this.chartArea = null;
     this.isVisible = false;
+    this.isEmbedded = false;
   }
 }
