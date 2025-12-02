@@ -1,5 +1,7 @@
 # VisionCharts
 
+![VisionCharts Logo](./public/VisionCharts_Banner.webp "VisionCharts Logo")
+
 > A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.
 
 [![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)](https://github.com/visionkernel/visioncharts)
