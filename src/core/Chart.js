@@ -1004,7 +1004,7 @@ export class Chart {
 
   _applyTheme() {
     const theme = this.themeManager;
-    
+
     this.config.options.titleColor = theme.getColor('title');
     this.config.options.gridColor = theme.getColor('grid');
     
@@ -1040,6 +1040,11 @@ export class Chart {
     
     if (this.panelManager && this.isPanelMode) {
       this.panelManager.applyTheme(theme);
+    }
+
+    if (this.titleElement) {
+      const titleColor = theme.getColor('title') || '#333333';
+      this.titleElement.setAttribute('fill', titleColor);
     }
   }
 
@@ -1673,6 +1678,7 @@ export class Chart {
     if (exactDataX == null) {
       return dataPoints;
     }
+    
     if (Array.isArray(this.config.data)) {
       for (const dataset of this.config.data) {
         if (dataset.data && Array.isArray(dataset.data)) {
@@ -1688,14 +1694,48 @@ export class Chart {
         }
       }
     }
+
     if (this.studiesManager) {
       try {
         const studyPoints = this.studiesManager.getStudyDataPointsAtX(exactDataX);
         if (studyPoints && studyPoints.length > 0) {
-          dataPoints.push(...studyPoints);
+          const enrichedStudyPoints = studyPoints.map(point => {
+            if (point.unifiedX != null && point.unifiedY != null) {
+              return point;
+            }
+            
+            if (this.scales && this.scales.x && this.scales.y && 
+                point.dataX != null && point.dataY != null) {
+              try {
+                const pixelX = this.scales.x.scale(point.dataX);
+                const pixelY = this.scales.y.scale(point.dataY);
+                
+                if (pixelX != null && pixelY != null && 
+                    isFinite(pixelX) && isFinite(pixelY)) {
+                  return {
+                    ...point,
+                    unifiedX: pixelX,
+                    unifiedY: pixelY,
+                    pixelX: pixelX,
+                    pixelY: pixelY
+                  };
+                }
+              } catch (error) {
+              }
+            }
+            return point;
+          });
+          
+          const validStudyPoints = enrichedStudyPoints.filter(p => 
+            p.unifiedX != null && p.unifiedY != null
+          );
+          
+          dataPoints.push(...validStudyPoints);
         }
-      } catch (error) {}
+      } catch (error) {
+      }
     }
+    
     const uniquePoints = [];
     const seenIds = new Set();
     for (const point of dataPoints) {
@@ -1705,6 +1745,7 @@ export class Chart {
         uniquePoints.push(point);
       }
     }
+    
     return uniquePoints;
   }
 
