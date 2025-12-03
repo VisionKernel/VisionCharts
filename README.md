@@ -1,6 +1,6 @@
 # VisionCharts
 
-![VisionCharts Logo](./public/VisionCharts_Banner.webp "VisionCharts Logo")
+![VisionCharts Logo](./media/VisionCharts_Banner.webp "VisionCharts Logo")
 
 > A modern, high-performance JavaScript charting library optimized for financial and economic data visualization.
 
