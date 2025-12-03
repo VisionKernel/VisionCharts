@@ -224,6 +224,33 @@ export class LineChart extends Chart {
     }
   }
 
+  updateDatasetFillOpacity(datasetId, fillOpacity) {
+    try {
+      const dataset = this.config.data.find(d => d.id === datasetId);
+
+      if (!dataset) {
+        return false;
+      }
+
+      const validOpacity = Math.max(0, Math.min(1, fillOpacity));
+      dataset.fillOpacity = validOpacity;
+
+      if (this.dataProcessor) {
+        this.dataProcessor.clearCache();
+      }
+      if (this.coordinateSystem) {
+        this.coordinateSystem.clearCache();
+      }
+
+      this.render();
+
+      return true;
+    } catch (error) {
+      console.error('Error updating dataset fill opacity:', error);
+      return false;
+    }
+  }
+
   addDataset(dataset) {
     if (!dataset || !dataset.data) {
       return this;
