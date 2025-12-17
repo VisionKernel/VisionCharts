@@ -346,6 +346,7 @@ export class PanelManager {
         rendererType: this.chart.activeRenderer || 'canvas',
         yAxisName: this.chart.config.options.yAxisName || 'Value',
         isLogarithmic: this.chart.config.options.isLogarithmic,
+        yStartAtZero: this.chart.config.options.yStartAtZero,
         recessionData: this.chart.recessionLines?.config.recessionData || [],
         showGrid: this.chart.config.options.showGrid,
         showXGrid: this.chart.config.options.showXGrid,
@@ -887,6 +888,21 @@ export class PanelManager {
 
   toggleZeroLine(show) {
     this.panels.forEach(panel => panel.toggleZeroLine(show));
+  }
+
+  toggleYStartAtZero(show = null) {
+    if (!this.isPanelMode) {
+      return false;
+    }
+    
+    const newState = show !== null ? show : !this.chart.config.options.yStartAtZero;
+    this.chart.config.options.yStartAtZero = newState;
+    
+    for (const panel of this.panels) {
+      panel.toggleYStartAtZero(newState);
+    }
+    
+    return newState;
   }
 
   toggleRecessionLines(show) {

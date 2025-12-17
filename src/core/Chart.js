@@ -65,6 +65,7 @@ export class Chart {
         recessionFillColor: 'rgba(128, 122, 122, 0.2)',
         recessionStrokeColor: 'rgba(128, 122, 122, 0.2)',
         isLogarithmic: false,
+        yStartAtZero: false,
         forceRenderer: null,
         ...config.options
       }
@@ -423,14 +424,25 @@ export class Chart {
       }
     }
     
-    if (this.config.options.isLogarithmic && yMin <= 0) {
-      yMin = 0.1;
-    }
     const yRange = yMax - yMin;
     const yPadding = yRange * 0.05;
+    
+    let yDomainMin = yMin - yPadding;
+    let yDomainMax = yMax + yPadding;
+    
+    if (this.config.options.yStartAtZero) {
+      if (yMin > 0) {
+        yDomainMin = 0;
+      }
+    }
+
+    if (this.config.options.isLogarithmic && yDomainMin <= 0) {
+      yDomainMin = 0.1;
+    }
+    
     this.dataDomains = {
       x: [xMin, xMax],
-      y: [yMin - yPadding, yMax + yPadding]
+      y: [yDomainMin, yDomainMax]
     };
   }
 
@@ -795,6 +807,25 @@ export class Chart {
       return false;
     }
     const newState = this.zeroLine.toggle(show);
+    return newState;
+  }
+
+  toggleYStartAtZero(force = null) {
+    const newState = force !== null ? force : !this.config.options.yStartAtZero;
+    
+    if (newState === this.config.options.yStartAtZero) {
+      return newState;
+    }
+    
+    this.config.options.yStartAtZero = newState;
+    
+    if (this.isPanelMode) {
+      this.panelManager.toggleYStartAtZero(newState);
+      return newState;
+    }
+    
+    this.update();
+    
     return newState;
   }
 
