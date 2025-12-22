@@ -107,6 +107,7 @@ export class Chart {
     this._isDestroyed = false;
     this.panelManager = new PanelManager(this);
     this.legend = new Legend({
+      position: this.config.options.legendPosition || 'top-center',
       fontSize: 12,
       fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
       textColor: this.themeManager.getColor('legend.text') || '#333333',
@@ -899,6 +900,28 @@ export class Chart {
       return false;
     }
     return currentLegend.element.style.display !== 'none';
+  }
+
+  setLegendPosition(position) {
+    const currentLegend = this.isPanelMode
+      ? this.panelManager?.legend
+      : this.legend;
+
+    if (!currentLegend) {
+      return false;
+    }
+
+    currentLegend.setPosition(position);
+    this.config.options.legendPosition = position;
+
+    // Re-render the chart to apply the new position
+    if (this.isPanelMode) {
+      this.panelManager._renderLegend();
+    } else {
+      this._renderLegend();
+    }
+
+    return true;
   }
 
   async _updatePanelMode() {

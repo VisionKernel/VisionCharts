@@ -381,6 +381,17 @@ function setupLineChartControls() {
     });
   }
 
+  const legendPositionSelect = document.getElementById('line-legend-position');
+  if (legendPositionSelect) {
+    legendPositionSelect.addEventListener('change', (e) => {
+      try {
+        lineChart.setLegendPosition(e.target.value);
+      } catch (error) {
+        console.error('Error setting line chart legend position:', error);
+      }
+    });
+  }
+
   const endingLabelsToggle = document.getElementById('line-toggle-endinglabels');
   if (endingLabelsToggle) {
     endingLabelsToggle.classList.remove('active');
@@ -533,6 +544,17 @@ function setupBarChartControls() {
         legendToggle.classList.toggle('active', newState);
       } catch (error) {
         console.error('Error toggling bar chart legend:', error);
+      }
+    });
+  }
+
+  const legendPositionSelect = document.getElementById('bar-legend-position');
+  if (legendPositionSelect) {
+    legendPositionSelect.addEventListener('change', (e) => {
+      try {
+        barChart.setLegendPosition(e.target.value);
+      } catch (error) {
+        console.error('Error setting bar chart legend position:', error);
       }
     });
   }

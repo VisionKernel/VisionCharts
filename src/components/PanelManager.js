@@ -334,10 +334,12 @@ export class PanelManager {
     for (let i = 0; i < totalPanels; i++) {
       const dataset = this.chart.config.data[i];
       const panel = new Panel({
+
         dataset: dataset,
         chart: this.chart,
         panelIndex: i,
         totalPanels: totalPanels,
+        showTitle: false,
         height: panelHeight,
         container: this.panelContainer,
         sharedXScale: this.sharedXScale,
@@ -421,6 +423,7 @@ export class PanelManager {
   _createLegend() {
     const themeManager = this.chart.themeManager;
     this.legend = new Legend({
+      position: this.chart.config.options.legendPosition || 'top-center',
       fontSize: 12,
       fontFamily: this.chart.config.options.titleFontFamily || 'Arial, sans-serif',
       textColor: themeManager?.getColor('legend.text') || '#333333',
