@@ -8,7 +8,7 @@ export class Legend {
     const themeBorderColor = this.themeManager?.getColor('legend.border') || '#e0e0e0';
 
     this.config = {
-      position: 'center-top',
+      position: 'top-center',
       marginTop: 20,
       marginBottom: 20,
       fontSize: 12,
@@ -219,15 +219,59 @@ export class Legend {
 
     const maxWidth = chartArea.width - 40;
     const finalWidth = Math.min(totalWidth, maxWidth);
-    const x = chartArea.x + (chartArea.width - finalWidth) / 2;
-    const y = chartArea.y - this.config.marginBottom + 15;
+    const legendHeight = Math.max(this.config.fontSize, this.config.studyFontSize) + this.config.padding * 2;
+
+    const position = this.config.position || 'top-center';
+    const { x, y } = this._calculatePosition(position, chartArea, finalWidth, legendHeight);
 
     return {
       x: x,
       y: y,
       totalWidth: finalWidth,
-      height: Math.max(this.config.fontSize, this.config.studyFontSize) + this.config.padding * 2
+      height: legendHeight
     };
+  }
+
+  _calculatePosition(position, chartArea, legendWidth, legendHeight) {
+    const margin = 10;
+    let x, y;
+
+    // Parse position string (e.g., 'top-left', 'bottom-center', 'center')
+    const parts = position.toLowerCase().split('-');
+    const vertical = parts.find(p => ['top', 'bottom', 'middle'].includes(p)) || 'top';
+    const horizontal = parts.find(p => ['left', 'center', 'right'].includes(p)) || 'center';
+
+    // Calculate horizontal position
+    switch (horizontal) {
+      case 'left':
+        x = chartArea.x + margin;
+        break;
+      case 'right':
+        x = chartArea.x + chartArea.width - legendWidth - margin;
+        break;
+      case 'center':
+      default:
+        x = chartArea.x + (chartArea.width - legendWidth) / 2;
+        break;
+    }
+
+    // Calculate vertical position
+    switch (vertical) {
+      case 'top':
+        y = chartArea.y + margin;
+        break;
+      case 'bottom':
+        y = chartArea.y + chartArea.height - legendHeight - margin;
+        break;
+      case 'middle':
+        y = chartArea.y + (chartArea.height - legendHeight) / 2;
+        break;
+      default:
+        y = chartArea.y + margin;
+        break;
+    }
+
+    return { x, y };
   }
 
   _estimateTotalWidth() {
@@ -326,6 +370,11 @@ export class Legend {
     if (this.element) {
       this.element.style.display = visible ? 'block' : 'none';
     }
+  }
+
+  setPosition(position) {
+    this.config.position = position;
+    // Re-render is handled by the caller (Chart or PanelManager)
   }
 
   destroy() {

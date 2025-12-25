@@ -334,10 +334,12 @@ export class PanelManager {
     for (let i = 0; i < totalPanels; i++) {
       const dataset = this.chart.config.data[i];
       const panel = new Panel({
+
         dataset: dataset,
         chart: this.chart,
         panelIndex: i,
         totalPanels: totalPanels,
+        showTitle: false,
         height: panelHeight,
         container: this.panelContainer,
         sharedXScale: this.sharedXScale,
@@ -346,6 +348,7 @@ export class PanelManager {
         rendererType: this.chart.activeRenderer || 'canvas',
         yAxisName: this.chart.config.options.yAxisName || 'Value',
         isLogarithmic: this.chart.config.options.isLogarithmic,
+        yStartAtZero: this.chart.config.options.yStartAtZero,
         recessionData: this.chart.recessionLines?.config.recessionData || [],
         showGrid: this.chart.config.options.showGrid,
         showXGrid: this.chart.config.options.showXGrid,
@@ -420,6 +423,7 @@ export class PanelManager {
   _createLegend() {
     const themeManager = this.chart.themeManager;
     this.legend = new Legend({
+      position: this.chart.config.options.legendPosition || 'top-center',
       fontSize: 12,
       fontFamily: this.chart.config.options.titleFontFamily || 'Arial, sans-serif',
       textColor: themeManager?.getColor('legend.text') || '#333333',
@@ -887,6 +891,21 @@ export class PanelManager {
 
   toggleZeroLine(show) {
     this.panels.forEach(panel => panel.toggleZeroLine(show));
+  }
+
+  toggleYStartAtZero(show = null) {
+    if (!this.isPanelMode) {
+      return false;
+    }
+    
+    const newState = show !== null ? show : !this.chart.config.options.yStartAtZero;
+    this.chart.config.options.yStartAtZero = newState;
+    
+    for (const panel of this.panels) {
+      panel.toggleYStartAtZero(newState);
+    }
+    
+    return newState;
   }
 
   toggleRecessionLines(show) {

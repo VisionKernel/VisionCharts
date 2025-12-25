@@ -18,6 +18,7 @@ export class Panel {
       chartType: 'line',
       hasSharedXAxis: false,
       isLogarithmic: false,
+      yStartAtZero: false,
       height: 200,
       padding: {
         top: Math.max(5, Math.floor(config.height * 0.05) || 8),
@@ -232,7 +233,21 @@ export class Panel {
 
     const yDataRange = yMax - yMin;
     const yPadding = yDataRange * 0.05;
-    const yDomain = [yMin - yPadding, yMax + yPadding];
+    
+    let yDomainMin = yMin - yPadding;
+    let yDomainMax = yMax + yPadding;
+    
+    if (this.config.yStartAtZero) {
+      if (yMin > 0) {
+        yDomainMin = 0;
+      }
+    }
+    
+    if (this.config.isLogarithmic && yDomainMin <= 0) {
+      yDomainMin = 0.1;
+    }
+
+    const yDomain = [yDomainMin, yDomainMax];
     const scaleType = 'linear';
     const yRange = [this.panelChartArea.y + this.panelChartArea.height, this.panelChartArea.y];
 
@@ -248,6 +263,13 @@ export class Panel {
         clamp: true
       }
     });
+  }
+
+  toggleYStartAtZero(force) {
+    this.config.yStartAtZero = force !== undefined ? force : !this.config.yStartAtZero;
+    this._createYScale();
+    this._createYAxis();
+    this.render();
   }
 
   _createYAxis() {

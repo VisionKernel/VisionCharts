@@ -65,6 +65,7 @@ export class Chart {
         recessionFillColor: 'rgba(128, 122, 122, 0.2)',
         recessionStrokeColor: 'rgba(128, 122, 122, 0.2)',
         isLogarithmic: false,
+        yStartAtZero: false,
         forceRenderer: null,
         ...config.options
       }
@@ -106,6 +107,7 @@ export class Chart {
     this._isDestroyed = false;
     this.panelManager = new PanelManager(this);
     this.legend = new Legend({
+      position: this.config.options.legendPosition || 'top-center',
       fontSize: 12,
       fontFamily: this.config.options.titleFontFamily || 'Arial, sans-serif',
       textColor: this.themeManager.getColor('legend.text') || '#333333',
@@ -210,7 +212,9 @@ export class Chart {
       this._createGrid();
       this._createAxes();
       this._setupCrosshair();
-      await this.studiesRenderer.initialize();
+      if (this.studiesRenderer && typeof this.studiesRenderer.initialize === 'function') {
+        await this.studiesRenderer.initialize();
+      }
       await this._initializeRenderer();
       this._initializeLegendWithStudies();
       this.isInitialized = true;
@@ -423,14 +427,25 @@ export class Chart {
       }
     }
     
-    if (this.config.options.isLogarithmic && yMin <= 0) {
-      yMin = 0.1;
-    }
     const yRange = yMax - yMin;
     const yPadding = yRange * 0.05;
+    
+    let yDomainMin = yMin - yPadding;
+    let yDomainMax = yMax + yPadding;
+    
+    if (this.config.options.yStartAtZero) {
+      if (yMin > 0) {
+        yDomainMin = 0;
+      }
+    }
+
+    if (this.config.options.isLogarithmic && yDomainMin <= 0) {
+      yDomainMin = 0.1;
+    }
+    
     this.dataDomains = {
       x: [xMin, xMax],
-      y: [yMin - yPadding, yMax + yPadding]
+      y: [yDomainMin, yDomainMax]
     };
   }
 
@@ -798,6 +813,25 @@ export class Chart {
     return newState;
   }
 
+  toggleYStartAtZero(force = null) {
+    const newState = force !== null ? force : !this.config.options.yStartAtZero;
+    
+    if (newState === this.config.options.yStartAtZero) {
+      return newState;
+    }
+    
+    this.config.options.yStartAtZero = newState;
+    
+    if (this.isPanelMode) {
+      this.panelManager.toggleYStartAtZero(newState);
+      return newState;
+    }
+    
+    this.update();
+    
+    return newState;
+  }
+
   _renderRecessionLines() {
     if (!this.recessionLines || !this.scales.x || !this.scales.y) {
       return;
@@ -868,6 +902,28 @@ export class Chart {
       return false;
     }
     return currentLegend.element.style.display !== 'none';
+  }
+
+  setLegendPosition(position) {
+    const currentLegend = this.isPanelMode
+      ? this.panelManager?.legend
+      : this.legend;
+
+    if (!currentLegend) {
+      return false;
+    }
+
+    currentLegend.setPosition(position);
+    this.config.options.legendPosition = position;
+
+    // Re-render the chart to apply the new position
+    if (this.isPanelMode) {
+      this.panelManager._renderLegend();
+    } else {
+      this._renderLegend();
+    }
+
+    return true;
   }
 
   async _updatePanelMode() {
@@ -1362,6 +1418,14 @@ export class Chart {
       return false;
     }
     dataset.color = newColor;
+    
+    if (this.dataProcessor) {
+      this.dataProcessor.clearCache();
+    }
+    if (this.coordinateSystem) {
+      this.coordinateSystem.clearCache();
+    }
+    
     this._updateLegendForColorChange(datasetId, newColor);
     this._updateEndingLabelsForColorChange(datasetId, newColor);
     this.render().catch(error => {});
