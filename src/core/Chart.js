@@ -1414,20 +1414,21 @@ export class Chart {
 
   updateDatasetColor(datasetId, newColor) {
     const dataset = this.config.data?.find(d => d.id === datasetId);
-    if (!dataset) return false;
-    
+    if (!dataset) {
+      return false;
+    }
     dataset.color = newColor;
-    this._updateLegendForColorChange(datasetId, newColor);
-    this._updateEndingLabelsForColorChange(datasetId, newColor);
     
-    if (this._initPromise) {
-      this._initPromise.then(() => {
-        this.render().catch(error => {});
-      });
-    } else {
-      this.render().catch(error => {});
+    if (this.dataProcessor) {
+      this.dataProcessor.clearCache();
+    }
+    if (this.coordinateSystem) {
+      this.coordinateSystem.clearCache();
     }
     
+    this._updateLegendForColorChange(datasetId, newColor);
+    this._updateEndingLabelsForColorChange(datasetId, newColor);
+    this.render().catch(error => {});
     return true;
   }
 
