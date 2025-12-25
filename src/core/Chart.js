@@ -212,7 +212,9 @@ export class Chart {
       this._createGrid();
       this._createAxes();
       this._setupCrosshair();
-      await this.studiesRenderer.initialize();
+      if (this.studiesRenderer && typeof this.studiesRenderer.initialize === 'function') {
+        await this.studiesRenderer.initialize();
+      }
       await this._initializeRenderer();
       this._initializeLegendWithStudies();
       this.isInitialized = true;
@@ -1412,13 +1414,20 @@ export class Chart {
 
   updateDatasetColor(datasetId, newColor) {
     const dataset = this.config.data?.find(d => d.id === datasetId);
-    if (!dataset) {
-      return false;
-    }
+    if (!dataset) return false;
+    
     dataset.color = newColor;
     this._updateLegendForColorChange(datasetId, newColor);
     this._updateEndingLabelsForColorChange(datasetId, newColor);
-    this.render().catch(error => {});
+    
+    if (this._initPromise) {
+      this._initPromise.then(() => {
+        this.render().catch(error => {});
+      });
+    } else {
+      this.render().catch(error => {});
+    }
+    
     return true;
   }
 
